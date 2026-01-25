@@ -90,22 +90,45 @@ Taskbar                              🔊 📶 ◉ 🕐
 │              ELECTRON OVERLAY                    │
 │  (transparent, always-on-top, frameless)        │
 ├─────────────────────────────────────────────────┤
-│  • Orb component (draggable, click-to-expand)   │
+│  • Orb component (draggable, Ctrl+Shift+V)      │
 │  • Chat panel (conversation history)            │
+│  • Terminal panel (embedded Claude output)      │
 │  • Screen capture (desktopCapturer)             │
 │  • System tray integration                      │
-│  • IPC bridge to Python                         │
+├──────────────────┬──────────────────────────────┤
+│  Two Child Processes:                           │
+├──────────────────┴──────────────────────────────┤
+│  1. PYTHON VOICE MIRROR                         │
+│     • Wake word detection (OpenWakeWord)        │
+│     • STT (Parakeet/Whisper)                    │
+│     • TTS (Kokoro)                              │
+│     • Sends to MCP inbox, waits for response    │
+├─────────────────────────────────────────────────┤
+│  2. CLAUDE CODE CLI (spawned by Electron)       │
+│     • Watches inbox via claude_listen           │
+│     • Has MCP tools (voice-mirror-electron)     │
+│     • Responds via claude_send → TTS            │
 ├──────────────────────┬──────────────────────────┤
-│  IPC / WebSocket     │                          │
-├──────────────────────▼──────────────────────────┤
-│  PYTHON VOICE MIRROR (existing)                 │
-│  • Wake word detection (OpenWakeWord)           │
-│  • STT (Parakeet/Whisper)                       │
-│  • TTS (Kokoro)                                 │
-│  • Qwen/Claude routing                          │
-│  • MCP tool dispatch                            │
-└─────────────────────────────────────────────────┘
+│  MCP Inbox           │  ~/.context-mirror/      │
+│  (shared JSON file)  │  claude_messages.json    │
+└──────────────────────┴──────────────────────────┘
 ```
+
+### Two-Process Architecture
+
+**Python Voice Mirror** handles:
+- Wake word detection ("Hey Claude")
+- Speech-to-text transcription
+- Text-to-speech for responses
+- Sends transcriptions to MCP inbox
+
+**Claude Code CLI** handles:
+- Watches inbox for voice messages (`claude_listen`)
+- Processes queries using full Claude capabilities
+- Responds via `claude_send` (triggers TTS)
+- Has access to MCP tools (web search, file ops, etc.)
+
+This architecture means Voice Mirror Electron is **fully standalone** - it doesn't need an external Claude Code session running.
 
 ## Project Structure
 
@@ -115,17 +138,22 @@ Voice Mirror Electron/
 │   ├── main.js              # Window management, tray, IPC
 │   ├── preload.js           # Bridge to renderer
 │   ├── config.js            # Cross-platform config management
-│   └── overlay.html         # Transparent window UI
+│   ├── claude-spawner.js    # Claude Code CLI spawner
+│   └── overlay.html         # Transparent window UI + terminal
+├── mcp-server/
+│   ├── index.js             # Voice Mirror MCP server
+│   └── package.json         # MCP SDK dependencies
 ├── assets/
 │   └── tray-icon.png        # System tray icon
-├── python/                  # Symlink or copy of Voice Mirror
-│   ├── voice_agent.py
-│   ├── qwen_handler.py
-│   └── ...
 ├── launch.sh                # Linux/macOS launcher
 ├── launch.bat               # Windows launcher
 ├── package.json
 └── CLAUDE.md                # This file
+
+Voice Mirror/                 # Sibling folder
+├── voice_agent.py           # Voice processing
+├── electron_bridge.py       # JSON IPC for Electron
+└── ...
 ```
 
 ## Key Technical Details
@@ -170,14 +198,49 @@ window.voiceMirror = {
     toggleExpand: () => ipcRenderer.invoke('toggle-expand'),
     captureScreen: () => ipcRenderer.invoke('capture-screen'),
     onVoiceEvent: (callback) => ipcRenderer.on('voice-event', callback),
-    config: {
-        get: () => ipcRenderer.invoke('get-config'),
-        set: (updates) => ipcRenderer.invoke('set-config', updates),
-        reset: () => ipcRenderer.invoke('reset-config'),
-        getPlatformInfo: () => ipcRenderer.invoke('get-platform-info')
-    }
+    config: { /* get, set, reset, getPlatformInfo */ },
+    python: {
+        start: () => ipcRenderer.invoke('start-python'),
+        stop: () => ipcRenderer.invoke('stop-python'),
+        getStatus: () => ipcRenderer.invoke('get-python-status')
+    },
+    claude: {
+        start: () => ipcRenderer.invoke('start-claude'),
+        stop: () => ipcRenderer.invoke('stop-claude'),
+        getStatus: () => ipcRenderer.invoke('get-claude-status'),
+        onOutput: (callback) => ipcRenderer.on('claude-terminal', callback)
+    },
+    startAll: () => ipcRenderer.invoke('start-all'),
+    stopAll: () => ipcRenderer.invoke('stop-all')
 }
 ```
+
+### Embedded Terminal Panel
+
+The chat panel includes a toggleable terminal that shows Claude Code's output:
+
+```
+┌────────────────────────────────────────┐
+│ ◉ Voice Mirror                         │
+├────────────────────────────────────────┤
+│ Chat messages...                       │
+│                                        │
+├────────────────────────────────────────┤
+│ Claude Code [Running]        [Start] X │
+│ ─────────────────────────────────────  │
+│ [Claude] Listening for nathan...       │
+│ [Claude] Message received: "hello"     │
+│ [Claude] Sending response...           │
+├────────────────────────────────────────┤
+│ ● Listening...                [📷] [>_]│
+└────────────────────────────────────────┘
+                          Terminal toggle ↗
+```
+
+Toggle with the terminal button (>_) in the status bar. Shows:
+- Claude Code process status (Running/Stopped)
+- Real-time stdout/stderr output
+- Start/Stop controls
 
 ## Cross-Platform Configuration
 
@@ -350,23 +413,30 @@ Electron's `-webkit-app-region: drag` consumes all click events, so you can't bo
 - [x] System tray with Toggle Panel menu
 - [x] Draggable orb with position memory
 
-### Phase 2: Python Integration
-- [ ] Spawn Python Voice Mirror as child process
-- [ ] IPC bridge for voice events
-- [ ] Forward transcriptions/responses to UI
-- [ ] JSON protocol for bidirectional communication
+### Phase 2: Python Integration ✅
+- [x] Spawn Python Voice Mirror as child process
+- [x] IPC bridge for voice events (electron_bridge.py)
+- [x] Forward transcriptions/responses to UI
+- [x] JSON protocol for bidirectional communication
+
+### Phase 2.5: Claude Code Integration ✅
+- [x] MCP server for Voice Mirror (claude_send, claude_inbox, claude_listen)
+- [x] Claude Code spawner with voice prompt
+- [x] Embedded terminal panel (toggleable)
+- [x] Start/Stop Claude from UI
+- [x] Real-time Claude output in terminal
 
 ### Phase 3: Screen Capture & Vision
 - [x] desktopCapturer integration (capture button in UI)
 - [x] Image paste/drop support in chat
-- [ ] Send screenshots to Claude vision API
+- [ ] Send screenshots to Claude vision API via MCP
 - [ ] "What's on my screen?" commands
 
 ### Phase 4: Polish
 - [ ] Settings panel UI
 - [ ] Custom wake words
 - [ ] Click-to-expand (custom drag implementation)
-- [ ] Orb visual state animations (recording, speaking, thinking)
+- [x] Orb visual state animations (recording, speaking, thinking)
 
 ### Phase 5: Distribution
 - [ ] AppImage for Linux

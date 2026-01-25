@@ -326,6 +326,183 @@
             border-radius: 8px;
             margin-bottom: 8px;
         }
+
+        /* Terminal Panel */
+        #terminal-container {
+            display: flex;
+            height: 180px;
+            min-height: 32px;
+            background: #0a0a12;
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            flex-direction: column;
+            transition: height 0.2s ease;
+        }
+
+        #terminal-container.minimized {
+            height: 32px;
+        }
+
+        #terminal-container.minimized #terminal-output {
+            display: none;
+        }
+
+        #terminal-container.hidden {
+            display: none;
+        }
+
+        #terminal-header {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.3);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        #terminal-header span {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+        }
+
+        #terminal-header .terminal-status {
+            margin-left: 8px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            background: rgba(74, 222, 128, 0.2);
+            color: #4ade80;
+        }
+
+        #terminal-header .terminal-status.stopped {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        #terminal-header .terminal-title {
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .terminal-controls {
+            margin-left: auto;
+            display: flex;
+            gap: 4px;
+        }
+
+        .terminal-ctrl-btn {
+            width: 24px;
+            height: 24px;
+            border: none;
+            background: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.6);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+        }
+
+        .terminal-ctrl-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+
+        #terminal-close {
+            margin-left: auto;
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.4);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 4px 8px;
+        }
+
+        #terminal-close:hover {
+            color: white;
+        }
+
+        #terminal-output {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 12px;
+            font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            color: #e0e0e0;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        #terminal-output .stdout {
+            color: #e0e0e0;
+        }
+
+        #terminal-output .stderr {
+            color: #f87171;
+        }
+
+        #terminal-output .info {
+            color: #60a5fa;
+        }
+
+        #terminal-output .success {
+            color: #4ade80;
+        }
+
+        /* Terminal toggle button */
+        .action-btn.terminal-btn {
+            position: relative;
+        }
+
+        .action-btn.terminal-btn.active {
+            background: rgba(102, 126, 234, 0.3);
+            color: #667eea;
+        }
+
+        .action-btn.terminal-btn .badge {
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4ade80;
+        }
+
+        .action-btn.terminal-btn .badge.stopped {
+            background: #ef4444;
+        }
+
+        /* Control buttons */
+        .control-btn {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+            margin-left: 8px;
+        }
+
+        .control-btn.start {
+            background: #4ade80;
+            color: #0d0d1a;
+        }
+
+        .control-btn.start:hover {
+            background: #22c55e;
+        }
+
+        .control-btn.stop {
+            background: #ef4444;
+            color: white;
+        }
+
+        .control-btn.stop:hover {
+            background: #dc2626;
+        }
     </style>
 </head>
 <body>
@@ -363,6 +540,20 @@
             </div>
         </div>
 
+        <!-- Terminal Panel (visible by default, collapsible) -->
+        <div id="terminal-container">
+            <div id="terminal-header">
+                <span class="terminal-title">⌘ Terminal</span>
+                <span id="terminal-status" class="terminal-status stopped">Stopped</span>
+                <button id="terminal-start" class="control-btn start" onclick="startClaude()">Start</button>
+                <div class="terminal-controls">
+                    <button class="terminal-ctrl-btn" onclick="minimizeTerminal()" title="Minimize">─</button>
+                    <button class="terminal-ctrl-btn" onclick="hideTerminal()" title="Hide">×</button>
+                </div>
+            </div>
+            <div id="terminal-output"></div>
+        </div>
+
         <div id="status-bar">
             <div id="status-indicator"></div>
             <span id="status-text">Listening...</span>
@@ -372,6 +563,13 @@
                         <rect x="3" y="3" width="18" height="18" rx="2"/>
                         <circle cx="12" cy="12" r="3"/>
                     </svg>
+                </button>
+                <button class="action-btn terminal-btn" onclick="toggleTerminal()" title="Toggle Terminal">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="4 17 10 11 4 5"/>
+                        <line x1="12" y1="19" x2="20" y2="19"/>
+                    </svg>
+                    <span id="claude-badge" class="badge stopped"></span>
                 </button>
             </div>
         </div>
@@ -478,10 +676,40 @@
             }
         });
 
+        // Deduplication: track recent messages to prevent duplicates
+        const recentMessages = new Map();  // text -> timestamp
+        const DEDUP_WINDOW_MS = 5000;  // 5 second window
+
+        function isDuplicate(text) {
+            if (!text) return false;
+
+            // Normalize text (remove "Claude: " prefix for comparison)
+            const normalized = text.replace(/^Claude:\s*/i, '').trim().toLowerCase();
+            const now = Date.now();
+
+            // Clean old entries
+            for (const [key, time] of recentMessages) {
+                if (now - time > DEDUP_WINDOW_MS) {
+                    recentMessages.delete(key);
+                }
+            }
+
+            // Check if we've seen this recently
+            if (recentMessages.has(normalized)) {
+                console.log('[Chat] Duplicate message suppressed:', text.slice(0, 50));
+                return true;
+            }
+
+            recentMessages.set(normalized, now);
+            return false;
+        }
+
         // Listen for chat messages from Python backend
         window.voiceMirror.onChatMessage((data) => {
             console.log('[Chat Message]', data);
-            addMessage(data.role, data.text);
+            if (!isDuplicate(data.text)) {
+                addMessage(data.role, data.text);
+            }
         });
 
         // Initialize
@@ -660,6 +888,129 @@
             chatContainer.appendChild(msg);
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
+
+        // ========== Terminal Panel ==========
+        const terminalContainer = document.getElementById('terminal-container');
+        const terminalOutput = document.getElementById('terminal-output');
+        const terminalStatus = document.getElementById('terminal-status');
+        const terminalStartBtn = document.getElementById('terminal-start');
+        const terminalBtn = document.querySelector('.terminal-btn');
+        const claudeBadge = document.getElementById('claude-badge');
+
+        let terminalVisible = true;
+        let claudeRunning = false;
+
+        let terminalMinimized = false;
+
+        function toggleTerminal() {
+            // Toggle between hidden and visible
+            const isHidden = terminalContainer.classList.contains('hidden');
+            if (isHidden) {
+                terminalContainer.classList.remove('hidden');
+                terminalContainer.classList.remove('minimized');
+                terminalMinimized = false;
+                terminalVisible = true;
+            } else {
+                terminalContainer.classList.add('hidden');
+                terminalVisible = false;
+            }
+            terminalBtn.classList.toggle('active', terminalVisible);
+        }
+
+        function minimizeTerminal() {
+            terminalMinimized = !terminalMinimized;
+            terminalContainer.classList.toggle('minimized', terminalMinimized);
+        }
+
+        function hideTerminal() {
+            terminalContainer.classList.add('hidden');
+            terminalVisible = false;
+            terminalBtn.classList.remove('active');
+        }
+
+        function appendTerminalOutput(text, type = 'stdout') {
+            const line = document.createElement('div');
+            line.className = type;
+            line.textContent = text;
+            terminalOutput.appendChild(line);
+            terminalOutput.scrollTop = terminalOutput.scrollHeight;
+
+            // Keep max 500 lines
+            while (terminalOutput.children.length > 500) {
+                terminalOutput.removeChild(terminalOutput.firstChild);
+            }
+        }
+
+        function updateClaudeStatus(running) {
+            claudeRunning = running;
+            if (running) {
+                terminalStatus.textContent = 'Running';
+                terminalStatus.classList.remove('stopped');
+                claudeBadge.classList.remove('stopped');
+                terminalStartBtn.textContent = 'Stop';
+                terminalStartBtn.className = 'control-btn stop';
+                terminalStartBtn.onclick = stopClaude;
+            } else {
+                terminalStatus.textContent = 'Stopped';
+                terminalStatus.classList.add('stopped');
+                claudeBadge.classList.add('stopped');
+                terminalStartBtn.textContent = 'Start';
+                terminalStartBtn.className = 'control-btn start';
+                terminalStartBtn.onclick = startClaude;
+            }
+        }
+
+        async function startClaude() {
+            appendTerminalOutput('[Starting Claude Code...]', 'info');
+            try {
+                await window.voiceMirror.claude.start();
+            } catch (err) {
+                appendTerminalOutput(`Failed to start: ${err.message}`, 'stderr');
+            }
+        }
+
+        async function stopClaude() {
+            appendTerminalOutput('[Stopping Claude Code...]', 'info');
+            try {
+                await window.voiceMirror.claude.stop();
+            } catch (err) {
+                appendTerminalOutput(`Failed to stop: ${err.message}`, 'stderr');
+            }
+        }
+
+        // Listen for Claude terminal output
+        window.voiceMirror.claude.onOutput((data) => {
+            switch (data.type) {
+                case 'start':
+                    appendTerminalOutput(data.text, 'info');
+                    updateClaudeStatus(true);
+                    break;
+                case 'stdout':
+                    appendTerminalOutput(data.text, 'stdout');
+                    break;
+                case 'stderr':
+                    appendTerminalOutput(data.text, 'stderr');
+                    break;
+                case 'exit':
+                    appendTerminalOutput(`[Process exited with code ${data.code}]`, 'info');
+                    updateClaudeStatus(false);
+                    break;
+            }
+        });
+
+        // Handle claude status from voice events
+        window.voiceMirror.onVoiceEvent((data) => {
+            if (data.type === 'claude_connected') {
+                updateClaudeStatus(true);
+            } else if (data.type === 'claude_disconnected') {
+                updateClaudeStatus(false);
+            }
+        });
+
+        // Check Claude status on load
+        window.voiceMirror.claude.getStatus().then(status => {
+            updateClaudeStatus(status.running);
+        });
     </script>
 </body>
 </html>

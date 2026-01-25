@@ -70,5 +70,26 @@ contextBridge.exposeInMainWorld('voiceMirror', {
 
         // Stop Python backend
         stop: () => ipcRenderer.invoke('stop-python')
-    }
+    },
+
+    // Claude Code backend control
+    claude: {
+        // Start Claude Code backend
+        start: () => ipcRenderer.invoke('start-claude'),
+
+        // Stop Claude Code backend
+        stop: () => ipcRenderer.invoke('stop-claude'),
+
+        // Get Claude process status
+        getStatus: () => ipcRenderer.invoke('get-claude-status'),
+
+        // Listen for Claude terminal output
+        onOutput: (callback) => {
+            ipcRenderer.on('claude-terminal', (event, data) => callback(data));
+        }
+    },
+
+    // Combined controls
+    startAll: () => ipcRenderer.invoke('start-all'),
+    stopAll: () => ipcRenderer.invoke('stop-all')
 });

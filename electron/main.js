@@ -14,6 +14,17 @@ const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const config = require('./config');
+const { spawnClaude, stopClaude, configureMCPServer, isClaudeAvailable, processVoiceMessage } = require('./claude-spawner');
+
+// Handle EPIPE errors gracefully (happens when terminal pipe breaks)
+process.stdout.on('error', (err) => {
+    if (err.code === 'EPIPE') return; // Ignore broken pipe
+    console.error('stdout error:', err);
+});
+process.stderr.on('error', (err) => {
+    if (err.code === 'EPIPE') return;
+    console.error('stderr error:', err);
+});
 
 // Platform detection (from config module)
 const { isWindows, isMac, isLinux } = config;
@@ -48,6 +59,7 @@ function fileExists(filePath) {
 let mainWindow = null;
 let tray = null;
 let pythonProcess = null;
+// claudeProcess removed - using --print mode now (no persistent process)
 let appConfig = null;
 
 // Window state
@@ -58,10 +70,14 @@ function getOrbSize() {
     return appConfig?.appearance?.orbSize || 64;
 }
 function getPanelWidth() {
-    return appConfig?.appearance?.panelWidth || 400;
+    // Reload config to get latest saved size
+    const currentConfig = config.loadConfig();
+    return currentConfig?.appearance?.panelWidth || 400;
 }
 function getPanelHeight() {
-    return appConfig?.appearance?.panelHeight || 500;
+    // Reload config to get latest saved size
+    const currentConfig = config.loadConfig();
+    return currentConfig?.appearance?.panelHeight || 500;
 }
 
 function createWindow() {
@@ -132,8 +148,10 @@ function expandPanel() {
     // Send state change first
     mainWindow.webContents.send('state-change', { expanded: true });
 
-    // Then resize
+    // Then resize and enable resizing
     setTimeout(() => {
+        mainWindow.setResizable(true);
+        mainWindow.setMinimumSize(300, 400);
         mainWindow.setContentSize(panelWidth, panelHeight);
         mainWindow.setPosition(
             screenWidth - panelWidth - 20,
@@ -149,6 +167,17 @@ function collapseToOrb() {
     const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
     const orbSize = getOrbSize();
 
+    // Save current panel size before collapsing
+    const [currentWidth, currentHeight] = mainWindow.getContentSize();
+    if (currentWidth > orbSize && currentHeight > orbSize) {
+        config.updateConfig({
+            appearance: {
+                panelWidth: currentWidth,
+                panelHeight: currentHeight
+            }
+        });
+    }
+
     // Restore to saved position or default
     const savedX = appConfig?.window?.orbX;
     const savedY = appConfig?.window?.orbY;
@@ -162,6 +191,7 @@ function collapseToOrb() {
 
     // Small delay then resize (helps with Wayland/Cosmic)
     setTimeout(() => {
+        mainWindow.setResizable(false);
         mainWindow.setContentSize(orbSize, orbSize);
         mainWindow.setPosition(restoreX, restoreY);
         console.log('[Voice Mirror] Collapsed to orb:', orbSize, 'x', orbSize);
@@ -193,7 +223,34 @@ function createTray() {
         { label: 'Show Window', click: () => mainWindow?.show() },
         { type: 'separator' },
         {
-            label: 'Start Voice',
+            label: 'Start Voice + Claude',
+            click: () => {
+                // Start both Python (voice) and Claude (brain)
+                if (!pythonProcess) {
+                    startPythonVoiceMirror();
+                }
+                if (!claudeReady) {
+                    startClaudeCode();
+                }
+            }
+        },
+        {
+            label: 'Stop All',
+            click: () => {
+                // Stop Python
+                if (pythonProcess) {
+                    sendToPython({ command: 'stop' });
+                    pythonProcess.kill();
+                    pythonProcess = null;
+                }
+                // Stop Claude
+                stopClaudeCode();
+                mainWindow?.webContents.send('voice-event', { type: 'disconnected' });
+            }
+        },
+        { type: 'separator' },
+        {
+            label: 'Start Voice Only',
             click: () => {
                 if (!pythonProcess) {
                     startPythonVoiceMirror();
@@ -201,13 +258,10 @@ function createTray() {
             }
         },
         {
-            label: 'Stop Voice',
+            label: 'Start Claude Only',
             click: () => {
-                if (pythonProcess) {
-                    sendToPython({ command: 'stop' });
-                    pythonProcess.kill();
-                    pythonProcess = null;
-                    mainWindow?.webContents.send('voice-event', { type: 'disconnected' });
+                if (!claudeReady) {
+                    startClaudeCode();
                 }
             }
         },
@@ -290,10 +344,14 @@ function handlePythonEvent(event) {
 
         case 'response':
             mainWindow?.webContents.send('voice-event', { type: 'speaking' });
+            // Generate a unique ID for this response to prevent duplicates
+            const responseId = `resp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            displayedMessageIds.add(responseId);
             mainWindow?.webContents.send('chat-message', {
                 role: 'assistant',
                 text: data.text,
-                source: data.source
+                source: data.source,
+                id: responseId
             });
             break;
 
@@ -354,7 +412,7 @@ function sendToPython(command) {
 }
 
 function startPythonVoiceMirror() {
-    // Path to Python Voice Mirror (sibling folder)
+    // Path to Python Voice Mirror (original sibling folder - it works!)
     const pythonPath = path.join(__dirname, '..', '..', 'Voice Mirror');
     const venvPython = getPythonExecutable(pythonPath);
 
@@ -482,54 +540,356 @@ async function sendImageToPython(imageData) {
             pythonProcess.stdout.on('data', responseHandler);
         });
     } else {
-        // Fallback: Save image to temp file and create inbox message
-        const tempDir = app.getPath('temp');
-        const imagePath = path.join(tempDir, `voice-mirror-${Date.now()}.png`);
+        // Save image and create proper MCP inbox message
+        const contextMirrorDir = path.join(app.getPath('home'), '.config', 'voice-mirror-electron', 'data');
+        const imagesDir = path.join(contextMirrorDir, 'images');
+        const imagePath = path.join(imagesDir, `screenshot-${Date.now()}.png`);
 
         try {
-            // Write image to temp file
+            // Ensure directories exist
+            if (!fs.existsSync(imagesDir)) {
+                fs.mkdirSync(imagesDir, { recursive: true });
+            }
+
+            // Write image to file
             const imageBuffer = Buffer.from(base64Data, 'base64');
             fs.writeFileSync(imagePath, imageBuffer);
 
             console.log('[Voice Mirror] Image saved to:', imagePath);
 
-            // Create MCP inbox message for Claude Code
-            const inboxPath = path.join(app.getPath('home'), '.context-mirror', 'claude_messages.json');
+            // Create proper MCP inbox message (matching Context Mirror format)
+            const inboxPath = path.join(contextMirrorDir, 'inbox.json');
 
-            let messages = [];
+            let data = { messages: [] };
             if (fs.existsSync(inboxPath)) {
                 try {
-                    messages = JSON.parse(fs.readFileSync(inboxPath, 'utf8'));
+                    data = JSON.parse(fs.readFileSync(inboxPath, 'utf8'));
+                    if (!data.messages) data.messages = [];
                 } catch (e) {
-                    messages = [];
+                    data = { messages: [] };
                 }
             }
 
-            messages.push({
-                id: `img-${Date.now()}`,
+            // Use proper message format (from, message, timestamp, etc.)
+            const newMessage = {
+                id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                from: 'nathan',  // Voice user
+                message: `Please analyze this screenshot: ${imagePath}`,
                 timestamp: new Date().toISOString(),
-                sender: 'voice-mirror-electron',
-                message: `Please analyze this image: ${imagePath}`,
-                type: 'image_request',
-                imagePath: imagePath
-            });
+                read_by: [],
+                thread_id: `voice-${Date.now()}`,
+                image_path: imagePath  // Extra field for image
+            };
 
-            // Ensure directory exists
-            const inboxDir = path.dirname(inboxPath);
-            if (!fs.existsSync(inboxDir)) {
-                fs.mkdirSync(inboxDir, { recursive: true });
+            data.messages.push(newMessage);
+
+            // Keep last 100 messages
+            if (data.messages.length > 100) {
+                data.messages = data.messages.slice(-100);
             }
 
-            fs.writeFileSync(inboxPath, JSON.stringify(messages, null, 2));
+            fs.writeFileSync(inboxPath, JSON.stringify(data, null, 2));
+
+            // Also create trigger file to notify watchers
+            const triggerPath = path.join(contextMirrorDir, 'claude_message_trigger.json');
+            fs.writeFileSync(triggerPath, JSON.stringify({
+                from: 'nathan',
+                messageId: newMessage.id,
+                timestamp: newMessage.timestamp,
+                has_image: true,
+                image_path: imagePath
+            }, null, 2));
+
+            console.log('[Voice Mirror] Image message sent to inbox');
 
             return {
-                text: `Image saved. You can ask Claude Code to analyze: ${imagePath}`,
+                text: `Screenshot sent to Claude for analysis`,
                 imagePath: imagePath
             };
         } catch (err) {
             console.error('[Voice Mirror] Failed to save image:', err);
             return { text: 'Failed to process image.', error: err.message };
         }
+    }
+}
+
+/**
+ * Start Claude Code with Voice Mirror MCP tools.
+ * Claude will watch the inbox for voice messages and respond.
+ */
+let claudeReady = false;
+
+function startClaudeCode() {
+    if (claudeReady) {
+        console.log('[Voice Mirror] Claude already ready');
+        return;
+    }
+
+    console.log('[Voice Mirror] Starting Claude Code backend...');
+
+    // Configure MCP server (for --print mode, no persistent process needed)
+    configureMCPServer();
+
+    // Check if Claude CLI is available
+    if (!isClaudeAvailable()) {
+        console.error('[Voice Mirror] Claude CLI not found!');
+        mainWindow?.webContents.send('claude-terminal', {
+            type: 'stderr',
+            text: '[Claude Code] Not found - install with: npm install -g @anthropic-ai/claude-code'
+        });
+        return;
+    }
+
+    claudeReady = true;
+
+    mainWindow?.webContents.send('claude-terminal', {
+        type: 'start',
+        text: '[Claude Code] Ready (--print mode)\n'
+    });
+    mainWindow?.webContents.send('voice-event', {
+        type: 'claude_connected'
+    });
+
+    console.log('[Voice Mirror] Claude ready (--print mode)');
+}
+
+/**
+ * Stop Claude Code backend.
+ */
+function stopClaudeCode() {
+    claudeReady = false;
+    console.log('[Voice Mirror] Claude Code stopped');
+}
+
+/**
+ * Watch for new Claude messages in the MCP inbox.
+ * When Claude sends a message via claude_send, we display it in the UI.
+ */
+let inboxWatcher = null;
+let lastSeenMessageId = null;
+let displayedMessageIds = new Set();  // Track messages already shown in UI
+let processedUserMessageIds = new Set();  // Track user messages we've processed
+let isProcessingMessage = false;  // Prevent concurrent processing
+
+function startInboxWatcher() {
+    const dataDir = path.join(app.getPath('home'), '.config', 'voice-mirror-electron', 'data');
+    const inboxPath = path.join(dataDir, 'inbox.json');
+
+    // Ensure data directory exists
+    if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+    }
+
+    // Poll every 500ms for new messages
+    inboxWatcher = setInterval(async () => {
+        try {
+            if (!fs.existsSync(inboxPath)) return;
+
+            const data = JSON.parse(fs.readFileSync(inboxPath, 'utf-8'));
+            const messages = data.messages || [];
+
+            if (messages.length === 0) return;
+
+            // PART 1: Watch for new "nathan" messages and process with Claude
+            if (!isProcessingMessage) {
+                for (let i = messages.length - 1; i >= 0; i--) {
+                    const msg = messages[i];
+                    if (msg.from === 'nathan' && msg.thread_id === 'voice-mirror' && !processedUserMessageIds.has(msg.id)) {
+                        // New voice message - process it!
+                        processedUserMessageIds.add(msg.id);
+                        isProcessingMessage = true;
+
+                        console.log('[Voice Mirror] Processing voice message:', msg.message?.slice(0, 50));
+
+                        // Update UI
+                        mainWindow?.webContents.send('claude-terminal', {
+                            type: 'stdout',
+                            text: `[Processing] "${msg.message?.slice(0, 50)}..."\n`
+                        });
+
+                        try {
+                            // Call Claude (--print mode) and write response to inbox
+                            const response = await processVoiceMessage(msg.message);
+                            if (response) {
+                                console.log('[Voice Mirror] Claude responded:', response.slice(0, 50));
+                                mainWindow?.webContents.send('claude-terminal', {
+                                    type: 'stdout',
+                                    text: `[Response] ${response}\n`
+                                });
+                            }
+                        } catch (err) {
+                            console.error('[Voice Mirror] Claude error:', err.message);
+                            mainWindow?.webContents.send('claude-terminal', {
+                                type: 'stderr',
+                                text: `[Error] ${err.message}\n`
+                            });
+                        }
+
+                        isProcessingMessage = false;
+                        break;  // Process one message at a time
+                    }
+                }
+            }
+
+            // PART 2: Watch for Claude responses and display in UI
+            let latestClaudeMessage = null;
+            for (let i = messages.length - 1; i >= 0; i--) {
+                const msg = messages[i];
+                const sender = (msg.from || '').toLowerCase();
+                if (sender.includes('claude') && msg.thread_id === 'voice-mirror') {
+                    latestClaudeMessage = msg;
+                    break;
+                }
+            }
+
+            if (latestClaudeMessage && !displayedMessageIds.has(latestClaudeMessage.id)) {
+                displayedMessageIds.add(latestClaudeMessage.id);
+
+                // Keep Set size bounded
+                if (displayedMessageIds.size > 100) {
+                    const iterator = displayedMessageIds.values();
+                    displayedMessageIds.delete(iterator.next().value);
+                }
+                if (processedUserMessageIds.size > 100) {
+                    const iterator = processedUserMessageIds.values();
+                    processedUserMessageIds.delete(iterator.next().value);
+                }
+
+                console.log('[Voice Mirror] New Claude message:', latestClaudeMessage.message?.slice(0, 50));
+
+                // Send to UI
+                mainWindow?.webContents.send('chat-message', {
+                    role: 'assistant',
+                    text: latestClaudeMessage.message,
+                    source: 'claude',
+                    timestamp: latestClaudeMessage.timestamp,
+                    id: latestClaudeMessage.id
+                });
+
+                mainWindow?.webContents.send('voice-event', {
+                    type: 'claude_message',
+                    text: latestClaudeMessage.message
+                });
+            }
+
+        } catch (err) {
+            // Silently ignore parse errors
+        }
+    }, 500);
+
+    console.log('[Voice Mirror] Inbox watcher started');
+}
+
+function stopInboxWatcher() {
+    if (inboxWatcher) {
+        clearInterval(inboxWatcher);
+        inboxWatcher = null;
+    }
+}
+
+/**
+ * Watch for screen capture requests from Claude via MCP.
+ * When Claude calls capture_screen, it writes a request file.
+ * We watch that file and fulfill the request.
+ */
+let screenCaptureWatcher = null;
+
+function startScreenCaptureWatcher() {
+    const contextMirrorDir = path.join(app.getPath('home'), '.config', 'voice-mirror-electron', 'data');
+    const requestPath = path.join(contextMirrorDir, 'screen_capture_request.json');
+    const responsePath = path.join(contextMirrorDir, 'screen_capture_response.json');
+    const imagesDir = path.join(contextMirrorDir, 'images');
+
+    // Ensure directories exist
+    if (!fs.existsSync(imagesDir)) {
+        fs.mkdirSync(imagesDir, { recursive: true });
+    }
+
+    // Watch for capture requests
+    screenCaptureWatcher = setInterval(async () => {
+        try {
+            if (!fs.existsSync(requestPath)) return;
+
+            const request = JSON.parse(fs.readFileSync(requestPath, 'utf-8'));
+            const requestTime = new Date(request.timestamp).getTime();
+            const now = Date.now();
+
+            // Only process requests from the last 5 seconds
+            if (now - requestTime > 5000) {
+                fs.unlinkSync(requestPath);
+                return;
+            }
+
+            // Delete request immediately to prevent multiple captures
+            fs.unlinkSync(requestPath);
+
+            console.log('[Voice Mirror] Screen capture requested by Claude');
+
+            // Capture the screen
+            const sources = await desktopCapturer.getSources({
+                types: ['screen'],
+                thumbnailSize: { width: 1920, height: 1080 }
+            });
+
+            if (sources.length > 0) {
+                const displayIndex = request.display || 0;
+                const source = sources[displayIndex] || sources[0];
+                const dataUrl = source.thumbnail.toDataURL();
+
+                // Save image to file
+                const imagePath = path.join(imagesDir, `capture-${Date.now()}.png`);
+                const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+                const imageBuffer = Buffer.from(base64Data, 'base64');
+                fs.writeFileSync(imagePath, imageBuffer);
+
+                // Write response
+                fs.writeFileSync(responsePath, JSON.stringify({
+                    success: true,
+                    image_path: imagePath,
+                    timestamp: new Date().toISOString(),
+                    width: 1920,
+                    height: 1080
+                }, null, 2));
+
+                console.log('[Voice Mirror] Screenshot saved:', imagePath);
+
+                // Also add to inbox so Claude can reference it
+                const inboxPath = path.join(contextMirrorDir, 'inbox.json');
+                let data = { messages: [] };
+                if (fs.existsSync(inboxPath)) {
+                    try {
+                        data = JSON.parse(fs.readFileSync(inboxPath, 'utf-8'));
+                    } catch {}
+                }
+
+                data.messages.push({
+                    id: `capture-${Date.now()}`,
+                    from: 'system',
+                    message: `Screenshot captured and saved to: ${imagePath}`,
+                    timestamp: new Date().toISOString(),
+                    read_by: [],
+                    image_path: imagePath
+                });
+
+                fs.writeFileSync(inboxPath, JSON.stringify(data, null, 2));
+            } else {
+                fs.writeFileSync(responsePath, JSON.stringify({
+                    success: false,
+                    error: 'No displays available',
+                    timestamp: new Date().toISOString()
+                }, null, 2));
+            }
+
+        } catch (err) {
+            console.error('[Voice Mirror] Screen capture error:', err);
+        }
+    }, 500);  // Check every 500ms
+}
+
+function stopScreenCaptureWatcher() {
+    if (screenCaptureWatcher) {
+        clearInterval(screenCaptureWatcher);
+        screenCaptureWatcher = null;
     }
 }
 
@@ -632,8 +992,51 @@ app.whenReady().then(() => {
         return { stopped: false, reason: 'not running' };
     });
 
+    // Claude Code backend IPC handlers
+    ipcMain.handle('start-claude', () => {
+        if (!claudeReady) {
+            startClaudeCode();
+            return { started: true };
+        }
+        return { started: false, reason: 'already ready' };
+    });
+
+    ipcMain.handle('stop-claude', () => {
+        if (claudeReady) {
+            stopClaudeCode();
+            return { stopped: true };
+        }
+        return { stopped: false, reason: 'not running' };
+    });
+
+    ipcMain.handle('get-claude-status', () => {
+        return {
+            running: claudeReady,
+            mode: '--print'
+        };
+    });
+
+    // Start both Voice + Claude together
+    ipcMain.handle('start-all', () => {
+        if (!pythonProcess) startPythonVoiceMirror();
+        if (!claudeReady) startClaudeCode();
+        return { started: true };
+    });
+
+    ipcMain.handle('stop-all', () => {
+        if (pythonProcess) {
+            sendToPython({ command: 'stop' });
+            pythonProcess.kill();
+            pythonProcess = null;
+        }
+        stopClaudeCode();
+        return { stopped: true };
+    });
+
     createWindow();
     createTray();
+    startScreenCaptureWatcher();
+    startInboxWatcher();
 
     // Register global shortcut to toggle panel (Ctrl+Shift+V)
     const shortcut = 'CommandOrControl+Shift+V';
@@ -652,15 +1055,38 @@ app.whenReady().then(() => {
         console.log(`[Voice Mirror] Failed to register shortcut: ${shortcut}`);
     }
 
-    // Optionally start Python Voice Mirror
-    // Uncomment when ready to integrate:
-    // startPythonVoiceMirror();
+    // Auto-start Voice Mirror (Python + Claude) on app launch
+    try {
+        console.log('[Voice Mirror] Auto-starting Python and Claude...');
+        startPythonVoiceMirror();
+
+        // Small delay to let Python initialize before starting Claude
+        setTimeout(() => {
+            try {
+                startClaudeCode();
+            } catch (err) {
+                console.error('[Voice Mirror] Failed to start Claude:', err.message);
+            }
+        }, 2000);
+    } catch (err) {
+        console.error('[Voice Mirror] Auto-start failed:', err.message);
+    }
 });
 
 app.on('window-all-closed', () => {
+    // Clean up Python process
     if (pythonProcess) {
-        pythonProcess.kill();
+        pythonProcess.kill('SIGKILL');
+        pythonProcess = null;
     }
+
+    // No persistent Claude process in --print mode
+    claudeReady = false;
+
+    // Stop all watchers
+    stopScreenCaptureWatcher();
+    stopInboxWatcher();
+
     if (process.platform !== 'darwin') {
         app.quit();
     }
@@ -676,7 +1102,14 @@ app.on('before-quit', () => {
     // Unregister all shortcuts
     globalShortcut.unregisterAll();
 
+    // Stop watchers
+    stopScreenCaptureWatcher();
+    stopInboxWatcher();
+
     if (pythonProcess) {
         pythonProcess.kill();
     }
+
+    // No persistent Claude process to stop
+    claudeReady = false;
 });

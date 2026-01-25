@@ -1,0 +1,25 @@
+{
+  "name": "voice-mirror-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for Voice Mirror Electron",
+  "main": "index.js",
+  "bin": {
+    "voice-mirror-mcp": "./index.js",
+    "voice-mirror-download-model": "./scripts/download-model.js"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test lib/memory/*.test.js",
+    "download-model": "node scripts/download-model.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "better-sqlite3": "^11.0.0",
+    "chokidar": "^3.6.0"
+  },
+  "optionalDependencies": {
+    "node-llama-cpp": "^3.0.0",
+    "openai": "^4.0.0",
+    "@google/generative-ai": "^0.1.0"
+  }
+}
