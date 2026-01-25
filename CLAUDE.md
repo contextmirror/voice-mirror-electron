@@ -33,13 +33,14 @@ Combined = Full AI agent for your entire computer
 
 ### State 1: Idle (Floating Orb)
 ```
-                                        ◉ ← 60px draggable orb
+                                        ◉ ← 64px draggable orb
                                           (purple gradient, pulses when listening)
 ```
-- Small floating orb
+- Small floating orb with dark gradient background
 - Draggable anywhere on screen
-- Subtle pulse animation when wake word active
-- Click to expand or say "Hey Claude"
+- **Ctrl+Shift+V** to expand (global shortcut)
+- Tray menu "Toggle Panel" also works
+- Say "Hey Claude" when Python backend is connected
 
 ### State 2: Expanded (Chat Panel)
 ```
@@ -261,7 +262,14 @@ Automatically detects the correct Python path per platform:
 npm install
 
 # Start Electron (dev mode)
-npm run dev
+npm start
+
+# On Linux with GPU issues, use:
+npm start -- --disable-gpu
+
+# Or use the launch script:
+./launch.sh  # Linux/macOS
+launch.bat   # Windows
 
 # Build AppImage
 npm run build
@@ -307,33 +315,58 @@ Kokoro speaks it → FREE (local TTS)
 
 This is exactly how Context Mirror's chat sidebar works - it displays Claude's output without using extra tokens.
 
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Shift+V` | Toggle expand/collapse panel |
+| Drag orb | Move orb position |
+| Click mini-orb (in panel) | Collapse to orb |
+
+## Known Limitations
+
+### Wayland/Cosmic Transparency
+Electron's transparent windows don't work reliably on Wayland compositors (including Pop!_OS Cosmic). The orb uses a styled dark gradient background as a workaround instead of true transparency.
+
+### Click vs Drag on Orb
+Electron's `-webkit-app-region: drag` consumes all click events, so you can't both click-to-expand AND drag-to-move the orb. Current workaround: use `Ctrl+Shift+V` or tray menu to expand.
+
+**Future solutions:**
+1. Custom drag implementation (handle mousedown/mousemove ourselves)
+2. Timing-based detection (short click = expand, long press = drag)
+3. Modifier key (hold Shift to drag)
+
 ## Roadmap
 
 ### Phase 1: Basic Overlay ✅
-- [x] Transparent Electron window
+- [x] Transparent Electron window (fallback styling for Wayland)
 - [x] Floating orb with states
 - [x] Expandable chat panel
-- [x] Basic styling
+- [x] Basic styling (dark gradient, purple accents)
 - [x] Cross-platform config system
 - [x] Platform-aware Python venv detection
 - [x] Windows/macOS/Linux launch scripts
+- [x] Global shortcut (Ctrl+Shift+V)
+- [x] System tray with Toggle Panel menu
+- [x] Draggable orb with position memory
 
 ### Phase 2: Python Integration
 - [ ] Spawn Python Voice Mirror as child process
 - [ ] IPC bridge for voice events
 - [ ] Forward transcriptions/responses to UI
+- [ ] JSON protocol for bidirectional communication
 
-### Phase 3: Screen Capture
-- [ ] desktopCapturer integration
+### Phase 3: Screen Capture & Vision
+- [x] desktopCapturer integration (capture button in UI)
+- [x] Image paste/drop support in chat
 - [ ] Send screenshots to Claude vision API
 - [ ] "What's on my screen?" commands
 
 ### Phase 4: Polish
-- [x] System tray with menu
 - [ ] Settings panel UI
 - [ ] Custom wake words
-- [ ] Hotkey activation
-- [x] Drag-to-position with memory (config.window.orbX/orbY)
+- [ ] Click-to-expand (custom drag implementation)
+- [ ] Orb visual state animations (recording, speaking, thinking)
 
 ### Phase 5: Distribution
 - [ ] AppImage for Linux
@@ -373,6 +406,10 @@ The Electron app wraps the existing Python Voice Mirror:
 - **GitHub CI**: build status
 
 See the main Voice Mirror CLAUDE.md for full documentation.
+
+## Repository
+
+**GitHub:** https://github.com/nayballs/voice-mirror-electron (private)
 
 ---
 
