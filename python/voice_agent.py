@@ -2,11 +2,8 @@
 """
 Voice Mirror - Local Voice Agent
 
-Listens for "Hey Claude" wake word, transcribes speech with Parakeet (local STT),
-and routes to either Claude Code (via MCP inbox) or local Qwen (via Ollama).
-
-Smart routing: Auto mode detects smart home commands and routes to Qwen for speed,
-everything else goes to Claude Code. Mode can be overridden via status bar toggle.
+Listens for "Hey Claude" wake word, transcribes speech with local STT,
+and sends to AI provider via MCP inbox.
 
 Usage:
     ./run.sh
@@ -21,39 +18,33 @@ import atexit
 import json
 import os
 import signal
-import subprocess
 import sys
 import time
-import uuid
-import threading
-from datetime import datetime
 from pathlib import Path
-from collections import deque
 
 import numpy as np
 
-# Smart Home integration
-from smart_home import SmartHome, handle_smart_home_command
-# Qwen handler for local LLM routing
-from qwen_handler import QwenHandler, is_smart_home_command
 # Settings (includes STT configuration)
 from settings import load_voice_settings
 # STT adapters
 from stt import create_stt_adapter
 
-import sounddevice as sd
-from openwakeword.model import Model as OWWModel
+# Modular components
+from providers.config import (
+    ActivationMode,
+    get_ai_provider,
+    get_activation_mode,
+    strip_provider_prefix,
+)
+from providers.inbox import InboxManager, cleanup_inbox as _cleanup_inbox
+from audio.wake_word import WakeWordProcessor
+from audio.state import AudioState
+from tts import TTSManager
+from notifications import NotificationWatcher
 
-# Local TTS (Kokoro)
-try:
-    from kokoro_onnx import Kokoro
-    import soundfile as sf
-    KOKORO_AVAILABLE = True
-except ImportError:
-    KOKORO_AVAILABLE = False
+import sounddevice as sd
 
 # Configuration
-PARAKEET_MODEL = os.getenv("PARAKEET_MODEL", "nemo-parakeet-tdt-0.6b-v2")
 TTS_VOICE = os.getenv("TTS_VOICE", "af_bella")  # Female voice, change to am_puck for male
 WAKE_WORD_MODEL = "models/hey_claude_v2.onnx"
 WAKE_WORD_THRESHOLD = 0.98  # Strict but usable
@@ -67,104 +58,11 @@ VM_DATA_DIR.mkdir(parents=True, exist_ok=True)
 # MCP inbox path
 INBOX_PATH = VM_DATA_DIR / "inbox.json"
 
-# Voice mode config
-VOICE_MODE_PATH = VM_DATA_DIR / "voice_mode.json"
-
 # Voice call state
 VOICE_CALL_PATH = VM_DATA_DIR / "voice_call.json"
 
 # Push-to-talk trigger file (written by Electron)
 PTT_TRIGGER_PATH = VM_DATA_DIR / "ptt_trigger.json"
-
-# Electron config file (for activation mode)
-ELECTRON_CONFIG_PATH = Path.home() / ".config" / "voice-mirror-electron" / "config.json"
-
-# Activation modes (from Electron config)
-class ActivationMode:
-    WAKE_WORD = "wakeWord"
-    CALL_MODE = "callMode"
-    PUSH_TO_TALK = "pushToTalk"
-
-
-# Provider display names mapping
-PROVIDER_DISPLAY_NAMES = {
-    "claude": "Claude",
-    "ollama": "Ollama",
-    "lmstudio": "LM Studio",
-    "jan": "Jan",
-    "openai": "OpenAI",
-    "gemini": "Gemini",
-    "grok": "Grok",
-    "groq": "Groq",
-    "mistral": "Mistral",
-    "openrouter": "OpenRouter",
-    "deepseek": "DeepSeek"
-}
-
-
-def get_ai_provider() -> dict:
-    """
-    Get AI provider settings from Electron config.
-    Returns dict with 'provider', 'name', and 'model' keys.
-    """
-    try:
-        if ELECTRON_CONFIG_PATH.exists():
-            with open(ELECTRON_CONFIG_PATH, 'r') as f:
-                config = json.load(f)
-                ai = config.get("ai", {})
-                provider_id = ai.get("provider", "claude")
-                model = ai.get("model")
-
-                # Get display name
-                name = PROVIDER_DISPLAY_NAMES.get(provider_id, provider_id.title())
-                if model:
-                    short_model = model.split(':')[0]
-                    name = f"{name} ({short_model})"
-
-                return {
-                    "provider": provider_id,
-                    "name": name,
-                    "model": model
-                }
-    except Exception as e:
-        print(f"⚠️ Could not read AI provider: {e}")
-
-    return {"provider": "claude", "name": "Claude", "model": None}
-
-
-def strip_provider_prefix(text: str) -> str:
-    """
-    Strip provider prefix from response text for cleaner TTS output.
-    Handles patterns like "Claude: ", "Ollama: ", "Claude (model): ", etc.
-    """
-    if not text:
-        return text
-    import re
-    # Match provider names with optional model suffix in parentheses
-    pattern = r'^(?:Claude|Ollama|OpenAI|Gemini|Grok|Groq|Mistral|DeepSeek|LM Studio|Jan)(?:\s*\([^)]+\))?:\s*'
-    return re.sub(pattern, '', text, flags=re.IGNORECASE).strip()
-
-
-def get_activation_mode() -> str:
-    """
-    Read activation mode from Electron config file.
-    Returns 'wakeWord', 'callMode', or 'pushToTalk'.
-    Defaults to 'wakeWord' if config not found.
-    """
-    try:
-        if ELECTRON_CONFIG_PATH.exists():
-            with open(ELECTRON_CONFIG_PATH, 'r') as f:
-                config = json.load(f)
-                return config.get("behavior", {}).get("activationMode", ActivationMode.WAKE_WORD)
-    except Exception as e:
-        print(f"⚠️ Could not read activation mode: {e}")
-    return ActivationMode.WAKE_WORD
-
-# Voice modes
-class VoiceMode:
-    AUTO = "auto"        # Smart routing: smart home → Qwen, else → Claude
-    LOCAL = "local"      # All to local Qwen
-    CLAUDE = "claude"    # All to Claude Code inbox
 
 # Audio settings
 SAMPLE_RATE = 16000
@@ -180,81 +78,25 @@ NOTIFICATION_ENABLED = True  # Enable background notification watcher
 
 
 def cleanup_inbox(max_age_hours: float = INBOX_CLEANUP_HOURS) -> int:
-    """
-    Clean up old messages from the MCP inbox on startup.
-    Returns the number of messages removed.
-    """
-    if not INBOX_PATH.exists():
-        return 0
-
-    try:
-        with open(INBOX_PATH, 'r') as f:
-            data = json.load(f)
-
-        messages = data.get("messages", [])
-        if not messages:
-            return 0
-
-        cutoff = datetime.now().timestamp() - (max_age_hours * 3600)
-        original_count = len(messages)
-
-        # Filter to keep only recent messages
-        recent_messages = []
-        for msg in messages:
-            try:
-                ts = msg.get("timestamp", "")
-                # Parse ISO timestamp
-                msg_time = datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
-                if msg_time > cutoff:
-                    recent_messages.append(msg)
-            except (ValueError, TypeError):
-                # Keep messages we can't parse (be conservative)
-                recent_messages.append(msg)
-
-        removed = original_count - len(recent_messages)
-
-        if removed > 0:
-            data["messages"] = recent_messages
-            with open(INBOX_PATH, 'w') as f:
-                json.dump(data, f, indent=2)
-
-        return removed
-
-    except Exception as e:
-        print(f"⚠️ Inbox cleanup failed: {e}")
-        return 0
+    """Wrapper for inbox cleanup using INBOX_PATH."""
+    return _cleanup_inbox(INBOX_PATH, max_age_hours)
 
 
 class VoiceMirror:
     """Voice agent with wake word detection, STT, and smart routing."""
 
     def __init__(self):
-        self.oww_model = None
+        # Modular components
+        self.wake_word = WakeWordProcessor(
+            model_path=WAKE_WORD_MODEL,
+            threshold=WAKE_WORD_THRESHOLD,
+            chunk_samples=CHUNK_SAMPLES
+        )
+        self.tts = TTSManager(voice=TTS_VOICE)
+        self.inbox = InboxManager(INBOX_PATH, lambda: self._ai_provider)
+        self.audio_state = AudioState()  # Shared audio state
         self.stt_adapter = None  # STT adapter (parakeet, whisper, etc.)
-        self.kokoro_model = None  # Kokoro TTS model
-        self.is_listening = True
-        self.is_recording = False
-        self.is_processing = False  # Prevent double processing
-        self.audio_buffer = []
-        self.last_speech_time = 0
-        self.oww_buffer = []
-        self._lock = threading.Lock()  # Protect audio_buffer
-        self._inbox_lock = threading.Lock()  # Protect inbox writes
-        self._last_message_hash = None  # Deduplication
-        self._last_message_time = 0  # Deduplication cooldown
-        self.smart_home = SmartHome()  # Smart home integration
-        self.qwen_handler = QwenHandler(self.smart_home)  # Local LLM handler
-        self._voice_mode = VoiceMode.AUTO  # Current routing mode
-        self._mode_check_time = 0  # Last time we checked the mode file
-        self._in_conversation = False  # Conversation mode active
-        self._conversation_end_time = 0  # When conversation window expires
-        self._last_seen_message_id = None  # Track last seen Claude message for notifications
-        self._notification_queue = asyncio.Queue()  # Queue for background notifications
-        self._is_speaking = False  # Prevent notification interrupts during speech
-        self._ptt_active = False  # Push-to-talk currently held
-        self._ptt_last_check = 0  # Last time we checked PTT trigger file
-        self._ptt_process_pending = False  # PTT released, need to process
-        self._recording_source = None  # Track what triggered recording: 'wake_word', 'ptt', 'call', 'follow_up'
+
         self._activation_mode = ActivationMode.WAKE_WORD  # Will be set in load_models
         self._ai_provider = {"provider": "claude", "name": "Claude", "model": None}  # Will be set in load_models
 
@@ -298,17 +140,10 @@ class VoiceMirror:
 
         # Only load wake word model if wake word mode is enabled
         if self._activation_mode == ActivationMode.WAKE_WORD:
-            print("Loading wake word model...")
             script_dir = Path(__file__).parent
-            model_path = script_dir / WAKE_WORD_MODEL
-
-            self.oww_model = OWWModel(
-                wakeword_model_paths=[str(model_path)],
-            )
-            print(f"Loaded: {WAKE_WORD_MODEL}")
+            self.wake_word.load(script_dir)
         else:
             print(f"Skipping wake word model (mode: {self._activation_mode})")
-            self.oww_model = None
 
         script_dir = Path(__file__).parent
 
@@ -338,44 +173,8 @@ class VoiceMirror:
             except Exception:
                 self.stt_adapter = None
 
-        # Load Kokoro TTS model if available
-        if KOKORO_AVAILABLE:
-            print(f"Loading Kokoro TTS model...")
-            print("  (First run downloads model, please wait...)")
-            try:
-                self.kokoro_model = Kokoro("kokoro-v1.0.onnx", "voices-v1.0.bin")
-                print(f"✅ Kokoro TTS loaded (voice: {TTS_VOICE})")
-            except Exception as e:
-                print(f"⚠️ Failed to load Kokoro TTS: {e}")
-                self.kokoro_model = None
-        else:
-            print("❌ Kokoro TTS not available - install with: pip install kokoro-onnx")
-
-    def get_voice_mode(self) -> str:
-        """
-        Get current voice routing mode from config file.
-        Caches result for 1 second to avoid excessive file reads.
-        """
-        now = time.time()
-        # Only check file every 1 second
-        if now - self._mode_check_time < 1.0:
-            return self._voice_mode
-
-        self._mode_check_time = now
-
-        try:
-            if VOICE_MODE_PATH.exists():
-                with open(VOICE_MODE_PATH, 'r') as f:
-                    data = json.load(f)
-                    mode = data.get("mode", VoiceMode.AUTO)
-                    if mode in (VoiceMode.AUTO, VoiceMode.LOCAL, VoiceMode.CLAUDE):
-                        if mode != self._voice_mode:
-                            print(f"🔄 Voice mode changed to: {mode}")
-                        self._voice_mode = mode
-        except Exception as e:
-            pass  # Silently use cached mode
-
-        return self._voice_mode
+        # Load Kokoro TTS model via TTSManager
+        self.tts.load()
 
     def is_call_active(self) -> bool:
         """
@@ -415,9 +214,9 @@ class VoiceMirror:
         """
         now = time.time()
         # Check at most every 50ms to avoid excessive file reads
-        if now - self._ptt_last_check < 0.05:
+        if now - self.audio_state.ptt_last_check < 0.05:
             return None
-        self._ptt_last_check = now
+        self.audio_state.ptt_last_check = now
 
         try:
             if PTT_TRIGGER_PATH.exists():
@@ -428,11 +227,11 @@ class VoiceMirror:
                 # Clear the trigger file after reading
                 PTT_TRIGGER_PATH.unlink()
 
-                if action == "start" and not self._ptt_active:
-                    self._ptt_active = True
+                if action == "start" and not self.audio_state.ptt_active:
+                    self.audio_state.ptt_active = True
                     return "start"
-                elif action == "stop" and self._ptt_active:
-                    self._ptt_active = False
+                elif action == "stop" and self.audio_state.ptt_active:
+                    self.audio_state.ptt_active = False
                     return "stop"
         except json.JSONDecodeError:
             # File might be partially written, try again next time
@@ -446,311 +245,40 @@ class VoiceMirror:
 
         return None
 
-    def should_route_to_qwen(self, text: str) -> bool:
-        """
-        Determine if this text should be routed to local Qwen.
-        Based on current mode and smart home detection.
-        """
-        mode = self.get_voice_mode()
-
-        if mode == VoiceMode.LOCAL:
-            return True
-        elif mode == VoiceMode.CLAUDE:
-            return False
-        else:  # AUTO mode
-            # Smart routing: smart home commands go to Qwen
-            return is_smart_home_command(text)
-
     def send_to_inbox(self, message: str):
         """Send transcribed message to MCP inbox."""
-        with self._inbox_lock:
-            # Deduplication: skip if same message within 2 seconds
-            msg_hash = hash(message.strip().lower())
-            now = time.time()
-            if msg_hash == self._last_message_hash and (now - self._last_message_time) < 2.0:
-                print(f"⏭️  Skipping duplicate: {message[:30]}...")
-                return None
-
-            self._last_message_hash = msg_hash
-            self._last_message_time = now
-
-            INBOX_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-            # Load existing messages
-            if INBOX_PATH.exists():
-                try:
-                    with open(INBOX_PATH, 'r') as f:
-                        data = json.load(f)
-                    if "messages" not in data:
-                        data = {"messages": []}
-                except (json.JSONDecodeError, KeyError):
-                    data = {"messages": []}
-            else:
-                data = {"messages": []}
-
-            # Create new message
-            msg = {
-                "id": f"msg-{uuid.uuid4().hex[:12]}",
-                "from": "nathan",
-                "message": message,
-                "timestamp": datetime.now().isoformat(),
-                "thread_id": "voice-mirror",
-                "read_by": []
-            }
-
-            data["messages"].append(msg)
-
-            with open(INBOX_PATH, 'w') as f:
-                json.dump(data, f, indent=2)
-
-            print(f"📬 Sent to inbox: {message[:50]}...")
-            return msg["id"]
+        return self.inbox.send(message)
 
     async def wait_for_claude_response(self, my_message_id: str, timeout: float = 60.0) -> str:
         """Wait for AI provider to respond to our message via inbox polling."""
-        # Refresh provider config in case user changed it in Settings
         self.refresh_ai_provider()
-        print(f"⏳ Waiting for {self._ai_provider['name']} to respond...")
-
-        start_time = time.time()
-        poll_interval = 0.5  # Check every 500ms
-
-        while (time.time() - start_time) < timeout:
-            await asyncio.sleep(poll_interval)
-
-            with self._inbox_lock:
-                if not INBOX_PATH.exists():
-                    continue
-
-                try:
-                    with open(INBOX_PATH, 'r') as f:
-                        data = json.load(f)
-                except (json.JSONDecodeError, KeyError):
-                    continue
-
-                messages = data.get("messages", [])
-
-                # Find my message index
-                my_msg_idx = None
-                for i, msg in enumerate(messages):
-                    if msg.get("id") == my_message_id:
-                        my_msg_idx = i
-                        break
-
-                if my_msg_idx is None:
-                    continue
-
-                # Look for AI provider's response after my message
-                for msg in messages[my_msg_idx + 1:]:
-                    sender = msg.get("from", "")
-                    provider_id = self._ai_provider['provider']
-                    # Accept responses from the configured AI provider
-                    if provider_id in sender.lower() and msg.get("thread_id") == "voice-mirror":
-                        response = msg.get("message", "")
-                        if response:
-                            print(f"✅ Got response from {sender}")
-                            # Mark as seen so notification watcher doesn't repeat it
-                            self._last_seen_message_id = msg.get("id")
-                            return response
-
-        print(f"⏰ Timeout waiting for Claude response")
-        return ""
-
-    async def get_claude_response_cli(self, message: str) -> str:
-        """Get response from Claude via CLI (uses your existing auth)."""
-        print(f"🤖 Asking {self._ai_provider['name']}...")
-
-        prompt = f'''Voice message from Nathan: "{message}"
-
-Respond briefly and conversationally. Keep it to 1-2 sentences.
-Don't use markdown or special formatting - this will be spoken aloud.'''
-
-        try:
-            # Run claude CLI in a thread to not block
-            # Use stdin to pass prompt (avoids argument parsing issues)
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None,
-                lambda: subprocess.run(
-                    ["claude", "-p"],
-                    input=prompt,
-                    capture_output=True,
-                    text=True,
-                    timeout=30
-                )
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                return result.stdout.strip()
-            else:
-                print(f"❌ Claude error: {result.stderr[:100] if result.stderr else 'no output'}")
-                return ""
-        except Exception as e:
-            print(f"❌ Error: {e}")
-            return ""
-
-    async def get_claude_response_api(self, message: str) -> str:
-        """Get response from Claude API (requires ANTHROPIC_API_KEY)."""
-        import anthropic
-
-        print(f"🤖 Asking {self._ai_provider['name']}...")
-        try:
-            client = anthropic.Anthropic()  # Uses ANTHROPIC_API_KEY env var
-            response = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=150,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"Voice message from Nathan: \"{message}\"\n\nRespond briefly and conversationally. Keep it to 1-2 sentences. Don't use markdown or special formatting - this will be spoken aloud."
-                    }
-                ]
-            )
-            return response.content[0].text
-        except Exception as e:
-            print(f"❌ Claude API error: {e}")
-            return ""
-
-    def trigger_claude(self, message: str):
-        """Send message to Claude Code via CLI in background (legacy)."""
-        prompt = f'''Voice message from Nathan: "{message}"
-
-Respond briefly to this voice message. Your response will be shown to Nathan.
-Keep it concise - 1-2 sentences max.'''
-
-        def run_claude():
-            print(f"🤖 Triggering Claude...")
-            try:
-                result = subprocess.run(
-                    ["claude", "-p", prompt],
-                    capture_output=True,
-                    text=True,
-                    timeout=60
-                )
-                if result.returncode == 0 and result.stdout.strip():
-                    response = result.stdout.strip()
-                    print(f"💬 Claude: {response}")
-                    # Write response to inbox
-                    self.write_claude_response(response)
-                else:
-                    print(f"❌ Claude error: {result.stderr[:100] if result.stderr else 'no output'}")
-            except Exception as e:
-                print(f"❌ Error: {e}")
-
-        # Run in background thread so we don't block listening
-        threading.Thread(target=run_claude, daemon=True).start()
-
-    def write_claude_response(self, response: str):
-        """Write Claude's response to the inbox."""
-        with self._inbox_lock:
-            if INBOX_PATH.exists():
-                try:
-                    with open(INBOX_PATH, 'r') as f:
-                        data = json.load(f)
-                except:
-                    data = {"messages": []}
-            else:
-                data = {"messages": []}
-
-            provider_id = self._ai_provider['provider']
-            msg = {
-                "id": f"msg-{uuid.uuid4().hex[:12]}",
-                "from": f"{provider_id}-voice",
-                "message": response,
-                "timestamp": datetime.now().isoformat(),
-                "thread_id": "voice-mirror",
-                "read_by": []
-            }
-
-            data["messages"].append(msg)
-
-            with open(INBOX_PATH, 'w') as f:
-                json.dump(data, f, indent=2)
-
-            print(f"📬 Response saved to inbox")
-
-    def _strip_markdown_for_tts(self, text: str) -> str:
-        """Strip markdown syntax that sounds bad when spoken aloud."""
-        import re
-        # Remove headers (## Header -> Header)
-        text = re.sub(r'#{1,6}\s*', '', text)
-        # Remove bold (**text** -> text)
-        text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
-        # Remove italic (*text* -> text)
-        text = re.sub(r'\*([^*]+)\*', r'\1', text)
-        # Remove bullet points at line start
-        text = re.sub(r'^[-*]\s+', '', text, flags=re.MULTILINE)
-        # Remove numbered lists (1. item -> item)
-        text = re.sub(r'^\d+\.\s+', '', text, flags=re.MULTILINE)
-        # Remove code blocks
-        text = re.sub(r'```[^`]*```', '', text, flags=re.DOTALL)
-        # Remove inline code (`code` -> code)
-        text = re.sub(r'`([^`]+)`', r'\1', text)
-        # Remove horizontal rules
-        text = re.sub(r'^---+$', '', text, flags=re.MULTILINE)
-        # Clean up extra whitespace
-        text = re.sub(r'\n{3,}', '\n\n', text)
-        return text.strip()
+        return await self.inbox.wait_for_response(my_message_id, timeout)
 
     async def speak(self, text: str, enter_conversation_mode: bool = True):
-        """Convert text to speech and play it using local Kokoro TTS."""
-        # Strip markdown before speaking (safety net for responses that bypass summarizer)
-        text = self._strip_markdown_for_tts(text)
-        print(f"🔊 Speaking: {text[:50]}...")
+        """Convert text to speech and play it using TTSManager."""
+        def on_speech_start():
+            self.audio_state.is_listening = False
 
-        # Mark as speaking (prevents notification interrupts)
-        self._is_speaking = True
-        # Pause wake word detection while speaking (avoid self-triggering)
-        self.is_listening = False
-
-        try:
-            if self.kokoro_model is None:
-                print("❌ Kokoro TTS not available")
-                return
-
-            # Run Kokoro in thread pool to not block async loop
-            loop = asyncio.get_event_loop()
-            audio_data, sample_rate = await loop.run_in_executor(
-                None,
-                lambda: self.kokoro_model.create(text, voice=TTS_VOICE)
-            )
-
-            # Save to temp file
-            audio_file = Path("/tmp/voice_mirror_tts.wav")
-            sf.write(str(audio_file), audio_data, sample_rate)
-
-            # Play using ffplay
-            subprocess.run(
-                ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", str(audio_file)],
-                timeout=60
-            )
-        except Exception as e:
-            print(f"❌ Kokoro TTS error: {e}")
-        finally:
-            # Resume listening after TTS completes
-            self.is_listening = True
-            self._is_speaking = False
-            # Clear any audio that accumulated during TTS
-            self.oww_buffer = []
-            # Small delay to let audio system settle
-            await asyncio.sleep(0.3)
+        def on_speech_end():
+            self.audio_state.is_listening = True
+            self.wake_word.clear_buffer()
 
             # Enter conversation mode only for wake word or follow-up interactions
-            # Skip for: PTT (user controls when to speak), call mode (always listening)
             should_enter_conversation = (
                 enter_conversation_mode and
                 not self.is_call_active() and
-                self._recording_source in ('wake_word', 'follow_up')
+                self.audio_state.recording_source in ('wake_word', 'follow_up')
             )
             if should_enter_conversation:
-                self._in_conversation = True
-                self._conversation_end_time = time.time() + CONVERSATION_WINDOW
+                self.audio_state.in_conversation = True
+                self.audio_state.conversation_end_time = time.time() + CONVERSATION_WINDOW
                 print(f"💬 Conversation mode active ({CONVERSATION_WINDOW}s window - speak without wake word)")
-            elif self._recording_source == 'ptt':
-                # PTT finished - just go back to waiting for next key press
+            elif self.audio_state.recording_source == 'ptt':
                 print("👂 PTT finished. Press key to speak again.")
             elif self.is_call_active():
-                # Call mode - already continuously listening
                 print("📞 Call active - speak anytime...")
+
+        await self.tts.speak(text, on_start=on_speech_start, on_end=on_speech_end)
 
     async def transcribe(self, audio_data: np.ndarray) -> str:
         """Transcribe audio using configured STT adapter."""
@@ -775,31 +303,10 @@ Keep it concise - 1-2 sentences max.'''
 
     def process_wake_word(self, audio_chunk: np.ndarray) -> bool:
         """Check for wake word in audio chunk. Returns True if detected."""
-        if self.oww_model is None:
-            return False
-
-        # Accumulate audio
-        self.oww_buffer.append(audio_chunk)
-        total_samples = sum(len(chunk) for chunk in self.oww_buffer)
-
-        while total_samples >= CHUNK_SAMPLES:
-            combined = np.concatenate(self.oww_buffer)
-            chunk = combined[:CHUNK_SAMPLES]
-            remainder = combined[CHUNK_SAMPLES:]
-            self.oww_buffer = [remainder] if len(remainder) > 0 else []
-            total_samples = len(remainder)
-
-            # Convert to int16 for OpenWakeWord
-            chunk_int16 = (chunk * 32767).astype(np.int16)
-            predictions = self.oww_model.predict(chunk_int16)
-
-            if predictions:
-                for model_name, score in predictions.items():
-                    if score >= WAKE_WORD_THRESHOLD:
-                        print(f"\n🎤 Wake word detected! ({model_name}: {score:.2f})")
-                        return True
-
-        return False
+        detected, model_name, score = self.wake_word.process(audio_chunk)
+        if detected:
+            print(f"\n🎤 Wake word detected! ({model_name}: {score:.2f})")
+        return detected
 
     def audio_callback(self, indata, frames, time_info, status):
         """Callback for audio stream."""
@@ -817,7 +324,7 @@ Keep it concise - 1-2 sentences max.'''
         # Print audio debug every ~1 second
         if self._audio_debug_counter % 60 == 0:
             call_active = self.is_call_active()
-            print(f"🎤 Audio: level={level:.4f}, energy={energy:.4f}, listening={self.is_listening}, call={call_active}")
+            print(f"🎤 Audio: level={level:.4f}, energy={energy:.4f}, listening={self.audio_state.is_listening}, call={call_active}")
 
         if level > 0.05:
             bars = int(level * 20)
@@ -827,23 +334,20 @@ Keep it concise - 1-2 sentences max.'''
 
         # Check for push-to-talk trigger (from Electron)
         ptt_action = self.check_ptt_trigger()
-        if ptt_action == "start" and not self.is_recording:
+        if ptt_action == "start" and not self.audio_state.is_recording:
             # PTT pressed - start recording immediately
-            self.is_recording = True
-            self._recording_source = 'ptt'
-            self.audio_buffer = []
-            self.last_speech_time = time.time()
+            self.audio_state.start_recording('ptt')
             print('🔴 Recording (PTT)... (speak now)')
-        elif ptt_action == "stop" and self.is_recording and not self.is_processing:
+        elif ptt_action == "stop" and self.audio_state.is_recording and not self.audio_state.is_processing:
             # PTT released - process immediately (don't wait for silence)
             print('⏹️ PTT released, processing...{"event": "recording_stop", "data": {}}')
-            self.is_recording = False
-            self.is_processing = True
+            self.audio_state.is_recording = False
+            self.audio_state.is_processing = True
             # Schedule processing (we're in audio callback, can't await here)
             # Use a flag to trigger processing in main loop
-            self._ptt_process_pending = True
+            self.audio_state.ptt_process_pending = True
 
-        if self.is_listening and not self.is_recording:
+        if self.audio_state.is_listening and not self.audio_state.is_recording:
             # Push-to-talk mode: only record when PTT is pressed (handled above)
             if self._activation_mode == ActivationMode.PUSH_TO_TALK:
                 # In PTT mode, don't auto-detect speech - wait for PTT trigger
@@ -856,16 +360,13 @@ Keep it concise - 1-2 sentences max.'''
                 if energy > 0.005:
                     print(f"📞 Call mode energy: {energy:.4f}", end="\r")
                 if energy > 0.008:  # Very sensitive threshold for speech detection
-                    self.is_recording = True
-                    self._recording_source = 'call'
-                    self.audio_buffer = []
-                    self.last_speech_time = time.time()
+                    self.audio_state.start_recording('call')
                     print(f"\n🔴 Recording (call)... energy={energy:.4f} (speak now)")
             # Check if in conversation mode (no wake word needed, with timeout)
-            elif self._in_conversation:
+            elif self.audio_state.in_conversation:
                 # Check if conversation window expired
-                if time.time() > self._conversation_end_time:
-                    self._in_conversation = False
+                if time.time() > self.audio_state.conversation_end_time:
+                    self.audio_state.in_conversation = False
                     if self._activation_mode == ActivationMode.WAKE_WORD:
                         print("\n👂 Conversation window closed. Say 'Hey Claude' to continue.")
                     else:
@@ -874,40 +375,31 @@ Keep it concise - 1-2 sentences max.'''
                     # In conversation mode - detect speech start without wake word
                     energy = np.abs(audio).mean()
                     if energy > 0.03:  # Speech threshold (slightly higher to avoid noise)
-                        self.is_recording = True
-                        self._recording_source = 'follow_up'
-                        self.audio_buffer = []
-                        self.last_speech_time = time.time()
-                        self._in_conversation = False  # Exit conversation mode once recording starts
+                        self.audio_state.start_recording('follow_up')
+                        self.audio_state.in_conversation = False  # Exit conversation mode once recording starts
                         print("🔴 Recording follow-up... (speak now)")
-            elif self._activation_mode == ActivationMode.WAKE_WORD and self.oww_model is not None:
+            elif self._activation_mode == ActivationMode.WAKE_WORD and self.wake_word.is_loaded:
                 # Wake word mode - check for wake word
                 if self.process_wake_word(audio):
-                    self.is_recording = True
-                    self._recording_source = 'wake_word'
-                    self.audio_buffer = []
-                    self.last_speech_time = time.time()
-                    self.oww_model.reset()
+                    self.audio_state.start_recording('wake_word')
+                    self.wake_word.reset()
                     print("🔴 Recording (wake word)... (speak now)")
 
-        elif self.is_recording and not self.is_processing:
-            # Record audio (thread-safe)
-            with self._lock:
-                self.audio_buffer.append(audio)
+        elif self.audio_state.is_recording and not self.audio_state.is_processing:
+            # Record audio (thread-safe via AudioState)
+            self.audio_state.append_audio(audio)
 
             # Simple VAD: check if there's significant audio
             energy = np.abs(audio).mean()
             if energy > 0.01:  # Lowered threshold for VAD
-                self.last_speech_time = time.time()
+                self.audio_state.last_speech_time = time.time()
 
     async def process_recording(self):
         """Process recorded audio after silence timeout."""
-        # Atomically grab the buffer and clear it
-        with self._lock:
-            if not self.audio_buffer:
-                return
-            audio_data = np.concatenate(self.audio_buffer)
-            self.audio_buffer = []
+        # Atomically grab the buffer and clear it (thread-safe via AudioState)
+        audio_data = self.audio_state.get_and_clear_buffer()
+        if audio_data is None:
+            return
 
         print("⏳ Transcribing...")
 
@@ -921,208 +413,24 @@ Keep it concise - 1-2 sentences max.'''
         if text:
             print(f"📝 You said: {text}")
 
-            # Determine routing based on mode and content
-            if self.should_route_to_qwen(text):
-                # Route to local Qwen
-                mode = self.get_voice_mode()
-                if mode == VoiceMode.LOCAL:
-                    print(f"🏠 Routing to Qwen (LOCAL mode)")
-                else:
-                    print(f"🏠 Routing to Qwen (smart home detected)")
+            # Send to AI provider via inbox
+            msg_id = self.send_to_inbox(text)
 
-                response = await self.qwen_handler.process(text)
-                if response:
-                    print(f"💬 Qwen: {response}")
-                    await self.speak(response)
-                else:
-                    await self.speak("Sorry, I couldn't process that.")
+            # Wait for AI provider to respond via inbox
+            response = await self.wait_for_claude_response(msg_id, timeout=30.0)
+            if response:
+                print(f"💬 {self._ai_provider['name']}: {response}")
+                # Strip provider prefix before speaking (e.g., "Claude: " -> "")
+                clean_response = strip_provider_prefix(response)
+                await self.speak(clean_response)
             else:
-                # Route to Claude Code via inbox
-                mode = self.get_voice_mode()
-                if mode == VoiceMode.CLAUDE:
-                    print(f"🤖 Routing to Claude Code (CLAUDE mode)")
-                else:
-                    print(f"🤖 Routing to Claude Code (general query)")
-
-                msg_id = self.send_to_inbox(text)
-
-                # Wait for AI provider to respond via inbox
-                response = await self.wait_for_claude_response(msg_id, timeout=30.0)
-                if response:
-                    print(f"💬 {self._ai_provider['name']}: {response}")
-                    # Strip provider prefix before speaking (e.g., "Claude: " -> "")
-                    clean_response = strip_provider_prefix(response)
-                    await self.speak(clean_response)
-                else:
-                    print(f"⏰ No response from {self._ai_provider['name']} (timeout - this is normal if thinking)")
+                print(f"⏰ No response from {self._ai_provider['name']} (timeout - this is normal if thinking)")
         else:
             print("❌ No speech detected")
-
-    def _get_latest_claude_message(self) -> tuple:
-        """
-        Get the latest Claude message from inbox.
-        Returns (message_id, message_text) or (None, None) if no new message.
-        """
-        with self._inbox_lock:
-            if not INBOX_PATH.exists():
-                return None, None
-
-            try:
-                with open(INBOX_PATH, 'r') as f:
-                    data = json.load(f)
-            except (json.JSONDecodeError, KeyError):
-                return None, None
-
-            messages = data.get("messages", [])
-            if not messages:
-                return None, None
-
-            # Find the latest AI provider message in voice-mirror thread
-            provider_id = self._ai_provider['provider']
-            for msg in reversed(messages):
-                sender = msg.get("from", "")
-                if provider_id in sender.lower() and msg.get("thread_id") == "voice-mirror":
-                    return msg.get("id"), msg.get("message", "")
-
-            return None, None
-
-    def _check_compaction_event(self) -> tuple:
-        """
-        Check if there's a pending compaction event in inbox.
-        Returns (event_id, event_data) or (None, None) if no compaction event.
-        """
-        with self._inbox_lock:
-            if not INBOX_PATH.exists():
-                return None, None
-
-            try:
-                with open(INBOX_PATH, 'r') as f:
-                    data = json.load(f)
-            except (json.JSONDecodeError, KeyError):
-                return None, None
-
-            messages = data if isinstance(data, list) else data.get("messages", [])
-            if not messages:
-                return None, None
-
-            # Find unread compaction events
-            for msg in reversed(messages):
-                if msg.get("type") == "system_event" and msg.get("event") == "pre_compact":
-                    if not msg.get("read", False):
-                        return msg.get("id"), msg
-
-            return None, None
-
-    def _mark_compaction_read(self, event_id: str):
-        """Mark a compaction event as read."""
-        with self._inbox_lock:
-            if not INBOX_PATH.exists():
-                return
-
-            try:
-                with open(INBOX_PATH, 'r') as f:
-                    data = json.load(f)
-
-                messages = data if isinstance(data, list) else data.get("messages", [])
-
-                for msg in messages:
-                    if msg.get("id") == event_id:
-                        msg["read"] = True
-                        break
-
-                with open(INBOX_PATH, 'w') as f:
-                    json.dump(data, f, indent=2)
-            except Exception as e:
-                print(f"⚠️ Error marking compaction read: {e}")
-
-    async def _notification_watcher(self):
-        """
-        Background task that watches inbox for new Claude messages.
-        Speaks them via TTS even when not in active voice conversation.
-        Also handles compaction events from PreCompact hook.
-        """
-        print("📢 Notification watcher started")
-
-        # Initialize with current latest message (don't speak old ones)
-        msg_id, _ = self._get_latest_claude_message()
-        self._last_seen_message_id = msg_id
-
-        # Track compaction state
-        self._awaiting_compact_resume = False
-        self._compact_start_time = None
-
-        while True:
-            try:
-                await asyncio.sleep(NOTIFICATION_POLL_INTERVAL)
-
-                # Refresh provider config periodically in case user changed it
-                self.refresh_ai_provider()
-
-                # Check for compaction events first (high priority)
-                compact_id, compact_event = self._check_compaction_event()
-                if compact_id and not self._awaiting_compact_resume:
-                    self._awaiting_compact_resume = True
-                    self._compact_start_time = time.time()
-                    self._mark_compaction_read(compact_id)
-                    print(f"\n⏳ {self._ai_provider['name']} is reorganizing context... conversation will resume shortly")
-                    # Optionally speak a brief notification
-                    if not self._is_speaking:
-                        await self.speak("One moment, I'm reorganizing my thoughts.", enter_conversation_mode=False)
-                    continue
-
-                # If awaiting compact resume, check for Claude's response
-                if self._awaiting_compact_resume:
-                    # Timeout after 60 seconds
-                    if time.time() - self._compact_start_time > 60:
-                        print("⚠️ Compact resume timeout - Claude may need a nudge")
-                        self._awaiting_compact_resume = False
-                        continue
-
-                    # Check if AI provider has responded (compact finished)
-                    msg_id, message = self._get_latest_claude_message()
-                    if msg_id and msg_id != self._last_seen_message_id and message:
-                        self._last_seen_message_id = msg_id
-                        self._awaiting_compact_resume = False
-                        print(f"\n✅ {self._ai_provider['name']} resumed after compaction!")
-                        clean_message = strip_provider_prefix(message)
-                        await self.speak(clean_message, enter_conversation_mode=True)
-                        print(f"\n{self.get_listening_status()}")
-                    continue
-
-                # Skip if currently speaking, recording, or processing
-                if self._is_speaking or self.is_recording or self.is_processing:
-                    continue
-
-                # Skip if in active conversation mode (user is interacting)
-                if self._in_conversation:
-                    continue
-
-                # Check for new Claude message
-                msg_id, message = self._get_latest_claude_message()
-
-                if msg_id and msg_id != self._last_seen_message_id and message:
-                    self._last_seen_message_id = msg_id
-                    print(f"\n📢 New notification from {self._ai_provider['name']}!")
-                    # Strip provider prefix and speak (it's a notification)
-                    clean_message = strip_provider_prefix(message)
-                    await self.speak(clean_message, enter_conversation_mode=False)
-                    print(f"\n{self.get_listening_status()}")
-
-            except Exception as e:
-                print(f"⚠️ Notification watcher error: {e}")
-                await asyncio.sleep(5)  # Back off on error
 
     async def run(self):
         """Main loop."""
         self.load_models()
-
-        # Get initial mode
-        mode = self.get_voice_mode()
-        mode_display = {
-            VoiceMode.AUTO: "🎤 Auto (smart routing)",
-            VoiceMode.LOCAL: "🏠 Local (all to Qwen)",
-            VoiceMode.CLAUDE: "🤖 Claude (all to inbox)"
-        }
 
         print("\n" + "=" * 50)
         print("Voice Mirror - Ready")
@@ -1138,8 +446,8 @@ Keep it concise - 1-2 sentences max.'''
             print(f"STT: {self.stt_adapter.name}")
         else:
             print(f"STT: Not loaded yet (will load on first use)")
-        if self.kokoro_model is not None:
-            print(f"TTS: Kokoro (voice: {TTS_VOICE}) - LOCAL")
+        if self.tts.is_loaded:
+            print(f"TTS: Kokoro (voice: {self.tts.voice}) - LOCAL")
         else:
             print(f"TTS: Not available")
         print(f"Inbox: {INBOX_PATH}")
@@ -1157,7 +465,6 @@ Keep it concise - 1-2 sentences max.'''
         elif self._activation_mode == ActivationMode.PUSH_TO_TALK:
             print("   Hold your PTT key and speak, release to process.")
 
-        # Note: Qwen/smart home routing disabled - all queries go to Claude Code
         if NOTIFICATION_ENABLED:
             print("\n   📢 Notifications: ON (Claude messages will be spoken)")
         print("   (Press Ctrl+C to quit)\n")
@@ -1195,34 +502,58 @@ Keep it concise - 1-2 sentences max.'''
             # Start notification watcher in background
             notification_task = None
             if NOTIFICATION_ENABLED:
-                notification_task = asyncio.create_task(self._notification_watcher())
+                # Create notification watcher with callbacks
+                def on_notification_speech_start():
+                    self.audio_state.is_listening = False
+
+                def on_notification_speech_end(enter_conversation_mode: bool):
+                    self.audio_state.is_listening = True
+                    self.wake_word.clear_buffer()
+                    if enter_conversation_mode:
+                        self.audio_state.enter_conversation_mode(CONVERSATION_WINDOW)
+                        print(f"💬 Conversation mode active ({CONVERSATION_WINDOW}s window)")
+
+                notification_watcher = NotificationWatcher(
+                    inbox=self.inbox,
+                    tts=self.tts,
+                    poll_interval=NOTIFICATION_POLL_INTERVAL,
+                    is_recording=lambda: self.audio_state.is_recording,
+                    is_processing=lambda: self.audio_state.is_processing,
+                    in_conversation=lambda: self.audio_state.in_conversation,
+                    provider_refresh=self.refresh_ai_provider,
+                    get_listening_status=self.get_listening_status,
+                    get_ai_provider_name=lambda: self._ai_provider['name'],
+                    on_speech_start=on_notification_speech_start,
+                    on_speech_end=on_notification_speech_end,
+                )
+                notification_task = asyncio.create_task(notification_watcher.run())
 
             try:
                 while True:
                     await asyncio.sleep(0.1)
 
                     # Check for PTT release (process immediately)
-                    if self._ptt_process_pending:
-                        self._ptt_process_pending = False
+                    if self.audio_state.ptt_process_pending:
+                        self.audio_state.ptt_process_pending = False
                         await self.process_recording()
-                        self.is_processing = False
+                        self.audio_state.is_processing = False
                         print(f"\n{self.get_listening_status()}")
                         continue
 
                     # Check for silence timeout during recording
-                    if self.is_recording and not self.is_processing:
-                        elapsed = time.time() - self.last_speech_time
+                    if self.audio_state.is_recording and not self.audio_state.is_processing:
+                        elapsed = time.time() - self.audio_state.last_speech_time
                         if elapsed >= SILENCE_TIMEOUT:
                             print("⏹️ Silence detected, processing...")
-                            self.is_recording = False
-                            self.is_processing = True
+                            self.audio_state.is_recording = False
+                            self.audio_state.is_processing = True
                             await self.process_recording()
-                            self.is_processing = False
+                            self.audio_state.is_processing = False
                             # Show appropriate status based on mode
                             if self.is_call_active():
                                 print("\n📞 Call active - speak anytime...")
-                            elif self._in_conversation:
-                                remaining = max(0, self._conversation_end_time - time.time())
+                            elif self.audio_state.in_conversation:
+                                remaining = max(0, self.audio_state.conversation_end_time - time.time())
                                 print(f"\n💬 Conversation active ({remaining:.1f}s) - speak without wake word...")
                             else:
                                 print(f"\n{self.get_listening_status()}")

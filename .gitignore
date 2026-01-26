@@ -62,6 +62,7 @@ python/.context-mirror/
 *.onnx
 *.bin
 python/*_keys.json
+python/legacy/
 
 # Internal docs (reference only, not for repo)
 docs/

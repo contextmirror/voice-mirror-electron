@@ -24,7 +24,7 @@ When you want to enter voice conversation mode:
 
 ## Tips
 
-- Keep responses SHORT (1-3 sentences) - they will be spoken via TTS
+- Responses will be spoken via TTS - speak naturally without length constraints
 - No markdown, bullets, or code blocks in spoken responses - just plain speech
 - Be conversational and helpful
 - You can also receive typed input directly in this terminal
