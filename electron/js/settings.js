@@ -195,14 +195,26 @@ function updateCallModeUI() {
  * Initialize settings event listeners
  */
 export function initSettings() {
-    // Close button handler
+    // Close button handler - use both mousedown and click for reliability
     const closeBtn = document.getElementById('settings-close-btn');
     if (closeBtn) {
-        closeBtn.addEventListener('click', (e) => {
+        // Use mousedown as it fires before click and is more reliable
+        closeBtn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
             e.stopPropagation();
-            console.log('[Settings] Close button clicked');
+            console.log('[Settings] Close button mousedown');
             toggleSettings();
         });
+
+        // Also handle click as backup
+        closeBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('[Settings] Close button clicked');
+            // toggleSettings(); // mousedown already handled it
+        });
+    } else {
+        console.error('[Settings] Close button not found!');
     }
 
     // Activation mode change handler

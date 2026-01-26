@@ -31,6 +31,17 @@ When you want to enter voice conversation mode:
 - Use memory tools to remember user preferences
 - If transcription seems unclear or garbled, ask the user to type their message in the terminal instead. After handling terminal input, call `claude_listen` again to resume voice mode.
 
+## Compact Handling
+
+When context compacts during a voice session:
+
+1. A PreCompact hook notifies the user via TTS: "Claude Code is compacting. Please wait a moment."
+2. After compact completes, the summary will indicate you were in a voice loop
+3. **IMMEDIATELY call `claude_listen` again** - do not wait for user input
+4. The voice conversation should feel seamless to the user
+
+This is critical: after any compact, resume the listen loop automatically without requiring the user to re-trigger it.
+
 ## Starting Voice Mode
 
 To start listening for voice input, type: "Start voice mode" or just call the claude_listen tool.

@@ -449,7 +449,12 @@ async function handleClaudeSend(args) {
             if (parent?.thread_id) resolvedThreadId = parent.thread_id;
         }
         if (!resolvedThreadId) {
-            resolvedThreadId = `thread_${Date.now()}`;
+            // Default to "voice-mirror" for voice instances to ensure watchers pick up messages
+            if (instanceId === 'voice-claude') {
+                resolvedThreadId = 'voice-mirror';
+            } else {
+                resolvedThreadId = `thread_${Date.now()}`;
+            }
         }
 
         // Create new message

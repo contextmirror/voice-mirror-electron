@@ -11,10 +11,17 @@
     z-index: 200;
     flex-direction: column;
     overflow: hidden;
+    -webkit-app-region: no-drag;
+    pointer-events: auto;
 }
 
 #settings-panel.visible {
     display: flex;
+}
+
+/* Ensure all interactive elements in settings are clickable */
+#settings-panel * {
+    -webkit-app-region: no-drag;
 }
 
 /* ========== Settings Header ========== */
@@ -25,6 +32,8 @@
     padding: 16px 20px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     background: rgba(0, 0, 0, 0.3);
+    -webkit-app-region: no-drag;
+    pointer-events: auto;
 }
 
 #settings-header h2 {
@@ -34,18 +43,27 @@
     margin: 0;
 }
 
-.settings-close {
+.settings-close,
+#settings-close-btn {
     background: none;
     border: none;
     color: rgba(255, 255, 255, 0.6);
-    font-size: 24px;
+    font-size: 28px;
+    line-height: 1;
     cursor: pointer;
-    padding: 0 8px;
-    transition: color 0.2s;
+    padding: 8px 16px;
+    transition: color 0.2s, background 0.2s;
+    -webkit-app-region: no-drag;
+    pointer-events: auto !important;
+    position: relative;
+    z-index: 1000;
+    border-radius: 4px;
 }
 
-.settings-close:hover {
+.settings-close:hover,
+#settings-close-btn:hover {
     color: white;
+    background: rgba(255, 255, 255, 0.1);
 }
 
 /* ========== Settings Content ========== */

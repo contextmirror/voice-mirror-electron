@@ -434,6 +434,10 @@ function handlePythonEvent(event) {
             console.log('[Voice Mirror] Pong received');
             break;
 
+        case 'sent_to_inbox':
+            // Message successfully sent to Claude inbox - no action needed
+            break;
+
         default:
             console.log('[Voice Mirror] Unknown event:', eventType, data);
     }
