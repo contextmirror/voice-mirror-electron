@@ -929,6 +929,75 @@ app.whenReady().then(() => {
         return { expanded: isExpanded };
     });
 
+    // Window dragging handlers (for custom orb drag without -webkit-app-region)
+    ipcMain.handle('get-window-position', () => {
+        if (mainWindow) {
+            const [x, y] = mainWindow.getPosition();
+            return { x, y };
+        }
+        return { x: 0, y: 0 };
+    });
+
+    ipcMain.handle('set-window-position', (event, x, y) => {
+        if (mainWindow) {
+            mainWindow.setPosition(Math.round(x), Math.round(y));
+            return { success: true };
+        }
+        return { success: false };
+    });
+
+    // Get cursor position (for drag - mouse leaves small window)
+    ipcMain.handle('get-cursor-position', () => {
+        const point = screen.getCursorScreenPoint();
+        return { x: point.x, y: point.y };
+    });
+
+    // Drag capture: temporarily expand window to catch mouse events
+    // When orb is 64x64, mouse leaves immediately - this fixes that
+    let preDragBounds = null;
+
+    ipcMain.handle('start-drag-capture', () => {
+        if (!mainWindow || isExpanded) return { success: false };
+
+        // Save current bounds
+        preDragBounds = mainWindow.getBounds();
+
+        // Expand to large capture area centered on orb
+        const captureSize = 800;
+        const offsetX = (captureSize - preDragBounds.width) / 2;
+        const offsetY = (captureSize - preDragBounds.height) / 2;
+
+        mainWindow.setBounds({
+            x: Math.round(preDragBounds.x - offsetX),
+            y: Math.round(preDragBounds.y - offsetY),
+            width: captureSize,
+            height: captureSize
+        });
+
+        console.log('[Voice Mirror] Drag capture started');
+        return { success: true, originalBounds: preDragBounds };
+    });
+
+    ipcMain.handle('stop-drag-capture', (event, newX, newY) => {
+        if (!mainWindow || isExpanded) return { success: false };
+
+        // Restore to orb size at new position
+        const orbSize = getOrbSize();
+        mainWindow.setBounds({
+            x: Math.round(newX),
+            y: Math.round(newY),
+            width: orbSize,
+            height: orbSize
+        });
+
+        // Save new position
+        config.updateConfig({ window: { orbX: Math.round(newX), orbY: Math.round(newY) } });
+
+        preDragBounds = null;
+        console.log('[Voice Mirror] Drag capture ended at', newX, newY);
+        return { success: true };
+    });
+
     // Config IPC handlers (for settings UI)
     ipcMain.handle('get-config', () => {
         return config.loadConfig();

@@ -16,6 +16,15 @@ contextBridge.exposeInMainWorld('voiceMirror', {
     // Get current state
     getState: () => ipcRenderer.invoke('get-state'),
 
+    // Window dragging (for custom orb drag without -webkit-app-region)
+    getWindowPosition: () => ipcRenderer.invoke('get-window-position'),
+    setWindowPosition: (x, y) => ipcRenderer.invoke('set-window-position', x, y),
+    getCursorPosition: () => ipcRenderer.invoke('get-cursor-position'),
+
+    // Drag capture - expand window temporarily to catch mouse events
+    startDragCapture: () => ipcRenderer.invoke('start-drag-capture'),
+    stopDragCapture: (x, y) => ipcRenderer.invoke('stop-drag-capture', x, y),
+
     // Listen for state changes
     onStateChange: (callback) => {
         ipcRenderer.on('state-change', (event, data) => callback(data));

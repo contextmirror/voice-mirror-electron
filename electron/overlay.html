@@ -19,44 +19,85 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background: #0d0d1a;  /* Fallback for no transparency */
+            background: transparent;  /* Transparent for drag capture */
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
             padding: 0;
         }
 
-        /* Orb State */
+        /* Orb State - fixed 64px size, centered in window */
         #orb {
-            width: 100%;
-            height: 100%;
+            width: 64px;
+            height: 64px;
             border-radius: 50%;
             cursor: grab;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.3s ease;
+            transition: filter 0.2s ease;
+            /* NATIVE DRAG - works on Wayland! */
             -webkit-app-region: drag;
             /* Styled background since transparency doesn't work on Wayland */
             background: radial-gradient(circle, #2d1b4e 0%, #1a1a2e 50%, #0d0d1a 100%);
             box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
             border: 2px solid rgba(102, 126, 234, 0.5);
+            user-select: none;
+            /* Center in window */
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        #orb:hover {
+            transform: translate(-50%, -50%) scale(1.1);
+            filter: brightness(1.1);
+        }
+
+        /* Container for orb - fills window, transparent background for capture area */
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
         }
 
         #orb:active {
             cursor: grabbing;
         }
 
-        #orb-icon {
+        /* Inner clickable button - excludes from drag region */
+        #orb-button {
             width: 48px;
             height: 48px;
             border-radius: 50%;
-            pointer-events: none;  /* Let clicks pass through to orb */
+            cursor: pointer;
+            -webkit-app-region: no-drag;  /* This area is clickable! */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            border: none;
+            padding: 0;
+            transition: transform 0.15s ease;
         }
 
-        #orb:hover {
+        #orb-button:hover {
             transform: scale(1.1);
-            filter: brightness(1.1);
         }
+
+        #orb-button:active {
+            transform: scale(0.95);
+        }
+
+        #orb-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        /* Hover handled above with translate offset */
 
         #orb.listening {
             animation: pulse 1.5s ease-in-out infinite;
@@ -73,24 +114,24 @@
         }
 
         @keyframes pulse {
-            0%, 100% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.05); opacity: 0.9; }
+            0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            50% { transform: translate(-50%, -50%) scale(1.05); opacity: 0.9; }
         }
 
         @keyframes recording-pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.15); }
+            0%, 100% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.15); }
         }
 
         @keyframes speaking-wave {
-            0%, 100% { transform: scale(1); }
-            25% { transform: scale(1.08); }
-            75% { transform: scale(0.95); }
+            0%, 100% { transform: translate(-50%, -50%) scale(1); }
+            25% { transform: translate(-50%, -50%) scale(1.08); }
+            75% { transform: translate(-50%, -50%) scale(0.95); }
         }
 
         @keyframes thinking-spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
         }
 
         #orb.thinking {
@@ -525,8 +566,12 @@
 </head>
 <body>
     <!-- Orb View (collapsed) -->
+    <!-- Outer ring: draggable via -webkit-app-region: drag -->
+    <!-- Inner button: clickable via -webkit-app-region: no-drag -->
     <div id="orb" class="listening">
-        <img id="orb-icon" src="../assets/icon-64.png" alt="Voice Mirror">
+        <button id="orb-button" title="Click to expand">
+            <img id="orb-icon" src="../assets/icon-64.png" alt="Voice Mirror">
+        </button>
     </div>
 
     <!-- Panel View (expanded) -->
@@ -610,9 +655,17 @@
 
         let isExpanded = false;
 
-        // Right-click orb to expand (left click/drag to move)
+        // ========== Orb Click + Native Drag ==========
+        // Outer orb ring: -webkit-app-region: drag (native Wayland drag)
+        // Inner button: -webkit-app-region: no-drag (clickable)
+
+        const orbButton = document.getElementById('orb-button');
+
+        // Click inner button to expand
+        // Right-click on orb to expand
         orb.addEventListener('contextmenu', async (e) => {
             e.preventDefault();
+            console.log('[Orb] Right-click, toggling expand');
             isExpanded = await window.voiceMirror.toggleExpand();
             updateUI();
         });
