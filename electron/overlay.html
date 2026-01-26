@@ -50,13 +50,13 @@
                     </svg>
                     <span>Chat</span>
                 </button>
-                <button class="nav-item" data-page="terminal" data-tooltip="Claude Code">
+                <button class="nav-item" data-page="terminal" data-tooltip="Claude Code" id="nav-terminal">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="4 17 10 11 4 5"/>
                         <line x1="12" y1="19" x2="20" y2="19"/>
                     </svg>
-                    <span>Claude Code</span>
-                    <span id="nav-claude-badge" class="nav-badge stopped"></span>
+                    <span id="nav-terminal-label">Claude Code</span>
+                    <span id="nav-ai-badge" class="nav-badge stopped"></span>
                 </button>
                 <button class="nav-item" data-page="settings" data-tooltip="Settings">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -141,9 +141,10 @@
                 <!-- Terminal Panel (at bottom of chat page) - hidden by default -->
                 <div id="terminal-container" class="hidden">
                     <div id="terminal-header">
-                        <span class="terminal-title">⌘ Claude Code</span>
+                        <span id="terminal-title" class="terminal-title">⌘ Claude Code</span>
                         <span id="terminal-status" class="terminal-status stopped">Stopped</span>
-                        <button id="terminal-start" class="control-btn start" onclick="startClaude()">Start</button>
+                        <button id="terminal-start" class="control-btn start" onclick="startAI()">Start</button>
+                        <button id="terminal-clear" class="control-btn clear" onclick="clearTerminal()" title="Clear terminal">Clear</button>
                         <div class="terminal-controls">
                             <button class="terminal-ctrl-btn" onclick="minimizeTerminal()" title="Minimize">─</button>
                             <button class="terminal-ctrl-btn" onclick="relocateTerminal('fullscreen')" title="Move to fullscreen">⬆</button>
@@ -157,9 +158,10 @@
             <div id="page-terminal" class="page">
                 <div id="terminal-fullscreen">
                     <div id="terminal-fullscreen-header">
-                        <span class="terminal-title">⌘ Claude Code</span>
+                        <span id="terminal-fullscreen-title" class="terminal-title">⌘ Claude Code</span>
                         <span id="terminal-fullscreen-status" class="terminal-status stopped">Stopped</span>
-                        <button id="terminal-fullscreen-start" class="control-btn start" onclick="startClaude()">Start</button>
+                        <button id="terminal-fullscreen-start" class="control-btn start" onclick="startAI()">Start</button>
+                        <button id="terminal-fullscreen-clear" class="control-btn clear" onclick="clearTerminal()" title="Clear terminal">Clear</button>
                     </div>
                     <div id="xterm-fullscreen-container"></div>
                 </div>
@@ -172,6 +174,103 @@
                         <h2>Settings</h2>
                     </div>
                     <div id="settings-page-body">
+                        <!-- AI Provider -->
+                        <div class="settings-section">
+                            <h3>AI Provider</h3>
+                            <div class="settings-group">
+                                <label class="checkbox-option">
+                                    <input type="checkbox" id="ai-auto-detect" checked>
+                                    <span>Auto-detect local LLM servers</span>
+                                </label>
+                                <div id="ai-detected-status" class="detection-status">
+                                    <span class="detection-label">Scanning...</span>
+                                </div>
+                                <div class="setting-row">
+                                    <label>Provider</label>
+                                    <div class="provider-selector" id="ai-provider-selector">
+                                        <button class="provider-selector-btn" id="ai-provider-btn" type="button">
+                                            <span class="provider-icon" id="selected-provider-icon"></span>
+                                            <span class="provider-name" id="selected-provider-name">Claude Code</span>
+                                            <svg class="dropdown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <polyline points="6 9 12 15 18 9"/>
+                                            </svg>
+                                        </button>
+                                        <div class="provider-dropdown" id="ai-provider-dropdown">
+                                            <div class="provider-group">
+                                                <div class="provider-group-label">Local (Auto-detected)</div>
+                                                <div class="provider-option" data-value="ollama">
+                                                    <span class="provider-icon provider-icon-ollama"></span>
+                                                    <span>Ollama</span>
+                                                </div>
+                                                <div class="provider-option" data-value="lmstudio">
+                                                    <span class="provider-icon provider-icon-lmstudio"></span>
+                                                    <span>LM Studio</span>
+                                                </div>
+                                                <div class="provider-option" data-value="jan">
+                                                    <span class="provider-icon provider-icon-jan"></span>
+                                                    <span>Jan</span>
+                                                </div>
+                                            </div>
+                                            <div class="provider-group">
+                                                <div class="provider-group-label">Cloud (CLI/API)</div>
+                                                <div class="provider-option" data-value="claude">
+                                                    <span class="provider-icon provider-icon-claude"></span>
+                                                    <span>Claude Code</span>
+                                                </div>
+                                                <div class="provider-option" data-value="openai">
+                                                    <span class="provider-icon provider-icon-openai"></span>
+                                                    <span>OpenAI</span>
+                                                </div>
+                                                <div class="provider-option" data-value="gemini">
+                                                    <span class="provider-icon provider-icon-gemini"></span>
+                                                    <span>Google Gemini</span>
+                                                </div>
+                                                <div class="provider-option" data-value="grok">
+                                                    <span class="provider-icon provider-icon-grok"></span>
+                                                    <span>Grok (xAI)</span>
+                                                </div>
+                                                <div class="provider-option" data-value="groq">
+                                                    <span class="provider-icon provider-icon-groq"></span>
+                                                    <span>Groq</span>
+                                                </div>
+                                                <div class="provider-option" data-value="mistral">
+                                                    <span class="provider-icon provider-icon-mistral"></span>
+                                                    <span>Mistral</span>
+                                                </div>
+                                                <div class="provider-option" data-value="openrouter">
+                                                    <span class="provider-icon provider-icon-openrouter"></span>
+                                                    <span>OpenRouter</span>
+                                                </div>
+                                                <div class="provider-option" data-value="deepseek">
+                                                    <span class="provider-icon provider-icon-deepseek"></span>
+                                                    <span>DeepSeek</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <!-- Hidden input for form value -->
+                                        <input type="hidden" id="ai-provider" value="claude">
+                                    </div>
+                                </div>
+                                <div class="setting-row" id="ai-model-row">
+                                    <label>Model</label>
+                                    <select id="ai-model">
+                                        <option value="">Auto (default)</option>
+                                    </select>
+                                </div>
+                                <div class="setting-row" id="ai-endpoint-row" style="display: none;">
+                                    <label>Endpoint</label>
+                                    <input type="text" id="ai-endpoint" placeholder="http://127.0.0.1:11434">
+                                </div>
+                                <div class="setting-row" id="ai-apikey-row" style="display: none;">
+                                    <label>API Key</label>
+                                    <input type="password" id="ai-apikey" placeholder="Enter API key...">
+                                </div>
+                                <button class="settings-btn secondary" id="ai-scan-btn" onclick="scanProviders()">
+                                    Scan Now
+                                </button>
+                            </div>
+                        </div>
+
                         <!-- Activation Mode -->
                         <div class="settings-section">
                             <h3>Activation Mode</h3>

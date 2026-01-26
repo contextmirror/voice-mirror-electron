@@ -6,7 +6,7 @@
 import { state } from './state.js';
 import { initMarkdown } from './markdown.js';
 import { addMessage, isDuplicate, copyMessage } from './messages.js';
-import { initXterm, handleClaudeOutput, updateClaudeStatus, toggleTerminal, startClaude, stopClaude } from './terminal.js';
+import { initXterm, handleAIOutput, updateAIStatus, toggleTerminal, startAI, stopAI, updateProviderDisplay } from './terminal.js';
 import { initSettings, toggleSettings } from './settings.js';
 import { initNavigation, navigateTo, toggleSidebarCollapse } from './navigation.js';
 import { blobToBase64, formatSize } from './utils.js';
@@ -344,10 +344,10 @@ function handleVoiceEvent(data) {
             console.log('Mode changed to:', data.mode);
             break;
         case 'claude_connected':
-            updateClaudeStatus(true);
+            updateAIStatus(true);
             break;
         case 'claude_disconnected':
-            updateClaudeStatus(false);
+            updateAIStatus(false);
             break;
         case 'disconnected':
             statusText.textContent = 'Disconnected';
@@ -372,6 +372,35 @@ function handleVoiceEvent(data) {
 async function init() {
     // Initialize markdown renderer
     initMarkdown();
+
+    // Load provider display from config FIRST (before terminal init)
+    try {
+        const config = await window.voiceMirror.config.get();
+        const provider = config.ai?.provider || 'claude';
+        const model = config.ai?.model || null;
+        // Get display name based on provider
+        const providerNames = {
+            claude: 'Claude Code',
+            ollama: 'Ollama',
+            lmstudio: 'LM Studio',
+            jan: 'Jan',
+            openai: 'OpenAI',
+            gemini: 'Gemini',
+            grok: 'Grok',
+            groq: 'Groq',
+            mistral: 'Mistral',
+            openrouter: 'OpenRouter',
+            deepseek: 'DeepSeek'
+        };
+        let displayName = providerNames[provider] || provider;
+        if (model) {
+            const shortModel = model.split(':')[0];
+            displayName = `${displayName} (${shortModel})`;
+        }
+        updateProviderDisplay(displayName, provider, model);
+    } catch (err) {
+        console.warn('[Init] Failed to load provider config:', err);
+    }
 
     // Load welcome message
     updateWelcomeMessage();
@@ -424,8 +453,8 @@ async function init() {
         }
     });
 
-    // Listen for Claude terminal output
-    window.voiceMirror.claude.onOutput(handleClaudeOutput);
+    // Listen for AI terminal output
+    window.voiceMirror.claude.onOutput(handleAIOutput);
 
     // Listen for open-settings command from tray menu
     window.voiceMirror.onOpenSettings(() => {
@@ -446,9 +475,9 @@ async function init() {
         statusText.textContent = 'Voice backend not running';
     }
 
-    // Check Claude status
+    // Check AI provider status
     const claudeStatus = await window.voiceMirror.claude.getStatus();
-    updateClaudeStatus(claudeStatus.running);
+    updateAIStatus(claudeStatus.running);
 
     // Check call mode
     const callModeStatus = await window.voiceMirror.python.getCallMode();
@@ -520,8 +549,9 @@ window.copyMessage = copyMessage;
 window.updateWelcomeMessage = updateWelcomeMessage;
 // Terminal functions (from terminal.js)
 window.toggleTerminal = toggleTerminal;
-window.startClaude = startClaude;
-window.stopClaude = stopClaude;
+window.startAI = startAI;
+window.stopAI = stopAI;
+window.updateProviderDisplay = updateProviderDisplay;
 // Settings (from settings.js)
 window.toggleSettings = toggleSettings;
 // Navigation (from navigation.js)

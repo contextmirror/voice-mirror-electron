@@ -86,6 +86,65 @@ class ActivationMode:
     PUSH_TO_TALK = "pushToTalk"
 
 
+# Provider display names mapping
+PROVIDER_DISPLAY_NAMES = {
+    "claude": "Claude",
+    "ollama": "Ollama",
+    "lmstudio": "LM Studio",
+    "jan": "Jan",
+    "openai": "OpenAI",
+    "gemini": "Gemini",
+    "grok": "Grok",
+    "groq": "Groq",
+    "mistral": "Mistral",
+    "openrouter": "OpenRouter",
+    "deepseek": "DeepSeek"
+}
+
+
+def get_ai_provider() -> dict:
+    """
+    Get AI provider settings from Electron config.
+    Returns dict with 'provider', 'name', and 'model' keys.
+    """
+    try:
+        if ELECTRON_CONFIG_PATH.exists():
+            with open(ELECTRON_CONFIG_PATH, 'r') as f:
+                config = json.load(f)
+                ai = config.get("ai", {})
+                provider_id = ai.get("provider", "claude")
+                model = ai.get("model")
+
+                # Get display name
+                name = PROVIDER_DISPLAY_NAMES.get(provider_id, provider_id.title())
+                if model:
+                    short_model = model.split(':')[0]
+                    name = f"{name} ({short_model})"
+
+                return {
+                    "provider": provider_id,
+                    "name": name,
+                    "model": model
+                }
+    except Exception as e:
+        print(f"⚠️ Could not read AI provider: {e}")
+
+    return {"provider": "claude", "name": "Claude", "model": None}
+
+
+def strip_provider_prefix(text: str) -> str:
+    """
+    Strip provider prefix from response text for cleaner TTS output.
+    Handles patterns like "Claude: ", "Ollama: ", "Claude (model): ", etc.
+    """
+    if not text:
+        return text
+    import re
+    # Match provider names with optional model suffix in parentheses
+    pattern = r'^(?:Claude|Ollama|OpenAI|Gemini|Grok|Groq|Mistral|DeepSeek|LM Studio|Jan)(?:\s*\([^)]+\))?:\s*'
+    return re.sub(pattern, '', text, flags=re.IGNORECASE).strip()
+
+
 def get_activation_mode() -> str:
     """
     Read activation mode from Electron config file.
@@ -197,6 +256,7 @@ class VoiceMirror:
         self._ptt_process_pending = False  # PTT released, need to process
         self._recording_source = None  # Track what triggered recording: 'wake_word', 'ptt', 'call', 'follow_up'
         self._activation_mode = ActivationMode.WAKE_WORD  # Will be set in load_models
+        self._ai_provider = {"provider": "claude", "name": "Claude", "model": None}  # Will be set in load_models
 
     def get_listening_status(self) -> str:
         """Get the appropriate listening status message based on activation mode."""
@@ -209,6 +269,18 @@ class VoiceMirror:
         else:
             return "👂 Listening..."
 
+    def refresh_ai_provider(self):
+        """
+        Re-read AI provider config from Electron config file.
+        Called before sending/waiting for responses to ensure we use the current provider.
+        """
+        old_provider = self._ai_provider.get('provider')
+        self._ai_provider = get_ai_provider()
+        new_provider = self._ai_provider.get('provider')
+
+        if old_provider != new_provider:
+            print(f"🔄 AI Provider changed: {old_provider} -> {new_provider} ({self._ai_provider['name']})")
+
     def load_models(self):
         """Load OpenWakeWord and Parakeet models."""
         # Clean up old inbox messages on startup
@@ -219,6 +291,10 @@ class VoiceMirror:
         # Get activation mode from Electron config
         self._activation_mode = get_activation_mode()
         print(f"Activation mode: {self._activation_mode}")
+
+        # Get AI provider from Electron config
+        self._ai_provider = get_ai_provider()
+        print(f"AI Provider: {self._ai_provider['name']}")
 
         # Only load wake word model if wake word mode is enabled
         if self._activation_mode == ActivationMode.WAKE_WORD:
@@ -431,8 +507,10 @@ class VoiceMirror:
             return msg["id"]
 
     async def wait_for_claude_response(self, my_message_id: str, timeout: float = 60.0) -> str:
-        """Wait for Claude to respond to our message via inbox polling."""
-        print(f"⏳ Waiting for Claude to respond...")
+        """Wait for AI provider to respond to our message via inbox polling."""
+        # Refresh provider config in case user changed it in Settings
+        self.refresh_ai_provider()
+        print(f"⏳ Waiting for {self._ai_provider['name']} to respond...")
 
         start_time = time.time()
         poll_interval = 0.5  # Check every 500ms
@@ -462,11 +540,12 @@ class VoiceMirror:
                 if my_msg_idx is None:
                     continue
 
-                # Look for Claude's response after my message
+                # Look for AI provider's response after my message
                 for msg in messages[my_msg_idx + 1:]:
                     sender = msg.get("from", "")
-                    # Accept responses from any Claude instance
-                    if "claude" in sender.lower() and msg.get("thread_id") == "voice-mirror":
+                    provider_id = self._ai_provider['provider']
+                    # Accept responses from the configured AI provider
+                    if provider_id in sender.lower() and msg.get("thread_id") == "voice-mirror":
                         response = msg.get("message", "")
                         if response:
                             print(f"✅ Got response from {sender}")
@@ -479,7 +558,7 @@ class VoiceMirror:
 
     async def get_claude_response_cli(self, message: str) -> str:
         """Get response from Claude via CLI (uses your existing auth)."""
-        print(f"🤖 Asking Claude...")
+        print(f"🤖 Asking {self._ai_provider['name']}...")
 
         prompt = f'''Voice message from Nathan: "{message}"
 
@@ -513,7 +592,7 @@ Don't use markdown or special formatting - this will be spoken aloud.'''
         """Get response from Claude API (requires ANTHROPIC_API_KEY)."""
         import anthropic
 
-        print(f"🤖 Asking Claude...")
+        print(f"🤖 Asking {self._ai_provider['name']}...")
         try:
             client = anthropic.Anthropic()  # Uses ANTHROPIC_API_KEY env var
             response = client.messages.create(
@@ -572,9 +651,10 @@ Keep it concise - 1-2 sentences max.'''
             else:
                 data = {"messages": []}
 
+            provider_id = self._ai_provider['provider']
             msg = {
                 "id": f"msg-{uuid.uuid4().hex[:12]}",
-                "from": "claude-voice",
+                "from": f"{provider_id}-voice",
                 "message": response,
                 "timestamp": datetime.now().isoformat(),
                 "thread_id": "voice-mirror",
@@ -866,13 +946,15 @@ Keep it concise - 1-2 sentences max.'''
 
                 msg_id = self.send_to_inbox(text)
 
-                # Wait for Claude Code to respond via inbox
+                # Wait for AI provider to respond via inbox
                 response = await self.wait_for_claude_response(msg_id, timeout=30.0)
                 if response:
-                    print(f"💬 Claude: {response}")
-                    await self.speak(response)
+                    print(f"💬 {self._ai_provider['name']}: {response}")
+                    # Strip provider prefix before speaking (e.g., "Claude: " -> "")
+                    clean_response = strip_provider_prefix(response)
+                    await self.speak(clean_response)
                 else:
-                    print("⏰ No response from Claude Code (timeout - this is normal if Claude is thinking)")
+                    print(f"⏰ No response from {self._ai_provider['name']} (timeout - this is normal if thinking)")
         else:
             print("❌ No speech detected")
 
@@ -895,10 +977,11 @@ Keep it concise - 1-2 sentences max.'''
             if not messages:
                 return None, None
 
-            # Find the latest Claude message in voice-mirror thread
+            # Find the latest AI provider message in voice-mirror thread
+            provider_id = self._ai_provider['provider']
             for msg in reversed(messages):
                 sender = msg.get("from", "")
-                if "claude" in sender.lower() and msg.get("thread_id") == "voice-mirror":
+                if provider_id in sender.lower() and msg.get("thread_id") == "voice-mirror":
                     return msg.get("id"), msg.get("message", "")
 
             return None, None
@@ -972,13 +1055,16 @@ Keep it concise - 1-2 sentences max.'''
             try:
                 await asyncio.sleep(NOTIFICATION_POLL_INTERVAL)
 
+                # Refresh provider config periodically in case user changed it
+                self.refresh_ai_provider()
+
                 # Check for compaction events first (high priority)
                 compact_id, compact_event = self._check_compaction_event()
                 if compact_id and not self._awaiting_compact_resume:
                     self._awaiting_compact_resume = True
                     self._compact_start_time = time.time()
                     self._mark_compaction_read(compact_id)
-                    print(f"\n⏳ Claude is reorganizing context... conversation will resume shortly")
+                    print(f"\n⏳ {self._ai_provider['name']} is reorganizing context... conversation will resume shortly")
                     # Optionally speak a brief notification
                     if not self._is_speaking:
                         await self.speak("One moment, I'm reorganizing my thoughts.", enter_conversation_mode=False)
@@ -992,13 +1078,14 @@ Keep it concise - 1-2 sentences max.'''
                         self._awaiting_compact_resume = False
                         continue
 
-                    # Check if Claude has responded (compact finished)
+                    # Check if AI provider has responded (compact finished)
                     msg_id, message = self._get_latest_claude_message()
                     if msg_id and msg_id != self._last_seen_message_id and message:
                         self._last_seen_message_id = msg_id
                         self._awaiting_compact_resume = False
-                        print(f"\n✅ Claude resumed after compaction!")
-                        await self.speak(message, enter_conversation_mode=True)
+                        print(f"\n✅ {self._ai_provider['name']} resumed after compaction!")
+                        clean_message = strip_provider_prefix(message)
+                        await self.speak(clean_message, enter_conversation_mode=True)
                         print(f"\n{self.get_listening_status()}")
                     continue
 
@@ -1015,9 +1102,10 @@ Keep it concise - 1-2 sentences max.'''
 
                 if msg_id and msg_id != self._last_seen_message_id and message:
                     self._last_seen_message_id = msg_id
-                    print(f"\n📢 New notification from Claude!")
-                    # Speak without entering conversation mode (it's a notification)
-                    await self.speak(message, enter_conversation_mode=False)
+                    print(f"\n📢 New notification from {self._ai_provider['name']}!")
+                    # Strip provider prefix and speak (it's a notification)
+                    clean_message = strip_provider_prefix(message)
+                    await self.speak(clean_message, enter_conversation_mode=False)
                     print(f"\n{self.get_listening_status()}")
 
             except Exception as e:
@@ -1055,7 +1143,7 @@ Keep it concise - 1-2 sentences max.'''
         else:
             print(f"TTS: Not available")
         print(f"Inbox: {INBOX_PATH}")
-        print(f"Routing: 🤖 Claude Code (via MCP inbox)")
+        print(f"Routing: 🤖 {self._ai_provider['name']} (via MCP inbox)")
         print("=" * 50)
 
         # Show activation mode specific instructions

@@ -1,0 +1,391 @@
+/**
+ * Provider Detector - Auto-detect available LLM providers
+ *
+ * Scans common endpoints to find running LLM servers (Ollama, LM Studio, Jan).
+ * Returns list of available providers with their loaded models.
+ *
+ * Ported from Context Mirror's providerDetector.ts
+ */
+
+// Detection timeout in milliseconds
+const DETECTION_TIMEOUT = 2000;
+
+// Cache TTL in milliseconds (30 seconds)
+const CACHE_TTL = 30000;
+
+// Local provider configurations (OpenAI-compatible endpoints)
+const LOCAL_PROVIDERS = {
+    ollama: {
+        type: 'ollama',
+        name: 'Ollama',
+        baseUrl: 'http://127.0.0.1:11434',
+        modelsEndpoint: '/v1/models',
+        chatEndpoint: '/v1/chat/completions'
+    },
+    lmstudio: {
+        type: 'lmstudio',
+        name: 'LM Studio',
+        baseUrl: 'http://127.0.0.1:1234',
+        modelsEndpoint: '/v1/models',
+        chatEndpoint: '/v1/chat/completions'
+    },
+    jan: {
+        type: 'jan',
+        name: 'Jan',
+        baseUrl: 'http://127.0.0.1:1337',
+        modelsEndpoint: '/v1/models',
+        chatEndpoint: '/v1/chat/completions'
+    }
+};
+
+// Cloud provider configurations
+const CLOUD_PROVIDERS = {
+    claude: {
+        type: 'claude',
+        name: 'Claude Code',
+        isLocal: false,
+        requiresApiKey: false,  // Uses Claude CLI auth
+        apiKeyEnv: 'ANTHROPIC_API_KEY'
+    },
+    openai: {
+        type: 'openai',
+        name: 'OpenAI',
+        isLocal: false,
+        requiresApiKey: true,
+        apiKeyEnv: 'OPENAI_API_KEY',
+        baseUrl: 'https://api.openai.com/v1',
+        chatEndpoint: '/chat/completions'
+    },
+    gemini: {
+        type: 'gemini',
+        name: 'Google Gemini',
+        isLocal: false,
+        requiresApiKey: true,
+        apiKeyEnv: 'GEMINI_API_KEY'
+    },
+    grok: {
+        type: 'grok',
+        name: 'Grok (xAI)',
+        isLocal: false,
+        requiresApiKey: true,
+        apiKeyEnv: 'XAI_API_KEY',
+        baseUrl: 'https://api.x.ai/v1',
+        chatEndpoint: '/chat/completions'
+    },
+    groq: {
+        type: 'groq',
+        name: 'Groq',
+        isLocal: false,
+        requiresApiKey: true,
+        apiKeyEnv: 'GROQ_API_KEY',
+        baseUrl: 'https://api.groq.com/openai/v1',
+        chatEndpoint: '/chat/completions'
+    },
+    mistral: {
+        type: 'mistral',
+        name: 'Mistral',
+        isLocal: false,
+        requiresApiKey: true,
+        apiKeyEnv: 'MISTRAL_API_KEY',
+        baseUrl: 'https://api.mistral.ai/v1',
+        chatEndpoint: '/chat/completions'
+    },
+    openrouter: {
+        type: 'openrouter',
+        name: 'OpenRouter',
+        isLocal: false,
+        requiresApiKey: true,
+        apiKeyEnv: 'OPENROUTER_API_KEY',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        chatEndpoint: '/chat/completions'
+    },
+    deepseek: {
+        type: 'deepseek',
+        name: 'DeepSeek',
+        isLocal: false,
+        requiresApiKey: true,
+        apiKeyEnv: 'DEEPSEEK_API_KEY',
+        baseUrl: 'https://api.deepseek.com/v1',
+        chatEndpoint: '/chat/completions'
+    }
+};
+
+/**
+ * Parse models from API response
+ * All providers use OpenAI-compatible format: { data: [{ id: "model-name" }, ...] }
+ */
+function parseModels(response) {
+    if (response.data && Array.isArray(response.data)) {
+        return response.data.map(m => m.id || 'unknown').filter(id => id !== 'unknown');
+    }
+    // Fallback for older Ollama format
+    if (response.models && Array.isArray(response.models)) {
+        return response.models.map(m => m.name || m.id || 'unknown').filter(id => id !== 'unknown');
+    }
+    return [];
+}
+
+/**
+ * Detect a single local provider
+ * @param {string} type - Provider type (ollama, lmstudio, jan)
+ * @param {string} customEndpoint - Optional custom endpoint override
+ * @returns {Promise<Object>} Provider status
+ */
+async function detectLocalProvider(type, customEndpoint = null) {
+    const config = LOCAL_PROVIDERS[type];
+    if (!config) {
+        return { type, name: type, online: false, error: 'Unknown provider type' };
+    }
+
+    const baseUrl = customEndpoint || config.baseUrl;
+    const url = baseUrl + config.modelsEndpoint;
+
+    const status = {
+        type,
+        name: config.name,
+        baseUrl,
+        chatEndpoint: baseUrl + config.chatEndpoint,
+        online: false,
+        models: [],
+        model: null
+    };
+
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), DETECTION_TIMEOUT);
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal
+        });
+
+        clearTimeout(timeout);
+
+        if (response.ok) {
+            status.online = true;
+
+            try {
+                const data = await response.json();
+                status.models = parseModels(data);
+                status.model = status.models[0] || null;  // First model as default
+            } catch {
+                // Could connect but couldn't parse models - still online
+                status.models = [];
+            }
+
+            console.log(`[ProviderDetector] ${config.name}: ONLINE (${status.models.length} models)`);
+        } else {
+            console.log(`[ProviderDetector] ${config.name}: HTTP ${response.status}`);
+        }
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            console.log(`[ProviderDetector] ${config.name}: TIMEOUT`);
+            status.error = 'timeout';
+        } else {
+            console.log(`[ProviderDetector] ${config.name}: OFFLINE`);
+            status.error = 'offline';
+        }
+    }
+
+    return status;
+}
+
+/**
+ * Provider Detector Service
+ * Manages detection and caching of available providers
+ */
+class ProviderDetectorService {
+    constructor() {
+        this.cachedStatus = new Map();
+        this.lastScan = 0;
+    }
+
+    /**
+     * Scan all local providers in parallel
+     * @returns {Promise<Array>} List of provider statuses
+     */
+    async scanAll() {
+        console.log('[ProviderDetector] Scanning for local providers...');
+
+        const providers = Object.keys(LOCAL_PROVIDERS);
+        const results = await Promise.all(providers.map(type => detectLocalProvider(type)));
+
+        // Update cache
+        this.lastScan = Date.now();
+        results.forEach(status => {
+            this.cachedStatus.set(status.type, status);
+        });
+
+        const online = results.filter(r => r.online);
+        console.log(`[ProviderDetector] Found ${online.length} provider(s) online:`,
+            online.map(p => `${p.name} (${p.models.length} models)`).join(', ') || 'none'
+        );
+
+        return results;
+    }
+
+    /**
+     * Get available (online) providers
+     * Uses cache if fresh, otherwise rescans
+     * @param {boolean} forceRefresh - Force rescan even if cache is fresh
+     * @returns {Promise<Array>} List of online providers
+     */
+    async getAvailable(forceRefresh = false) {
+        const cacheAge = Date.now() - this.lastScan;
+
+        if (!forceRefresh && cacheAge < CACHE_TTL && this.cachedStatus.size > 0) {
+            return Array.from(this.cachedStatus.values()).filter(s => s.online);
+        }
+
+        const all = await this.scanAll();
+        return all.filter(s => s.online);
+    }
+
+    /**
+     * Check if a specific provider is online
+     * @param {string} type - Provider type
+     * @param {string} customEndpoint - Optional custom endpoint
+     * @returns {Promise<Object>} Provider status
+     */
+    async checkProvider(type, customEndpoint = null) {
+        const status = await detectLocalProvider(type, customEndpoint);
+        this.cachedStatus.set(type, status);
+        return status;
+    }
+
+    /**
+     * Get the first available provider (for auto-selection)
+     * Prioritizes Ollama, then LM Studio, then Jan
+     * @returns {Promise<Object|null>} First available provider or null
+     */
+    async getFirstAvailable() {
+        const available = await this.getAvailable();
+
+        // Prefer Ollama if available
+        const ollama = available.find(p => p.type === 'ollama');
+        if (ollama) return ollama;
+
+        return available.length > 0 ? available[0] : null;
+    }
+
+    /**
+     * Auto-select a provider based on saved preference or first available
+     * @param {Object} savedConfig - Saved AI configuration from config.js
+     * @returns {Promise<Object|null>} Selected provider status
+     */
+    async autoSelect(savedConfig = {}) {
+        const savedType = savedConfig.provider;
+        const savedModel = savedConfig.model;
+        const endpoints = savedConfig.endpoints || {};
+
+        // If Claude is selected, return it (no detection needed)
+        if (savedType === 'claude') {
+            return {
+                type: 'claude',
+                name: 'Claude Code',
+                online: true,  // Assume available (uses CLI)
+                models: [],
+                model: null
+            };
+        }
+
+        // Check if saved local provider is online
+        if (savedType && LOCAL_PROVIDERS[savedType]) {
+            const customEndpoint = endpoints[savedType] || null;
+            const status = await this.checkProvider(savedType, customEndpoint);
+
+            if (status.online) {
+                console.log(`[ProviderDetector] Using saved provider: ${status.name}`);
+
+                // Use saved model preference if available
+                if (savedModel && status.models.includes(savedModel)) {
+                    status.model = savedModel;
+                    console.log(`[ProviderDetector] Using saved model: ${savedModel}`);
+                } else if (status.model) {
+                    console.log(`[ProviderDetector] Using default model: ${status.model}`);
+                }
+
+                return status;
+            }
+        }
+
+        // Fall back to first available
+        console.log('[ProviderDetector] Saved provider offline or not set, scanning for alternatives...');
+        const first = await this.getFirstAvailable();
+
+        if (first) {
+            console.log(`[ProviderDetector] Auto-selected: ${first.name} (${first.model || 'default'})`);
+        } else {
+            console.log('[ProviderDetector] No local providers found');
+        }
+
+        return first;
+    }
+
+    /**
+     * Get cached status without network call
+     * @returns {Array} List of cached provider statuses
+     */
+    getCachedStatus() {
+        return Array.from(this.cachedStatus.values());
+    }
+
+    /**
+     * Clear cache and force rescan on next getAvailable()
+     */
+    clearCache() {
+        this.cachedStatus.clear();
+        this.lastScan = 0;
+    }
+
+    /**
+     * Get provider configuration by type
+     * @param {string} type - Provider type
+     * @returns {Object|null} Provider configuration
+     */
+    getProviderConfig(type) {
+        return LOCAL_PROVIDERS[type] || CLOUD_PROVIDERS[type] || null;
+    }
+
+    /**
+     * Get all provider configurations
+     * @returns {Object} All provider configs (local + cloud)
+     */
+    getAllProviderConfigs() {
+        return {
+            local: { ...LOCAL_PROVIDERS },
+            cloud: { ...CLOUD_PROVIDERS }
+        };
+    }
+
+    /**
+     * Get display name for a provider type
+     * @param {string} type - Provider type
+     * @param {string} model - Optional model name to include
+     * @returns {string} Display name
+     */
+    getDisplayName(type, model = null) {
+        const config = this.getProviderConfig(type);
+        const name = config?.name || type;
+
+        if (model) {
+            // Shorten model name for display (e.g., "llama3.2:latest" -> "llama3.2")
+            const shortModel = model.split(':')[0];
+            return `${name} (${shortModel})`;
+        }
+
+        return name;
+    }
+}
+
+// Export singleton instance
+const providerDetector = new ProviderDetectorService();
+
+module.exports = {
+    providerDetector,
+    LOCAL_PROVIDERS,
+    CLOUD_PROVIDERS,
+    DETECTION_TIMEOUT,
+    CACHE_TTL
+};

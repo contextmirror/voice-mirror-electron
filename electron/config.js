@@ -68,6 +68,28 @@ const DEFAULT_CONFIG = {
     // Sidebar settings
     sidebar: {
         collapsed: false  // Whether sidebar is collapsed to icons-only
+    },
+
+    // AI Provider settings
+    ai: {
+        provider: 'claude',           // 'claude' | 'ollama' | 'lmstudio' | 'jan' | 'openai' | etc.
+        model: null,                  // Specific model ID (auto-detected for local providers)
+        autoDetect: true,             // Auto-detect local LLM servers on startup
+        endpoints: {
+            ollama: 'http://127.0.0.1:11434',
+            lmstudio: 'http://127.0.0.1:1234',
+            jan: 'http://127.0.0.1:1337'
+        },
+        apiKeys: {                    // API keys for cloud providers (stored locally)
+            openai: null,
+            anthropic: null,
+            google: null,
+            xai: null,
+            groq: null,
+            mistral: null,
+            openrouter: null,
+            deepseek: null
+        }
     }
 };
 

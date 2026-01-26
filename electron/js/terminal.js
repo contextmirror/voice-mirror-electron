@@ -1,5 +1,7 @@
 /**
- * terminal.js - xterm.js terminal + Claude Code control
+ * terminal.js - xterm.js terminal + AI provider control
+ *
+ * Model-agnostic terminal that supports Claude Code, Ollama, LM Studio, and other providers.
  */
 
 import { state } from './state.js';
@@ -16,7 +18,12 @@ let fullscreenContainer;    // Fullscreen page xterm mount point
 let terminalStatus;
 let terminalStartBtn;
 let terminalBtn;
-let claudeBadge;
+let aiBadge;
+
+// Dynamic UI elements for provider display
+let navTerminalLabel;
+let terminalTitle;
+let terminalFullscreenTitle;
 
 /**
  * Initialize xterm.js terminal
@@ -29,7 +36,12 @@ export async function initXterm() {
     terminalStatus = document.getElementById('terminal-status');
     terminalStartBtn = document.getElementById('terminal-start');
     terminalBtn = document.querySelector('.terminal-btn');
-    claudeBadge = document.getElementById('claude-badge');
+    aiBadge = document.getElementById('nav-ai-badge');
+
+    // Dynamic provider display elements
+    navTerminalLabel = document.getElementById('nav-terminal-label');
+    terminalTitle = document.getElementById('terminal-title');
+    terminalFullscreenTitle = document.getElementById('terminal-fullscreen-title');
 
     // xterm.js loaded via script tags (UMD bundles expose on window)
     const Terminal = window.Terminal;
@@ -123,12 +135,16 @@ export async function initXterm() {
         fitAddon.fit();
     }, 100);
 
-    // Welcome message
+    // Welcome message - use current provider name
+    const providerName = state.currentProviderName || 'AI Provider';
+    const bannerText = `Voice Mirror - ${providerName}`;
+    const padding = Math.max(0, Math.floor((38 - bannerText.length) / 2));
+    const paddedBanner = ' '.repeat(padding) + bannerText + ' '.repeat(padding);
     term.writeln('\x1b[36m╔════════════════════════════════════════╗\x1b[0m');
-    term.writeln('\x1b[36m║\x1b[0m   \x1b[1;35mVoice Mirror\x1b[0m - Claude Code Terminal   \x1b[36m║\x1b[0m');
+    term.writeln(`\x1b[36m║\x1b[0m \x1b[1;35m${paddedBanner}\x1b[0m \x1b[36m║\x1b[0m`);
     term.writeln('\x1b[36m╚════════════════════════════════════════╝\x1b[0m');
     term.writeln('');
-    term.writeln('\x1b[90mClick "Start" to launch Claude Code...\x1b[0m');
+    term.writeln(`\x1b[90mClick "Start" to launch ${providerName}...\x1b[0m`);
     term.writeln('');
 
     console.log('[xterm] Initialized at:', state.terminalLocation);
@@ -250,10 +266,10 @@ export function getTerminalLocation() {
 }
 
 /**
- * Update Claude status display
+ * Update AI provider status display
  */
-export function updateClaudeStatus(running) {
-    state.claudeRunning = running;
+export function updateAIStatus(running) {
+    state.aiRunning = running;
 
     // Update terminal panel status (if elements exist)
     if (terminalStatus) {
@@ -266,9 +282,9 @@ export function updateClaudeStatus(running) {
         }
     }
 
-    // Update status bar badge
-    if (claudeBadge) {
-        claudeBadge.classList.toggle('stopped', !running);
+    // Update sidebar nav badge
+    if (aiBadge) {
+        aiBadge.classList.toggle('stopped', !running);
     }
 
     // Update start/stop button
@@ -276,18 +292,12 @@ export function updateClaudeStatus(running) {
         if (running) {
             terminalStartBtn.textContent = 'Stop';
             terminalStartBtn.className = 'control-btn stop';
-            terminalStartBtn.onclick = stopClaude;
+            terminalStartBtn.onclick = stopAI;
         } else {
             terminalStartBtn.textContent = 'Start';
             terminalStartBtn.className = 'control-btn start';
-            terminalStartBtn.onclick = startClaude;
+            terminalStartBtn.onclick = startAI;
         }
-    }
-
-    // Update sidebar nav badge
-    const navClaudeBadge = document.getElementById('nav-claude-badge');
-    if (navClaudeBadge) {
-        navClaudeBadge.classList.toggle('stopped', !running);
     }
 
     // Update fullscreen terminal status (if it exists)
@@ -307,22 +317,57 @@ export function updateClaudeStatus(running) {
         if (running) {
             fullscreenStartBtn.textContent = 'Stop';
             fullscreenStartBtn.className = 'control-btn stop';
-            fullscreenStartBtn.onclick = stopClaude;
+            fullscreenStartBtn.onclick = stopAI;
         } else {
             fullscreenStartBtn.textContent = 'Start';
             fullscreenStartBtn.className = 'control-btn start';
-            fullscreenStartBtn.onclick = startClaude;
+            fullscreenStartBtn.onclick = startAI;
         }
     }
 }
 
 /**
- * Start Claude Code process
+ * Update provider display in UI elements
+ * @param {string} providerName - Display name (e.g., 'Claude Code', 'Ollama (llama3.2)')
+ * @param {string} providerType - Provider type ID (e.g., 'claude', 'ollama')
+ * @param {string|null} model - Model name if applicable
  */
-export async function startClaude() {
+export function updateProviderDisplay(providerName, providerType = 'claude', model = null) {
+    // Update state
+    state.currentProvider = providerType;
+    state.currentProviderName = providerName;
+    state.currentModel = model;
+
+    // Update sidebar nav label
+    if (navTerminalLabel) {
+        navTerminalLabel.textContent = providerName;
+    }
+
+    // Update terminal header titles (with terminal icon)
+    const titleText = `⌘ ${providerName}`;
+    if (terminalTitle) {
+        terminalTitle.textContent = titleText;
+    }
+    if (terminalFullscreenTitle) {
+        terminalFullscreenTitle.textContent = titleText;
+    }
+
+    // Update nav button tooltip
+    const navTerminal = document.getElementById('nav-terminal');
+    if (navTerminal) {
+        navTerminal.setAttribute('data-tooltip', providerName);
+    }
+
+    console.log(`[Terminal] Provider display updated: ${providerName} (${providerType}${model ? ', model: ' + model : ''})`);
+}
+
+/**
+ * Start AI provider process
+ */
+export async function startAI() {
     if (term) {
         term.writeln('');
-        term.writeln('\x1b[34m[Starting Claude Code...]\x1b[0m');
+        term.writeln(`\x1b[34m[Starting ${state.currentProviderName}...]\x1b[0m`);
     }
     try {
         await window.voiceMirror.claude.start();
@@ -334,12 +379,12 @@ export async function startClaude() {
 }
 
 /**
- * Stop Claude Code process
+ * Stop AI provider process
  */
-export async function stopClaude() {
+export async function stopAI() {
     if (term) {
         term.writeln('');
-        term.writeln('\x1b[34m[Stopping Claude Code...]\x1b[0m');
+        term.writeln(`\x1b[34m[Stopping ${state.currentProviderName}...]\x1b[0m`);
     }
     try {
         await window.voiceMirror.claude.stop();
@@ -351,16 +396,16 @@ export async function stopClaude() {
 }
 
 /**
- * Handle terminal output from Claude
+ * Handle terminal output from AI provider
  */
-export function handleClaudeOutput(data) {
+export function handleAIOutput(data) {
     if (!term) return;
 
     switch (data.type) {
         case 'start':
             term.writeln(`\x1b[34m${data.text}\x1b[0m`);
-            updateClaudeStatus(true);
-            // Fit terminal after Claude starts
+            updateAIStatus(true);
+            // Fit terminal after provider starts
             setTimeout(() => {
                 if (fitAddon) fitAddon.fit();
             }, 100);
@@ -376,16 +421,48 @@ export function handleClaudeOutput(data) {
         case 'exit':
             term.writeln('');
             term.writeln(`\x1b[33m[Process exited with code ${data.code}]\x1b[0m`);
-            updateClaudeStatus(false);
+            updateAIStatus(false);
             break;
     }
 }
 
+/**
+ * Clear terminal contents and show welcome banner
+ */
+export function clearTerminal() {
+    if (!term) return;
+
+    // Clear the terminal
+    term.clear();
+
+    // Show welcome banner again
+    const providerName = state.currentProviderName || 'AI Provider';
+    const bannerText = `Voice Mirror - ${providerName}`;
+    const padding = Math.max(0, Math.floor((38 - bannerText.length) / 2));
+    const paddedBanner = ' '.repeat(padding) + bannerText + ' '.repeat(padding);
+    term.writeln('\x1b[36m╔════════════════════════════════════════╗\x1b[0m');
+    term.writeln(`\x1b[36m║\x1b[0m \x1b[1;35m${paddedBanner}\x1b[0m \x1b[36m║\x1b[0m`);
+    term.writeln('\x1b[36m╚════════════════════════════════════════╝\x1b[0m');
+    term.writeln('');
+
+    // Show appropriate message based on running state
+    if (state.aiRunning) {
+        term.writeln(`\x1b[90m${providerName} is running...\x1b[0m`);
+    } else {
+        term.writeln(`\x1b[90mClick "Start" to launch ${providerName}...\x1b[0m`);
+    }
+    term.writeln('');
+
+    console.log('[Terminal] Cleared');
+}
+
 // Expose functions globally for onclick handlers
-window.startClaude = startClaude;
-window.stopClaude = stopClaude;
+window.startAI = startAI;
+window.stopAI = stopAI;
 window.toggleTerminal = toggleTerminal;
 window.minimizeTerminal = minimizeTerminal;
 window.hideTerminal = hideTerminal;
 window.relocateTerminal = relocateTerminal;
 window.getTerminalLocation = getTerminalLocation;
+window.updateProviderDisplay = updateProviderDisplay;
+window.clearTerminal = clearTerminal;

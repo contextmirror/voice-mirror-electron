@@ -1,5 +1,7 @@
 /**
  * messages.js - Chat message handling
+ *
+ * Model-agnostic chat UI that displays messages from any AI provider.
  */
 
 import { state, recentMessages, DEDUP_WINDOW_MS } from './state.js';
@@ -7,13 +9,23 @@ import { renderMarkdown } from './markdown.js';
 import { formatTime } from './utils.js';
 
 /**
+ * Strip provider prefix from message text.
+ * Handles patterns like "Claude: ", "Ollama: ", "Claude (model): ", etc.
+ */
+function stripProviderPrefix(text) {
+    if (!text) return text;
+    // Match patterns: "Claude: ", "Ollama: ", "Claude (model-name): ", "Grok (xAI): ", etc.
+    return text.replace(/^(?:Claude|Ollama|OpenAI|Gemini|Grok|Groq|Mistral|DeepSeek|LM Studio|Jan)(?:\s*\([^)]+\))?:\s*/i, '').trim();
+}
+
+/**
  * Check if message is a duplicate (within dedup window)
  */
 export function isDuplicate(text) {
     if (!text) return false;
 
-    // Normalize text (remove "Claude: " prefix for comparison)
-    const normalized = text.replace(/^Claude:\s*/i, '').trim().toLowerCase();
+    // Normalize text (remove any provider prefix for comparison)
+    const normalized = stripProviderPrefix(text).toLowerCase();
     const now = Date.now();
 
     // Clean old entries
@@ -51,8 +63,10 @@ export function addMessage(role, text, imageBase64 = null) {
 
     const header = document.createElement('div');
     header.className = 'message-header';
+    // Use dynamic provider name from state for assistant messages
+    const senderName = role === 'user' ? 'You' : state.currentProviderName;
     header.innerHTML = `
-        <span class="message-sender">${role === 'user' ? 'You' : 'Claude'}</span>
+        <span class="message-sender">${senderName}</span>
         <span class="message-time">${formatTime()}</span>
     `;
 
@@ -73,8 +87,10 @@ export function addMessage(role, text, imageBase64 = null) {
         const textNode = document.createElement('div');
         // Use markdown rendering for assistant messages, plain text for user
         if (role === 'assistant') {
+            // Strip provider prefix (e.g., "Claude: ") since sender is shown in header
+            const cleanText = stripProviderPrefix(text);
             textNode.className = 'markdown-content';
-            textNode.innerHTML = renderMarkdown(text);
+            textNode.innerHTML = renderMarkdown(cleanText);
         } else {
             textNode.textContent = text;
         }

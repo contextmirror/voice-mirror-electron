@@ -7,7 +7,13 @@ export const state = {
     isExpanded: false,
     pendingImageData: null,
     callModeActive: false,
-    claudeRunning: false,
+    // AI Provider state
+    aiRunning: false,               // Whether AI provider is running (renamed from claudeRunning)
+    currentProvider: 'claude',      // Provider type: 'claude' | 'ollama' | 'lmstudio' | 'openai' | etc.
+    currentProviderName: 'Claude Code',  // Display name for UI
+    currentModel: null,             // Model ID (e.g., 'llama3.2:latest', 'gpt-4')
+    detectedProviders: [],          // List of auto-detected local providers
+    // Terminal state
     terminalVisible: false,         // Whether terminal panel is visible on chat page
     terminalMinimized: false,
     terminalLocation: 'fullscreen', // 'fullscreen' | 'chat-bottom' - where terminal is displayed

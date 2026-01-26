@@ -142,10 +142,14 @@ def emit_event(event: str, data: dict = None):
             write_log('VOICE', "Sent to Claude")
     elif event == 'response':
         text = data.get('text', '') if data else ''
-        # Extract just the message, not the prefix
-        if text.startswith('Claude: '):
-            text = text[8:]
-        write_log('CLAUDE', f"{text[:60]}...")
+        # Extract just the message, not the prefix (supports any provider)
+        import re
+        provider_match = re.match(r'^(\w+(?:\s+\(\w+\))?): (.+)', text)
+        if provider_match:
+            provider, content = provider_match.groups()
+            write_log('CLAUDE', f"{content[:60]}...")
+        else:
+            write_log('CLAUDE', f"{text[:60]}...")
     elif event == 'speaking_start':
         text = data.get('text', '')[:40] if data else ''
         write_log('TTS', f"Speaking: {text}...")
@@ -281,8 +285,8 @@ class ElectronOutputCapture:
         # Speaking / TTS
         elif "🔊 Speaking" in text:
             return f"{Colors.GREEN}{text}{Colors.RESET}"
-        # Claude response
-        elif "💬 Claude:" in text or text.startswith("💬 "):
+        # AI response (Claude, Ollama, etc.)
+        elif text.startswith("💬 "):
             return f"{Colors.BLUE}{text}{Colors.RESET}"
         # Sent to inbox
         elif "📬 Sent to inbox" in text:

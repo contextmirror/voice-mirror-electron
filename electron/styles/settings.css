@@ -357,3 +357,335 @@
 #page-settings .settings-actions {
     max-width: 600px;
 }
+
+/* ========== AI Provider Detection Status ========== */
+.detection-status {
+    padding: 12px;
+    margin: 8px 0;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    border-left: 3px solid rgba(255, 255, 255, 0.2);
+}
+
+.detection-status.scanning {
+    border-left-color: #fbbf24;
+}
+
+.detection-status.scanning .detection-label::before {
+    content: "⏳ ";
+}
+
+.detection-status .detection-label {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 12px;
+}
+
+.detection-status .provider-list {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.detection-status .provider-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.detection-status .provider-item .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.detection-status .provider-item .status-dot.online {
+    background: #4ade80;
+    box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
+}
+
+.detection-status .provider-item .status-dot.offline {
+    background: #6b7280;
+}
+
+.detection-status .provider-item .model-name {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 11px;
+    margin-left: auto;
+}
+
+/* Text input for endpoint/API key */
+.setting-row input[type="text"],
+.setting-row input[type="password"] {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    color: white;
+    padding: 8px 12px;
+    font-size: 13px;
+    min-width: 200px;
+}
+
+.setting-row input[type="text"]:focus,
+.setting-row input[type="password"]:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.setting-row input[type="text"]::placeholder,
+.setting-row input[type="password"]::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+/* Scan button in AI Provider section */
+#ai-scan-btn {
+    margin: 12px;
+    flex: none;
+    width: auto;
+    padding: 8px 16px;
+}
+
+/* ========== Custom Provider Selector ========== */
+.provider-selector {
+    position: relative;
+    min-width: 220px;
+}
+
+.provider-selector-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    color: white;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.provider-selector-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.25);
+}
+
+.provider-selector-btn:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.25);
+}
+
+.provider-selector-btn .provider-name {
+    flex: 1;
+    text-align: left;
+}
+
+.provider-selector-btn .dropdown-arrow {
+    width: 16px;
+    height: 16px;
+    opacity: 0.6;
+    transition: transform 0.2s ease;
+}
+
+.provider-selector.open .dropdown-arrow {
+    transform: rotate(180deg);
+}
+
+/* Dropdown menu */
+.provider-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: #1e1e2e;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    z-index: 1000;
+    max-height: 360px;
+    overflow-y: auto;
+    display: none;
+}
+
+.provider-selector.open .provider-dropdown {
+    display: block;
+    animation: dropdownFadeIn 0.15s ease;
+}
+
+@keyframes dropdownFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.provider-group {
+    padding: 6px 0;
+}
+
+.provider-group:not(:last-child) {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.provider-group-label {
+    padding: 8px 14px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.provider-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.provider-option:hover {
+    background: rgba(102, 126, 234, 0.2);
+}
+
+.provider-option.selected {
+    background: rgba(102, 126, 234, 0.3);
+}
+
+.provider-option span:last-child {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+/* ========== Provider Icons ========== */
+.provider-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+/* Ollama - Llama face icon */
+.provider-icon-ollama {
+    background: linear-gradient(135deg, #f0f0f0, #d0d0d0);
+    color: #333;
+}
+.provider-icon-ollama::before {
+    content: "🦙";
+    font-size: 14px;
+}
+
+/* LM Studio - Blue gradient with "LM" */
+.provider-icon-lmstudio {
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+    color: white;
+}
+.provider-icon-lmstudio::before {
+    content: "LM";
+    font-size: 9px;
+    letter-spacing: -0.5px;
+}
+
+/* Jan - Purple with "J" */
+.provider-icon-jan {
+    background: linear-gradient(135deg, #a855f7, #7c3aed);
+    color: white;
+}
+.provider-icon-jan::before {
+    content: "J";
+}
+
+/* Claude - Orange/peach Anthropic color */
+.provider-icon-claude {
+    background: linear-gradient(135deg, #da7756, #c45a38);
+    color: white;
+}
+.provider-icon-claude::before {
+    content: "◈";
+    font-size: 14px;
+}
+
+/* OpenAI - Green/teal */
+.provider-icon-openai {
+    background: linear-gradient(135deg, #10a37f, #0d8c6d);
+    color: white;
+}
+.provider-icon-openai::before {
+    content: "◎";
+    font-size: 14px;
+}
+
+/* Gemini - Google multicolor */
+.provider-icon-gemini {
+    background: linear-gradient(135deg, #4285f4, #ea4335, #fbbc04, #34a853);
+    background-size: 200% 200%;
+    color: white;
+}
+.provider-icon-gemini::before {
+    content: "✦";
+    font-size: 14px;
+}
+
+/* Grok (xAI) - X logo style, black/white */
+.provider-icon-grok {
+    background: linear-gradient(135deg, #1a1a1a, #333);
+    color: white;
+}
+.provider-icon-grok::before {
+    content: "𝕏";
+    font-size: 13px;
+}
+
+/* Groq - Orange lightning fast */
+.provider-icon-groq {
+    background: linear-gradient(135deg, #f97316, #ea580c);
+    color: white;
+}
+.provider-icon-groq::before {
+    content: "⚡";
+    font-size: 13px;
+}
+
+/* Mistral - Blue/cyan */
+.provider-icon-mistral {
+    background: linear-gradient(135deg, #ff6b35, #f7931e);
+    color: white;
+}
+.provider-icon-mistral::before {
+    content: "M";
+}
+
+/* OpenRouter - Purple router */
+.provider-icon-openrouter {
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+    color: white;
+}
+.provider-icon-openrouter::before {
+    content: "⇆";
+    font-size: 14px;
+}
+
+/* DeepSeek - Blue deep ocean */
+.provider-icon-deepseek {
+    background: linear-gradient(135deg, #0ea5e9, #0284c7);
+    color: white;
+}
+.provider-icon-deepseek::before {
+    content: "🔍";
+    font-size: 12px;
+}

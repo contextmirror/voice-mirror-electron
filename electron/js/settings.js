@@ -5,6 +5,43 @@
 import { state } from './state.js';
 import { formatKeybind } from './utils.js';
 import { navigateTo } from './navigation.js';
+import { updateProviderDisplay, clearTerminal } from './terminal.js';
+
+// Provider display names
+const PROVIDER_NAMES = {
+    claude: 'Claude Code',
+    ollama: 'Ollama',
+    lmstudio: 'LM Studio',
+    jan: 'Jan',
+    openai: 'OpenAI',
+    gemini: 'Google Gemini',
+    grok: 'Grok (xAI)',
+    groq: 'Groq',
+    mistral: 'Mistral',
+    openrouter: 'OpenRouter',
+    deepseek: 'DeepSeek'
+};
+
+// Provider icon CSS classes
+const PROVIDER_ICON_CLASSES = {
+    claude: 'provider-icon-claude',
+    ollama: 'provider-icon-ollama',
+    lmstudio: 'provider-icon-lmstudio',
+    jan: 'provider-icon-jan',
+    openai: 'provider-icon-openai',
+    gemini: 'provider-icon-gemini',
+    grok: 'provider-icon-grok',
+    groq: 'provider-icon-groq',
+    mistral: 'provider-icon-mistral',
+    openrouter: 'provider-icon-openrouter',
+    deepseek: 'provider-icon-deepseek'
+};
+
+// Local providers that can be auto-detected
+const LOCAL_PROVIDERS = ['ollama', 'lmstudio', 'jan'];
+
+// Cloud providers that need API keys
+const CLOUD_PROVIDERS_WITH_APIKEY = ['openai', 'gemini', 'grok', 'groq', 'mistral', 'openrouter', 'deepseek'];
 
 /**
  * Toggle settings - navigates to settings page or back to chat
@@ -62,6 +99,25 @@ export async function loadSettingsUI() {
         document.getElementById('start-minimized').checked = state.currentConfig.behavior?.startMinimized || false;
         document.getElementById('click-to-talk').checked = state.currentConfig.behavior?.clickToTalk !== false;
 
+        // AI Provider settings
+        const aiConfig = state.currentConfig.ai || {};
+        document.getElementById('ai-auto-detect').checked = aiConfig.autoDetect !== false;
+        const selectedProvider = aiConfig.provider || 'claude';
+        setProviderSelectorValue(selectedProvider);
+        updateAIProviderUI(selectedProvider);
+
+        // Set endpoint if custom
+        const endpoints = aiConfig.endpoints || {};
+        const provider = aiConfig.provider || 'claude';
+        if (LOCAL_PROVIDERS.includes(provider) && endpoints[provider]) {
+            document.getElementById('ai-endpoint').value = endpoints[provider];
+        }
+
+        // If auto-detect is enabled, scan for providers
+        if (aiConfig.autoDetect !== false) {
+            scanProviders();
+        }
+
     } catch (err) {
         console.error('[Settings] Failed to load config:', err);
     }
@@ -79,10 +135,144 @@ export function updateActivationModeUI(mode) {
 }
 
 /**
+ * Update AI provider UI based on selected provider
+ */
+export function updateAIProviderUI(provider) {
+    const modelRow = document.getElementById('ai-model-row');
+    const endpointRow = document.getElementById('ai-endpoint-row');
+    const apikeyRow = document.getElementById('ai-apikey-row');
+
+    // Show/hide endpoint row for local providers
+    endpointRow.style.display = LOCAL_PROVIDERS.includes(provider) ? 'flex' : 'none';
+
+    // Show/hide API key row for cloud providers
+    apikeyRow.style.display = CLOUD_PROVIDERS_WITH_APIKEY.includes(provider) ? 'flex' : 'none';
+
+    // Model row: show for local providers (populated from detection), hide for Claude (uses CLI)
+    modelRow.style.display = provider === 'claude' ? 'none' : 'flex';
+
+    // Set default endpoint for local providers
+    if (LOCAL_PROVIDERS.includes(provider)) {
+        const defaultEndpoints = {
+            ollama: 'http://127.0.0.1:11434',
+            lmstudio: 'http://127.0.0.1:1234',
+            jan: 'http://127.0.0.1:1337'
+        };
+        const endpointInput = document.getElementById('ai-endpoint');
+        if (!endpointInput.value || endpointInput.dataset.provider !== provider) {
+            endpointInput.value = defaultEndpoints[provider] || '';
+            endpointInput.dataset.provider = provider;
+        }
+    }
+}
+
+/**
+ * Scan for local LLM providers
+ */
+export async function scanProviders() {
+    const statusDiv = document.getElementById('ai-detected-status');
+    const modelSelect = document.getElementById('ai-model');
+    const scanBtn = document.getElementById('ai-scan-btn');
+
+    // Show scanning state
+    statusDiv.className = 'detection-status scanning';
+    statusDiv.innerHTML = '<span class="detection-label">Scanning for local LLM servers...</span>';
+    scanBtn.disabled = true;
+    scanBtn.textContent = 'Scanning...';
+
+    try {
+        // Call main process to scan providers
+        const results = await window.voiceMirror.ai.scanProviders();
+        state.detectedProviders = results || [];
+
+        // Build status display
+        let html = '<span class="detection-label">Local LLM Servers</span>';
+        html += '<div class="provider-list">';
+
+        const providerOrder = ['ollama', 'lmstudio', 'jan'];
+        for (const type of providerOrder) {
+            const provider = results.find(p => p.type === type);
+            const name = PROVIDER_NAMES[type] || type;
+            const isOnline = provider?.online;
+            const model = provider?.model;
+
+            html += `<div class="provider-item">`;
+            html += `<span class="status-dot ${isOnline ? 'online' : 'offline'}"></span>`;
+            html += `<span>${name}</span>`;
+            if (isOnline && model) {
+                html += `<span class="model-name">${model}</span>`;
+            } else if (!isOnline) {
+                html += `<span class="model-name">offline</span>`;
+            }
+            html += `</div>`;
+        }
+        html += '</div>';
+
+        statusDiv.className = 'detection-status';
+        statusDiv.innerHTML = html;
+
+        // Populate model dropdown for current provider
+        const currentProvider = document.getElementById('ai-provider').value;
+        const providerData = results.find(p => p.type === currentProvider);
+
+        if (providerData?.models?.length > 0) {
+            modelSelect.innerHTML = '<option value="">Auto (default)</option>';
+            for (const model of providerData.models) {
+                const option = document.createElement('option');
+                option.value = model;
+                option.textContent = model;
+                if (model === providerData.model) {
+                    option.selected = true;
+                }
+                modelSelect.appendChild(option);
+            }
+        }
+
+        console.log('[Settings] Provider scan complete:', results);
+
+    } catch (err) {
+        console.error('[Settings] Provider scan failed:', err);
+        statusDiv.className = 'detection-status';
+        statusDiv.innerHTML = '<span class="detection-label">Failed to scan providers</span>';
+    } finally {
+        scanBtn.disabled = false;
+        scanBtn.textContent = 'Scan Now';
+    }
+}
+
+/**
  * Save settings to config
  */
 export async function saveSettings() {
     const activationMode = document.querySelector('input[name="activationMode"]:checked').value;
+    const aiProvider = document.getElementById('ai-provider').value;
+    const aiModel = document.getElementById('ai-model').value || null;
+    const aiAutoDetect = document.getElementById('ai-auto-detect').checked;
+    const aiEndpoint = document.getElementById('ai-endpoint').value;
+
+    // Build AI config
+    const aiUpdates = {
+        provider: aiProvider,
+        model: aiModel,
+        autoDetect: aiAutoDetect
+    };
+
+    // Update endpoint if it's a local provider with custom endpoint
+    if (LOCAL_PROVIDERS.includes(aiProvider) && aiEndpoint) {
+        aiUpdates.endpoints = {
+            [aiProvider]: aiEndpoint
+        };
+    }
+
+    // Handle API key for cloud providers
+    if (CLOUD_PROVIDERS_WITH_APIKEY.includes(aiProvider)) {
+        const apiKey = document.getElementById('ai-apikey').value;
+        if (apiKey) {
+            aiUpdates.apiKeys = {
+                [aiProvider]: apiKey
+            };
+        }
+    }
 
     const updates = {
         behavior: {
@@ -108,7 +298,8 @@ export async function saveSettings() {
         appearance: {
             orbSize: parseInt(document.getElementById('orb-size').value),
             theme: document.getElementById('theme-select').value
-        }
+        },
+        ai: aiUpdates
     };
 
     try {
@@ -128,6 +319,35 @@ export async function saveSettings() {
 
         // Update welcome message with new mode
         window.updateWelcomeMessage();
+
+        // Update provider display in terminal/sidebar
+        let displayName = PROVIDER_NAMES[aiProvider] || aiProvider;
+        if (aiModel) {
+            const shortModel = aiModel.split(':')[0];
+            displayName = `${displayName} (${shortModel})`;
+        }
+        updateProviderDisplay(displayName, aiProvider, aiModel);
+
+        // If AI provider or model changed, clear terminal and restart if running
+        const oldProvider = state.currentProvider;
+        const oldModel = state.currentModel;
+        const providerChanged = oldProvider !== aiProvider;
+        const modelChanged = oldModel !== aiModel;
+
+        if (providerChanged || modelChanged) {
+            // Clear terminal when provider or model changes
+            clearTerminal();
+            console.log(`[Settings] Provider/model changed: ${oldProvider}/${oldModel} -> ${aiProvider}/${aiModel}`);
+
+            const status = await window.voiceMirror.claude.getStatus();
+            if (status.running) {
+                console.log('[Settings] Stopping old provider and starting new one...');
+                await window.voiceMirror.claude.stop();
+                // Small delay to ensure clean stop
+                await new Promise(resolve => setTimeout(resolve, 500));
+                await window.voiceMirror.claude.start();
+            }
+        }
 
         // Show save confirmation
         const saveBtn = document.querySelector('.settings-btn.primary');
@@ -180,9 +400,97 @@ function updateCallModeUI() {
 }
 
 /**
+ * Set the provider selector value and update display
+ */
+function setProviderSelectorValue(providerId) {
+    const hiddenInput = document.getElementById('ai-provider');
+    const iconEl = document.getElementById('selected-provider-icon');
+    const nameEl = document.getElementById('selected-provider-name');
+
+    if (hiddenInput) hiddenInput.value = providerId;
+
+    // Update icon
+    if (iconEl) {
+        iconEl.className = 'provider-icon ' + (PROVIDER_ICON_CLASSES[providerId] || '');
+    }
+
+    // Update name
+    if (nameEl) {
+        nameEl.textContent = PROVIDER_NAMES[providerId] || providerId;
+    }
+
+    // Update selected state in dropdown
+    document.querySelectorAll('.provider-option').forEach(opt => {
+        opt.classList.toggle('selected', opt.dataset.value === providerId);
+    });
+}
+
+/**
+ * Initialize custom provider selector dropdown
+ */
+function initProviderSelector() {
+    const selector = document.getElementById('ai-provider-selector');
+    const btn = document.getElementById('ai-provider-btn');
+    const dropdown = document.getElementById('ai-provider-dropdown');
+
+    if (!selector || !btn || !dropdown) return;
+
+    // Toggle dropdown on button click
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selector.classList.toggle('open');
+    });
+
+    // Handle option selection
+    dropdown.addEventListener('click', (e) => {
+        const option = e.target.closest('.provider-option');
+        if (!option) return;
+
+        const value = option.dataset.value;
+        setProviderSelectorValue(value);
+        selector.classList.remove('open');
+
+        // Trigger change behavior
+        updateAIProviderUI(value);
+
+        // Populate models from detected providers
+        const providerData = state.detectedProviders?.find(p => p.type === value);
+        const modelSelect = document.getElementById('ai-model');
+        if (providerData?.models?.length > 0) {
+            modelSelect.innerHTML = '<option value="">Auto (default)</option>';
+            for (const model of providerData.models) {
+                const opt = document.createElement('option');
+                opt.value = model;
+                opt.textContent = model;
+                modelSelect.appendChild(opt);
+            }
+        } else {
+            modelSelect.innerHTML = '<option value="">Auto (default)</option>';
+        }
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!selector.contains(e.target)) {
+            selector.classList.remove('open');
+        }
+    });
+
+    // Close on escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            selector.classList.remove('open');
+        }
+    });
+}
+
+/**
  * Initialize settings event listeners
  */
 export function initSettings() {
+    // Initialize custom provider selector
+    initProviderSelector();
+
     // Activation mode change handler
     document.querySelectorAll('input[name="activationMode"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
@@ -287,3 +595,5 @@ window.toggleSettings = toggleSettings;
 window.saveSettings = saveSettings;
 window.resetSettings = resetSettings;
 window.loadSettingsUI = loadSettingsUI;
+window.scanProviders = scanProviders;
+window.updateAIProviderUI = updateAIProviderUI;

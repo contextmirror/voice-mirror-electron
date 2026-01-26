@@ -110,6 +110,21 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         resize: (cols, rows) => ipcRenderer.invoke('claude-pty-resize', cols, rows)
     },
 
+    // AI Provider control (model-agnostic)
+    ai: {
+        // Scan for available local providers (Ollama, LM Studio, Jan)
+        scanProviders: () => ipcRenderer.invoke('ai-scan-providers'),
+
+        // Get available providers (cached results from last scan)
+        getProviders: () => ipcRenderer.invoke('ai-get-providers'),
+
+        // Set active provider
+        setProvider: (providerId, model) => ipcRenderer.invoke('ai-set-provider', providerId, model),
+
+        // Get current provider info
+        getProvider: () => ipcRenderer.invoke('ai-get-provider')
+    },
+
     // Combined controls
     startAll: () => ipcRenderer.invoke('start-all'),
     stopAll: () => ipcRenderer.invoke('stop-all'),

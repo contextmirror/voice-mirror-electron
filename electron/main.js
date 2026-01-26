@@ -15,6 +15,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const config = require('./config');
 const { spawnClaude, stopClaude, sendInput, sendRawInput, sendInputWhenReady, isClaudeRunning, isClaudeReady, configureMCPServer, isClaudeAvailable, resizePty } = require('./claude-spawner');
+const { createProvider } = require('./providers');
 
 // File logging - writes to vmr.log in config data directory
 let logFile = null;
@@ -143,6 +144,7 @@ let mainWindow = null;
 let tray = null;
 let pythonProcess = null;
 let appConfig = null;
+let activeProvider = null;  // Current AI provider instance (Claude PTY or OpenAI-compatible)
 
 // Window state
 let isExpanded = false;
@@ -726,6 +728,160 @@ function stopClaudeCode() {
             type: 'claude_disconnected'
         });
     }
+}
+
+/**
+ * Start AI provider based on config.
+ * Routes to Claude Code PTY or OpenAI-compatible API provider.
+ */
+function startAIProvider() {
+    const providerType = appConfig?.ai?.provider || 'claude';
+    const model = appConfig?.ai?.model || null;
+
+    console.log(`[Voice Mirror] Starting AI provider: ${providerType}${model ? ' (' + model + ')' : ''}`);
+
+    // Check if already running
+    if (providerType === 'claude') {
+        // Claude uses the existing PTY-based system
+        if (isClaudeRunning()) {
+            console.log('[Voice Mirror] Claude already running');
+            return false;
+        }
+        startClaudeCode();
+        return true;
+    }
+
+    // For non-Claude providers, use the OpenAI-compatible provider
+    if (activeProvider && activeProvider.isRunning()) {
+        console.log(`[Voice Mirror] ${providerType} already running`);
+        return false;
+    }
+
+    // Get provider config (endpoints, API keys)
+    const endpoints = appConfig?.ai?.endpoints || {};
+    const apiKeys = appConfig?.ai?.apiKeys || {};
+
+    // Map provider type to alternative API key names (check both)
+    const apiKeyAltMap = {
+        gemini: 'google',  // gemini keys can be under 'gemini' or 'google'
+        grok: 'xai'        // grok keys can be under 'grok' or 'xai'
+    };
+    const altKeyName = apiKeyAltMap[providerType];
+
+    // Try provider name first, then alternative name, then env var
+    const apiKey = apiKeys[providerType] ||
+                   (altKeyName && apiKeys[altKeyName]) ||
+                   process.env[`${providerType.toUpperCase()}_API_KEY`] ||
+                   (altKeyName && process.env[`${altKeyName.toUpperCase()}_API_KEY`]) ||
+                   undefined;
+
+    // Create provider instance
+    activeProvider = createProvider(providerType, {
+        model: model,
+        baseUrl: endpoints[providerType] || undefined,
+        apiKey: apiKey
+    });
+
+    // Set up output handlers
+    activeProvider.on('output', (data) => {
+        mainWindow?.webContents.send('claude-terminal', {
+            type: data.type,
+            text: data.text
+        });
+    });
+
+    // Start the provider
+    activeProvider.spawn().then(() => {
+        mainWindow?.webContents.send('claude-terminal', {
+            type: 'start',
+            text: `[${activeProvider.getDisplayName()}] Ready\n`
+        });
+        mainWindow?.webContents.send('voice-event', {
+            type: 'claude_connected'
+        });
+    }).catch((err) => {
+        console.error(`[Voice Mirror] Failed to start ${providerType}:`, err);
+        mainWindow?.webContents.send('claude-terminal', {
+            type: 'stderr',
+            text: `[Error] Failed to start ${providerType}: ${err.message}\n`
+        });
+    });
+
+    return true;
+}
+
+/**
+ * Stop the active AI provider.
+ * Stops whatever is actually running, not based on config.
+ */
+function stopAIProvider() {
+    let stopped = false;
+
+    // Always try to stop Claude PTY if it's running
+    if (isClaudeRunning()) {
+        stopClaudeCode();
+        stopped = true;
+        console.log('[Voice Mirror] Stopped Claude Code PTY');
+    }
+
+    // Also stop OpenAI-compatible provider if running
+    if (activeProvider && activeProvider.isRunning()) {
+        const name = activeProvider.getDisplayName();
+        activeProvider.stop();
+        activeProvider = null;
+        console.log(`[Voice Mirror] Stopped ${name}`);
+        stopped = true;
+    }
+
+    if (stopped) {
+        mainWindow?.webContents.send('voice-event', {
+            type: 'claude_disconnected'
+        });
+    }
+
+    return stopped;
+}
+
+/**
+ * Check if AI provider is running.
+ * Checks what's actually running, not based on config.
+ */
+function isAIProviderRunning() {
+    // Check if Claude PTY is running
+    if (isClaudeRunning()) {
+        return true;
+    }
+
+    // Check if OpenAI-compatible provider is running
+    if (activeProvider && activeProvider.isRunning()) {
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * Send input to the active AI provider.
+ */
+function sendAIInput(text) {
+    const providerType = appConfig?.ai?.provider || 'claude';
+
+    if (providerType === 'claude') {
+        // Claude uses PTY input
+        if (isClaudeRunning()) {
+            sendInput(text);
+            return true;
+        }
+        return false;
+    }
+
+    // OpenAI-compatible providers use sendInput method
+    if (activeProvider && activeProvider.isRunning()) {
+        activeProvider.sendInput(text);
+        return true;
+    }
+
+    return false;
 }
 
 /**
@@ -1361,52 +1517,125 @@ app.whenReady().then(() => {
         return { active: false };
     });
 
-    // Claude Code backend IPC handlers
+    // AI Provider backend IPC handlers (routes to Claude PTY or OpenAI-compatible API)
     ipcMain.handle('start-claude', () => {
-        if (!isClaudeRunning()) {
-            startClaudeCode();
-            return { started: true };
+        if (!isAIProviderRunning()) {
+            const started = startAIProvider();
+            return { started };
         }
         return { started: false, reason: 'already running' };
     });
 
     ipcMain.handle('stop-claude', () => {
-        if (isClaudeRunning()) {
-            stopClaudeCode();
+        if (isAIProviderRunning()) {
+            stopAIProvider();
             return { stopped: true };
         }
         return { stopped: false, reason: 'not running' };
     });
 
     ipcMain.handle('get-claude-status', () => {
+        const providerType = appConfig?.ai?.provider || 'claude';
         return {
-            running: isClaudeRunning(),
-            mode: 'pty'
+            running: isAIProviderRunning(),
+            mode: providerType === 'claude' ? 'pty' : 'api',
+            provider: providerType
         };
     });
 
     // PTY input/resize handlers for xterm.js
-    // Use sendRawInput for keyboard input (passes through directly)
+    // Routes to Claude PTY or OpenAI-compatible provider based on config
     ipcMain.handle('claude-pty-input', (event, data) => {
-        if (isClaudeRunning()) {
-            sendRawInput(data);
-            return { sent: true };
+        const providerType = appConfig?.ai?.provider || 'claude';
+
+        if (providerType === 'claude') {
+            // Claude uses PTY - send raw input
+            if (isClaudeRunning()) {
+                sendRawInput(data);
+                return { sent: true };
+            }
+        } else {
+            // OpenAI-compatible providers - accumulate input and send on Enter
+            if (activeProvider && activeProvider.isRunning()) {
+                // Check if Enter key was pressed (CR or LF)
+                if (data === '\r' || data === '\n') {
+                    // Send accumulated input
+                    if (activeProvider._inputBuffer && activeProvider._inputBuffer.trim()) {
+                        activeProvider.sendInput(activeProvider._inputBuffer.trim());
+                        activeProvider._inputBuffer = '';
+                    }
+                } else if (data === '\x7f' || data === '\b') {
+                    // Backspace - remove last character
+                    if (activeProvider._inputBuffer) {
+                        activeProvider._inputBuffer = activeProvider._inputBuffer.slice(0, -1);
+                        // Echo backspace to terminal
+                        mainWindow?.webContents.send('claude-terminal', {
+                            type: 'stdout',
+                            text: '\b \b'
+                        });
+                    }
+                } else if (data.charCodeAt(0) >= 32 || data === '\t') {
+                    // Printable characters - accumulate and echo
+                    activeProvider._inputBuffer = (activeProvider._inputBuffer || '') + data;
+                    // Echo to terminal
+                    mainWindow?.webContents.send('claude-terminal', {
+                        type: 'stdout',
+                        text: data
+                    });
+                }
+                return { sent: true };
+            }
         }
         return { sent: false, reason: 'not running' };
     });
 
     ipcMain.handle('claude-pty-resize', (event, cols, rows) => {
-        if (isClaudeRunning()) {
+        const providerType = appConfig?.ai?.provider || 'claude';
+
+        if (providerType === 'claude' && isClaudeRunning()) {
             resizePty(cols, rows);
             return { resized: true };
         }
-        return { resized: false, reason: 'not running' };
+        // Non-PTY providers don't need resize handling
+        return { resized: false, reason: providerType === 'claude' ? 'not running' : 'not PTY' };
     });
 
-    // Start both Voice + Claude together
+    // AI Provider IPC handlers
+    ipcMain.handle('ai-scan-providers', async () => {
+        const { providerDetector } = require('./services/provider-detector');
+        const results = await providerDetector.scanAll();
+        return results;
+    });
+
+    ipcMain.handle('ai-get-providers', async () => {
+        const { providerDetector } = require('./services/provider-detector');
+        return providerDetector.getCachedStatus();
+    });
+
+    ipcMain.handle('ai-set-provider', (event, providerId, model) => {
+        // Update config with new provider
+        appConfig = config.updateConfig({
+            ai: {
+                provider: providerId,
+                model: model || null
+            }
+        });
+        console.log(`[Voice Mirror] AI provider set to: ${providerId}${model ? ' (' + model + ')' : ''}`);
+        return { success: true, provider: providerId, model };
+    });
+
+    ipcMain.handle('ai-get-provider', () => {
+        return {
+            provider: appConfig?.ai?.provider || 'claude',
+            model: appConfig?.ai?.model || null,
+            autoDetect: appConfig?.ai?.autoDetect !== false
+        };
+    });
+
+    // Start both Voice + AI provider together
     ipcMain.handle('start-all', () => {
         if (!pythonProcess) startPythonVoiceMirror();
-        if (!isClaudeRunning()) startClaudeCode();
+        if (!isAIProviderRunning()) startAIProvider();
         return { started: true };
     });
 
@@ -1416,7 +1645,7 @@ app.whenReady().then(() => {
             pythonProcess.kill();
             pythonProcess = null;
         }
-        stopClaudeCode();
+        stopAIProvider();
         return { stopped: true };
     });
 
@@ -1448,17 +1677,18 @@ app.whenReady().then(() => {
         registerPushToTalk(appConfig.behavior.pttKey);
     }
 
-    // Auto-start Voice Mirror (Python + Claude) on app launch
+    // Auto-start Voice Mirror (Python + AI provider) on app launch
     try {
-        console.log('[Voice Mirror] Auto-starting Python and Claude...');
+        const providerName = appConfig?.ai?.provider || 'claude';
+        console.log(`[Voice Mirror] Auto-starting Python and AI provider (${providerName})...`);
         startPythonVoiceMirror();
 
-        // Small delay to let Python initialize before starting Claude
+        // Small delay to let Python initialize before starting AI provider
         setTimeout(() => {
             try {
-                startClaudeCode();
+                startAIProvider();
             } catch (err) {
-                console.error('[Voice Mirror] Failed to start Claude:', err.message);
+                console.error('[Voice Mirror] Failed to start AI provider:', err.message);
             }
         }, 2000);
     } catch (err) {
@@ -1473,8 +1703,8 @@ app.on('window-all-closed', () => {
         pythonProcess = null;
     }
 
-    // Stop Claude PTY process
-    stopClaudeCode();
+    // Stop AI provider (Claude PTY or OpenAI-compatible)
+    stopAIProvider();
 
     // Stop all watchers
     stopScreenCaptureWatcher();
@@ -1516,8 +1746,8 @@ app.on('before-quit', () => {
         pythonProcess.kill();
     }
 
-    // Stop Claude PTY process
-    stopClaudeCode();
+    // Stop AI provider (Claude PTY or OpenAI-compatible)
+    stopAIProvider();
 
     // Close log file
     closeLogFile();

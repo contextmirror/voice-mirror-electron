@@ -49,6 +49,17 @@
     background: #dc2626;
 }
 
+.control-btn.clear {
+    background: rgba(100, 116, 139, 0.3);
+    color: #94a3b8;
+    border: 1px solid rgba(100, 116, 139, 0.4);
+}
+
+.control-btn.clear:hover {
+    background: rgba(100, 116, 139, 0.5);
+    color: #cbd5e1;
+}
+
 /* ========== Image Preview ========== */
 #image-preview {
     display: none;
