@@ -42,29 +42,35 @@ Combined = Full AI agent for your entire computer
 - Tray menu "Toggle Panel" also works
 - Say "Hey Claude" when Python backend is connected
 
-### State 2: Expanded (Chat Panel)
+### State 2: Expanded (Panel with Sidebar)
 ```
-                             ┌────────────────────┐
-                             │ ◉ Voice Mirror     │
-                             ├────────────────────┤
-                             │ You: What's this   │
-                             │      error?        │
-                             │                    │
-                             │ Claude: That's a   │
-                             │ null pointer in... │
-                             │                    │
-                             │ You: Fix it        │
-                             │                    │
-                             │ Claude: Done. I    │
-                             │ added a null check │
-                             ├────────────────────┤
-                             │ 🎤 Listening...    │
-                             └────────────────────┘
+┌──────────────────────────────────────────────────┐
+│ ◉ Voice Mirror  │                                │
+├─────────────────┤  Chat Page                     │
+│ 💬 Chat         │  ┌────────────────────────┐    │
+│ >_ Claude Code  │  │ You: What's this error?│    │
+│ ⚙️ Settings     │  │                        │    │
+│                 │  │ Claude: That's a null  │    │
+│                 │  │ pointer in line 42...  │    │
+│                 │  └────────────────────────┘    │
+│                 │  ┌────────────────────────┐    │
+│                 │  │ ⌘ Claude Code [Running]│    │
+│                 │  │ > Listening for nathan │    │
+│                 │  └────────────────────────┘    │
+│ [« Collapse]    │  ● Listening...    [📷]       │
+└─────────────────┴────────────────────────────────┘
 ```
-- 400x500 panel with chat history
-- Glass morphism design (dark, blurred)
-- Click mini-orb or outside to minimize
-- Scrollable conversation
+
+**Sidebar Navigation (3 pages):**
+- **Chat** - Voice chat + embedded terminal panel
+- **Claude Code** - Full-screen terminal view
+- **Settings** - Full-page settings configuration
+
+**Sidebar Features:**
+- 200px width expanded, 48px collapsed (icons only)
+- Click collapse button or use saved preference
+- Status badge on Claude Code nav item shows running state
+- Tooltips appear when sidebar is collapsed
 
 ### State 3: System Tray (Hidden)
 ```
@@ -139,7 +145,26 @@ Voice Mirror Electron/
 │   ├── preload.js           # Bridge to renderer
 │   ├── config.js            # Cross-platform config management
 │   ├── claude-spawner.js    # Claude Code CLI spawner
-│   └── overlay.html         # Transparent window UI + terminal
+│   ├── overlay.html         # Main HTML with sidebar + pages
+│   ├── js/
+│   │   ├── main.js          # Entry point, initializes modules
+│   │   ├── state.js         # Global state management
+│   │   ├── navigation.js    # Sidebar + page routing
+│   │   ├── terminal.js      # xterm.js + Claude Code control
+│   │   ├── settings.js      # Settings UI + keybind recorder
+│   │   ├── messages.js      # Chat message handling
+│   │   ├── markdown.js      # Markdown rendering
+│   │   └── utils.js         # Utility functions
+│   └── styles/
+│       ├── tokens.css       # Design tokens (colors, spacing)
+│       ├── base.css         # Base styles
+│       ├── orb.css          # Floating orb styles
+│       ├── panel.css        # Panel container styles
+│       ├── sidebar.css      # Sidebar navigation styles
+│       ├── chat.css         # Chat message styles
+│       ├── terminal.css     # Terminal panel styles
+│       ├── settings.css     # Settings page styles
+│       └── notifications.css # Toast notifications
 ├── mcp-server/
 │   ├── index.js             # Voice Mirror MCP server
 │   └── package.json         # MCP SDK dependencies
@@ -215,32 +240,50 @@ window.voiceMirror = {
 }
 ```
 
-### Embedded Terminal Panel
+### Page Views
 
-The chat panel includes a toggleable terminal that shows Claude Code's output:
-
+**Chat Page** - Default view with voice chat and embedded terminal:
 ```
-┌────────────────────────────────────────┐
-│ ◉ Voice Mirror                         │
-├────────────────────────────────────────┤
-│ Chat messages...                       │
-│                                        │
-├────────────────────────────────────────┤
-│ Claude Code [Running]        [Start] X │
-│ ─────────────────────────────────────  │
-│ [Claude] Listening for nathan...       │
-│ [Claude] Message received: "hello"     │
-│ [Claude] Sending response...           │
-├────────────────────────────────────────┤
-│ ● Listening...                [📷] [>_]│
-└────────────────────────────────────────┘
-                          Terminal toggle ↗
+┌─────────────────────────────────────────┐
+│ Chat messages with markdown rendering   │
+│                                         │
+├─────────────────────────────────────────┤
+│ ⌘ Claude Code [Running]    [Stop] [─][×]│
+│ > Listening for nathan...               │
+│ > Message received: "hello"             │
+├─────────────────────────────────────────┤
+│ ● Listening...                    [📷]  │
+└─────────────────────────────────────────┘
 ```
 
-Toggle with the terminal button (>_) in the status bar. Shows:
-- Claude Code process status (Running/Stopped)
-- Real-time stdout/stderr output
-- Start/Stop controls
+**Claude Code Page** - Full-screen terminal:
+```
+┌─────────────────────────────────────────┐
+│ ⌘ Claude Code [Running]          [Stop] │
+├─────────────────────────────────────────┤
+│                                         │
+│  Full xterm.js terminal                 │
+│  with complete Claude Code output       │
+│                                         │
+│                                         │
+└─────────────────────────────────────────┘
+```
+
+**Settings Page** - Full-page configuration:
+```
+┌─────────────────────────────────────────┐
+│ Settings                                │
+├─────────────────────────────────────────┤
+│ Activation Mode                         │
+│ ○ Wake Word  ○ Call Mode  ○ Push to Talk│
+│                                         │
+│ Voice                                   │
+│ TTS Voice: [af_bella ▼]                 │
+│ Speed: [1.0x]                           │
+│                                         │
+│ [Reset to Defaults]  [Save Changes]     │
+└─────────────────────────────────────────┘
+```
 
 ## Cross-Platform Configuration
 
@@ -258,9 +301,10 @@ Config is stored in platform-appropriate locations:
     wakeWord: { enabled, phrase, sensitivity },
     voice: { ttsVoice, ttsSpeed, sttModel },
     appearance: { orbSize, theme, panelWidth, panelHeight },
-    behavior: { startMinimized, startWithSystem, clickToTalk, hotkey },
+    behavior: { startMinimized, startWithSystem, clickToTalk, hotkey, activationMode, pttKey },
     window: { orbX, orbY },  // Remembered position
-    advanced: { pythonPath, debugMode }
+    advanced: { pythonPath, debugMode },
+    sidebar: { collapsed }   // Sidebar collapsed state
 }
 ```
 
@@ -269,33 +313,18 @@ Automatically detects the correct Python path per platform:
 - **Linux/macOS:** `.venv/bin/python`
 - **Windows:** `.venv\Scripts\python.exe`
 
-## Settings (Future)
+## Settings
 
-```
-┌─────────────────────────────────────────┐
-│ ⚙️ Voice Mirror Settings               │
-├─────────────────────────────────────────┤
-│ Wake Word                               │
-│ ○ "Hey Claude" (default)                │
-│ ○ "Hey Jarvis"                          │
-│ ○ "Computer"                            │
-│ ○ Custom: [____________]                │
-│                                         │
-│ Activation                              │
-│ ☑ Wake word detection                   │
-│ ☑ Click orb to talk                     │
-│ ☑ Hotkey: [Ctrl+Shift+V]               │
-│ ☐ Always listening (Call mode)          │
-│                                         │
-│ Voice                                   │
-│ TTS Voice: [af_bella ▼]                 │
-│ Speed: [1.0x ▼]                         │
-│                                         │
-│ Appearance                              │
-│ Orb size: [60px ▼]                      │
-│ Theme: [Dark ▼]                         │
-└─────────────────────────────────────────┘
-```
+Settings is now a full page accessible via the sidebar. Available options:
+
+| Section | Options |
+|---------|---------|
+| **Activation Mode** | Wake Word, Call Mode, Push to Talk |
+| **Keyboard Shortcuts** | Toggle Panel hotkey, PTT key (supports mouse buttons) |
+| **Wake Word** | Phrase selection, sensitivity slider |
+| **Voice** | TTS voice, speech speed, STT model |
+| **Appearance** | Orb size, theme |
+| **Behavior** | Start minimized, click orb to talk |
 
 ## Use Cases
 
@@ -450,7 +479,9 @@ Electron's `-webkit-app-region: drag` consumes all click events, so you can't bo
 - [ ] "What's on my screen?" commands
 
 ### Phase 4: Polish
-- [ ] Settings panel UI
+- [x] Settings panel UI (full-page settings)
+- [x] Sidebar navigation with page routing
+- [x] Collapsible sidebar with state persistence
 - [ ] Custom wake words
 - [ ] Click-to-expand (custom drag implementation)
 - [x] Orb visual state animations (recording, speaking, thinking)
