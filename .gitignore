@@ -55,11 +55,10 @@ coverage/
 /tmp/
 
 # Python
-python/.venv/
-python/__pycache__/
-python/*.pyc
+python/.venv
+**/__pycache__/
+*.pyc
 python/.context-mirror/
-python/*.onnx
-python/models/*.onnx
-python/models/*.bin
+*.onnx
+*.bin
 python/*_keys.json
