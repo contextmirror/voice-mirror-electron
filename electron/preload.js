@@ -112,5 +112,13 @@ contextBridge.exposeInMainWorld('voiceMirror', {
 
     // Combined controls
     startAll: () => ipcRenderer.invoke('start-all'),
-    stopAll: () => ipcRenderer.invoke('stop-all')
+    stopAll: () => ipcRenderer.invoke('stop-all'),
+
+    // Open external URLs in default browser
+    openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
+    // Listen for open-settings command from tray menu
+    onOpenSettings: (callback) => {
+        ipcRenderer.on('open-settings', () => callback());
+    }
 });

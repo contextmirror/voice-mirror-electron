@@ -28,9 +28,7 @@ const INBOX_PATH = path.join(DATA_DIR, 'inbox.json');
 /**
  * System prompt for Voice Mirror's Claude
  */
-const VOICE_CLAUDE_SYSTEM = `Use claude_listen to wait for voice input from nathan, then reply with claude_send. Loop forever.
-
-Keep responses SHORT (1-3 sentences) for TTS. No markdown - just plain speech.`;
+const VOICE_CLAUDE_SYSTEM = `Use claude_listen to wait for voice input from nathan, then reply with claude_send. Loop forever.`;
 
 let ptyProcess = null;
 let outputCallback = null;

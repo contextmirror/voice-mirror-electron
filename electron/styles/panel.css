@@ -1,0 +1,267 @@
+/* ========== Panel Styles ========== */
+/* Panel container, header, status bar, action buttons */
+
+/* Panel State */
+#panel {
+    display: none;
+    width: 100%;
+    height: 100%;
+    background: var(--bg);
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(20px);
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#panel.visible {
+    display: flex;
+    animation: scale-in var(--duration-slow) var(--ease-out);
+}
+
+/* ========== Panel Header ========== */
+#panel-header {
+    display: flex;
+    align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-accent);
+    box-shadow: inset 0 1px 0 var(--card-highlight), 0 1px 3px rgba(0, 0, 0, 0.15);
+    -webkit-app-region: drag;
+}
+
+#panel-header .orb-mini {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    margin-right: 12px;
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+    overflow: hidden;
+    transition: transform var(--duration-fast) var(--ease-out);
+}
+
+#panel-header .orb-mini:hover {
+    transform: scale(1.1);
+}
+
+#panel-header .orb-mini img {
+    width: 100%;
+    height: 100%;
+}
+
+#panel-header h1 {
+    color: var(--text-strong);
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* ========== Status Bar ========== */
+#status-bar {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-accent);
+    display: flex;
+    align-items: center;
+    color: var(--muted);
+    font-size: 14px;
+}
+
+#status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ok);
+    margin-right: 10px;
+    box-shadow: 0 0 8px rgba(74, 222, 128, 0.5);
+    animation: status-glow 2s ease-in-out infinite;
+}
+
+#status-indicator.recording {
+    background: var(--danger);
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+    animation: status-glow 0.5s ease-in-out infinite;
+}
+
+@keyframes status-glow {
+    0%, 100% { opacity: 1; box-shadow: 0 0 8px currentColor; }
+    50% { opacity: 0.7; box-shadow: 0 0 12px currentColor; }
+}
+
+/* ========== Action Buttons ========== */
+#action-buttons {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.action-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--duration-fast) var(--ease-out);
+}
+
+.action-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
+    color: var(--text-strong);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.action-btn:active {
+    transform: translateY(0);
+    box-shadow: none;
+}
+
+/* Terminal toggle button */
+.action-btn.terminal-btn {
+    position: relative;
+}
+
+.action-btn.terminal-btn.active {
+    background: rgba(102, 126, 234, 0.3);
+    color: #667eea;
+}
+
+.action-btn.terminal-btn .badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4ade80;
+}
+
+.action-btn.terminal-btn .badge.stopped {
+    background: #ef4444;
+}
+
+/* Call mode button active state */
+.action-btn.call-active {
+    background: rgba(74, 222, 128, 0.3);
+    color: #4ade80;
+    animation: call-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes call-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(74, 222, 128, 0); }
+}
+
+/* Control buttons */
+.control-btn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+    margin-left: 8px;
+}
+
+.control-btn.start {
+    background: #4ade80;
+    color: #0d0d1a;
+}
+
+.control-btn.start:hover {
+    background: #22c55e;
+}
+
+.control-btn.stop {
+    background: #ef4444;
+    color: white;
+}
+
+.control-btn.stop:hover {
+    background: #dc2626;
+}
+
+/* ========== Image Preview ========== */
+#image-preview {
+    display: none;
+    padding: 12px 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.3);
+}
+
+#image-preview.visible {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+#image-preview img {
+    max-width: 80px;
+    max-height: 60px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+#image-preview .preview-info {
+    flex: 1;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 12px;
+}
+
+#image-preview .preview-actions {
+    display: flex;
+    gap: 8px;
+}
+
+#image-preview button {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+#image-preview .send-btn {
+    background: #667eea;
+    color: white;
+}
+
+#image-preview .send-btn:hover {
+    background: #5a6fd6;
+}
+
+#image-preview .cancel-btn {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.8);
+}
+
+#image-preview .cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* ========== Drop Zone ========== */
+#drop-zone {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: rgba(102, 126, 234, 0.9);
+    border-radius: 16px;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 18px;
+    font-weight: 600;
+    z-index: 100;
+}
+
+#drop-zone.visible {
+    display: flex;
+}

@@ -1,0 +1,133 @@
+/* ========== Orb Styles ========== */
+/* Floating orb, button, states, and animations */
+
+/* Orb State - fixed 64px size, centered in window */
+#orb {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: filter 0.2s ease;
+    /* NATIVE DRAG - works on Wayland! */
+    -webkit-app-region: drag;
+    /* Styled background since transparency doesn't work on Wayland */
+    background: radial-gradient(circle, #2d1b4e 0%, #1a1a2e 50%, #0d0d1a 100%);
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+    border: 2px solid rgba(102, 126, 234, 0.5);
+    user-select: none;
+    /* Center in window */
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+#orb:hover {
+    transform: translate(-50%, -50%) scale(1.1);
+    filter: brightness(1.1);
+}
+
+#orb:active {
+    cursor: grabbing;
+}
+
+/* Inner clickable button - excludes from drag region */
+#orb-button {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    cursor: pointer;
+    -webkit-app-region: no-drag;  /* This area is clickable! */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    padding: 0;
+    transition: transform 0.15s ease;
+}
+
+#orb-button:hover {
+    transform: scale(1.1);
+}
+
+#orb-button:active {
+    transform: scale(0.95);
+}
+
+#orb-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+/* ========== Orb State Classes ========== */
+#orb.listening {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+#orb.recording {
+    animation: recording-pulse 0.5s ease-in-out infinite;
+    filter: hue-rotate(30deg) saturate(1.3);
+}
+
+#orb.speaking {
+    animation: speaking-wave 1s ease-in-out infinite;
+    filter: hue-rotate(-30deg) brightness(1.2);
+}
+
+#orb.thinking {
+    animation: thinking-spin 2s linear infinite;
+    filter: hue-rotate(180deg) brightness(1.1);
+}
+
+/* ========== Orb Animations ========== */
+@keyframes pulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    50% { transform: translate(-50%, -50%) scale(1.05); opacity: 0.9; }
+}
+
+@keyframes recording-pulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.15); }
+}
+
+@keyframes speaking-wave {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    25% { transform: translate(-50%, -50%) scale(1.08); }
+    75% { transform: translate(-50%, -50%) scale(0.95); }
+}
+
+@keyframes thinking-spin {
+    0% { transform: translate(-50%, -50%) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* ========== Status Indicator States ========== */
+#status-indicator.wake {
+    background: #fbbf24;
+    animation: status-blink 0.3s ease-in-out infinite;
+}
+
+#status-indicator.thinking {
+    background: #8b5cf6;
+    animation: status-blink 0.5s ease-in-out infinite;
+}
+
+#status-indicator.speaking {
+    background: #3b82f6;
+    animation: status-blink 0.8s ease-in-out infinite;
+}
+
+#status-indicator.error {
+    background: #ef4444;
+}
+
+@keyframes status-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}

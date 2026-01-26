@@ -498,6 +498,8 @@ See the main Voice Mirror CLAUDE.md for full documentation.
 
 **GitHub:** https://github.com/nayballs/voice-mirror-electron (private)
 
+https://github.com/QwenLM/Qwen3-TTS <--- WE WILL TEST THIS! WRITING THIS IN HERE FOR FUTURE
+
 ---
 
 *Created: January 2026*

@@ -9,7 +9,7 @@
  * NOTE: Uses Electron 28. The basic window works - tested 2026-01-24.
  */
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, desktopCapturer, screen, globalShortcut } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, desktopCapturer, screen, globalShortcut, shell } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -202,12 +202,8 @@ function createWindow() {
     // Make transparent areas click-through
     mainWindow.setIgnoreMouseEvents(false);
 
-    // Handle window blur - minimize to orb if expanded
-    mainWindow.on('blur', () => {
-        if (isExpanded) {
-            collapseToOrb();
-        }
-    });
+    // Window blur handling removed - user requested panel stays open
+    // until manually closed via right-click or collapse button
 
     // Save position when window is moved (only when collapsed to orb)
     mainWindow.on('moved', () => {
@@ -292,63 +288,26 @@ function createTray() {
 
     const contextMenu = Menu.buildFromTemplate([
         {
-            label: 'Toggle Panel',
+            label: 'Open Panel',
             accelerator: 'CommandOrControl+Shift+V',
             click: () => {
-                if (isExpanded) {
-                    collapseToOrb();
-                } else {
+                mainWindow?.show();
+                if (!isExpanded) {
                     expandPanel();
                 }
             }
         },
-        { label: 'Show Window', click: () => mainWindow?.show() },
-        { type: 'separator' },
         {
-            label: 'Start Voice + Claude',
+            label: 'Settings',
             click: () => {
-                // Start both Python (voice) and Claude (brain)
-                if (!pythonProcess) {
-                    startPythonVoiceMirror();
+                mainWindow?.show();
+                if (!isExpanded) {
+                    expandPanel();
                 }
-                if (!isClaudeRunning()) {
-                    startClaudeCode();
-                }
+                // Send event to open settings panel in the UI
+                mainWindow?.webContents.send('open-settings');
             }
         },
-        {
-            label: 'Stop All',
-            click: () => {
-                // Stop Python
-                if (pythonProcess) {
-                    sendToPython({ command: 'stop' });
-                    pythonProcess.kill();
-                    pythonProcess = null;
-                }
-                // Stop Claude
-                stopClaudeCode();
-                mainWindow?.webContents.send('voice-event', { type: 'disconnected' });
-            }
-        },
-        { type: 'separator' },
-        {
-            label: 'Start Voice Only',
-            click: () => {
-                if (!pythonProcess) {
-                    startPythonVoiceMirror();
-                }
-            }
-        },
-        {
-            label: 'Start Claude Only',
-            click: () => {
-                if (!isClaudeRunning()) {
-                    startClaudeCode();
-                }
-            }
-        },
-        { type: 'separator' },
-        { label: 'Settings', click: () => { /* TODO */ } },
         { type: 'separator' },
         { label: 'Quit', click: () => app.quit() }
     ]);
@@ -590,35 +549,14 @@ async function sendImageToPython(imageData) {
             type: 'image',
             data: base64Data,
             filename: filename,
-            prompt: "What's in this image?"
+            prompt: imageData.prompt || "What's in this image?"
         });
 
         pythonProcess.stdin.write(command + '\n');
 
-        // Return a promise that resolves when we get a response
-        return new Promise((resolve) => {
-            const timeout = setTimeout(() => {
-                resolve({ text: 'Image sent to backend. Waiting for response...' });
-            }, 30000);
-
-            // Listen for response (this is simplified - real impl would track request IDs)
-            const responseHandler = (data) => {
-                const output = data.toString();
-                try {
-                    // Try to parse as JSON response
-                    if (output.startsWith('{') && output.includes('"type":"image_response"')) {
-                        const response = JSON.parse(output);
-                        clearTimeout(timeout);
-                        pythonProcess.stdout.off('data', responseHandler);
-                        resolve({ text: response.text });
-                    }
-                } catch (e) {
-                    // Not JSON, ignore
-                }
-            };
-
-            pythonProcess.stdout.on('data', responseHandler);
-        });
+        // Response will come via inbox watcher - don't show inline "waiting" message
+        console.log('[Voice Mirror] Image sent to Python backend');
+        return { sent: true };
     } else {
         // Save image and create proper MCP inbox message
         const contextMirrorDir = path.join(app.getPath('home'), '.config', 'voice-mirror-electron', 'data');
@@ -801,6 +739,23 @@ function startInboxWatcher() {
     // Ensure data directory exists
     if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir, { recursive: true });
+    }
+
+    // Seed displayedMessageIds with existing messages to avoid showing stale history
+    // Only NEW messages that arrive after app starts will be displayed
+    try {
+        if (fs.existsSync(inboxPath)) {
+            const data = JSON.parse(fs.readFileSync(inboxPath, 'utf-8'));
+            const messages = data.messages || [];
+            for (const msg of messages) {
+                if (msg.id) {
+                    displayedMessageIds.add(msg.id);
+                }
+            }
+            console.log(`[Voice Mirror] Seeded ${displayedMessageIds.size} existing message IDs`);
+        }
+    } catch (err) {
+        console.error('[Voice Mirror] Failed to seed message IDs:', err);
     }
 
     // Poll every 500ms for new Claude messages
@@ -1257,6 +1212,17 @@ app.whenReady().then(() => {
         preDragBounds = null;
         console.log('[Voice Mirror] Drag capture ended at', newX, newY);
         return { success: true };
+    });
+
+    // Open external URLs in default browser
+    ipcMain.handle('open-external', async (event, url) => {
+        try {
+            await shell.openExternal(url);
+            return { success: true };
+        } catch (err) {
+            console.error('[Voice Mirror] Failed to open external URL:', err);
+            return { success: false, error: err.message };
+        }
     });
 
     // Config IPC handlers (for settings UI)

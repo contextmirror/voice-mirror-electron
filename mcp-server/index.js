@@ -560,7 +560,11 @@ async function handleClaudeInbox(args) {
 
         const formatted = inbox.map(m => {
             const time = new Date(m.timestamp).toLocaleTimeString();
-            return `[${time}] [${m.from}] (id: ${m.id}):\n${m.message}`;
+            let text = `[${time}] [${m.from}] (id: ${m.id}):\n${m.message}`;
+            if (m.image_path) {
+                text += `\n[Attached image: ${m.image_path}]`;
+            }
+            return text;
         }).join('\n\n');
 
         return {
@@ -657,14 +661,28 @@ async function handleClaudeListen(args) {
                     // Release lock before returning
                     releaseListenerLock(instanceId);
 
+                    // Build response text
+                    let responseText = `=== Message from ${fromSender} (after ${waitTime}s) ===\n` +
+                                       `Thread: ${latest.thread_id || 'none'}\n` +
+                                       `Time: ${latest.timestamp}\n` +
+                                       `ID: ${latest.id}\n`;
+
+                    // Include image path if present
+                    if (latest.image_path) {
+                        responseText += `Image: ${latest.image_path}\n`;
+                    }
+
+                    responseText += `\n${latest.message}`;
+
+                    // If there's an image, tell Claude to read it
+                    if (latest.image_path) {
+                        responseText += `\n\n[Attached image at: ${latest.image_path} - use the Read tool to view it]`;
+                    }
+
                     return {
                         content: [{
                             type: 'text',
-                            text: `=== Message from ${fromSender} (after ${waitTime}s) ===\n` +
-                                  `Thread: ${latest.thread_id || 'none'}\n` +
-                                  `Time: ${latest.timestamp}\n` +
-                                  `ID: ${latest.id}\n\n` +
-                                  `${latest.message}`
+                            text: responseText
                         }]
                     };
                 }
@@ -792,8 +810,8 @@ async function handleCaptureScreen(args) {
         fs.mkdirSync(imagesDir, { recursive: true });
     }
 
-    // Clean up old screenshots before capturing new one (keep last 3)
-    cleanupOldScreenshots(imagesDir, 3);
+    // Clean up old screenshots before capturing new one (keep last 5)
+    cleanupOldScreenshots(imagesDir, 5);
 
     // Try cosmic-screenshot first (works on Pop!_OS Cosmic without permission dialog)
     try {

@@ -1,0 +1,150 @@
+/* ========== Terminal Styles ========== */
+/* Terminal container, header, xterm overrides */
+
+/* Terminal Panel */
+#terminal-container {
+    display: flex;
+    height: 350px;
+    min-height: 100px;
+    background: #0a0a12;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    flex-direction: column;
+    transition: height 0.2s ease;
+}
+
+#terminal-container.minimized {
+    height: 32px;
+}
+
+#terminal-container.minimized #xterm-container {
+    display: none;
+}
+
+#terminal-container.hidden {
+    display: none;
+}
+
+/* xterm.js container */
+#xterm-container {
+    flex: 1;
+    overflow: hidden;
+    padding: 4px;
+}
+
+#xterm-container .xterm {
+    height: 100%;
+}
+
+#xterm-container .xterm-viewport {
+    overflow-y: auto !important;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.15) #0a0a12;
+}
+
+#xterm-container .xterm-viewport::-webkit-scrollbar {
+    width: 8px;
+}
+
+#xterm-container .xterm-viewport::-webkit-scrollbar-track {
+    background: #0a0a12;
+}
+
+#xterm-container .xterm-viewport::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+}
+
+#xterm-container .xterm-viewport::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+/* ========== Terminal Header ========== */
+#terminal-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+#terminal-header span {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 12px;
+    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+}
+
+#terminal-header .terminal-status {
+    margin-left: 8px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    background: rgba(74, 222, 128, 0.2);
+    color: #4ade80;
+}
+
+#terminal-header .terminal-status.stopped {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+#terminal-header .terminal-title {
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* ========== Terminal Controls ========== */
+.terminal-controls {
+    margin-left: auto;
+    display: flex;
+    gap: 4px;
+}
+
+.terminal-ctrl-btn {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.6);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+}
+
+.terminal-ctrl-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+#terminal-close {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.4);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px 8px;
+}
+
+#terminal-close:hover {
+    color: white;
+}
+
+/* ========== Legacy Terminal Output ========== */
+/* Kept for fallback */
+.terminal-line {
+    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.terminal-line.info {
+    color: #60a5fa;
+}
+
+.terminal-line.error {
+    color: #f87171;
+}

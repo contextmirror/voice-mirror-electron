@@ -1055,8 +1055,7 @@ Keep it concise - 1-2 sentences max.'''
         else:
             print(f"TTS: Not available")
         print(f"Inbox: {INBOX_PATH}")
-        print(f"Routing: {mode_display.get(mode, mode)}")
-        print(f"Smart Home: {len(self.smart_home.devices)} devices")
+        print(f"Routing: 🤖 Claude Code (via MCP inbox)")
         print("=" * 50)
 
         # Show activation mode specific instructions
@@ -1070,10 +1069,7 @@ Keep it concise - 1-2 sentences max.'''
         elif self._activation_mode == ActivationMode.PUSH_TO_TALK:
             print("   Hold your PTT key and speak, release to process.")
 
-        print("\n   Routing modes:")
-        print("   - Auto: Smart home → Qwen, General → Claude Code")
-        print("   - Local: Everything goes to Qwen")
-        print("   - Claude: Everything goes to Claude Code")
+        # Note: Qwen/smart home routing disabled - all queries go to Claude Code
         if NOTIFICATION_ENABLED:
             print("\n   📢 Notifications: ON (Claude messages will be spoken)")
         print("   (Press Ctrl+C to quit)\n")
