@@ -36,7 +36,16 @@ Everything else gets organized into groups that load on demand:
 - Unloading after use reduces context on subsequent turns
 - Scales to many tool groups without bloating every conversation
 
+### Status: Implemented ✓
+
+The dynamic tool loading system is live and working well. Core tools (send, listen, inbox, status) plus meta tools (load_tools, unload_tools, list_tool_groups) are always loaded. All other groups (screen, memory, voice-clone, browser) load on demand. Startup context is lean and scales well — adding more tool groups (e.g., n8n with 20+ tools) won't increase initial context size.
+
+### Future Improvements
+
+- **Auto-load by intent:** Detect when the user's request implies a tool group (e.g., "what's on my screen?" → auto-load screen) and load it without explicit request.
+- **Auto-unload after idle:** If a tool group hasn't been used for N turns, automatically unload it to reclaim context space during long conversations.
+- **Tool group dependencies:** Allow groups to declare dependencies (e.g., loading browser could auto-load screen if browser tools need screenshots).
+
 ### Notes
 - Unloading won't remove tool calls/results already in conversation history, but it does shrink the system prompt for future turns.
 - The MCP protocol already supports `tools/list_changed` notifications, so the client-side mechanism exists.
-- Could add a `list_tool_groups` meta-tool so Claude can discover what's available without loading everything.
