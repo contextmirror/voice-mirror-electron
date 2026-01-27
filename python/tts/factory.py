@@ -41,7 +41,8 @@ _register_adapters()
 
 def create_tts_adapter(
     adapter_name: str,
-    voice: Optional[str] = None
+    voice: Optional[str] = None,
+    model_size: Optional[str] = None,
 ) -> TTSAdapter:
     """
     Create a TTS adapter by name.
@@ -49,6 +50,7 @@ def create_tts_adapter(
     Args:
         adapter_name: Name of the adapter ("kokoro", "qwen", etc.)
         voice: Optional voice ID to use (adapter-dependent)
+        model_size: Optional model size for adapters that support it (e.g., "0.6B", "1.7B" for Qwen)
 
     Returns:
         TTSAdapter instance
@@ -66,6 +68,11 @@ def create_tts_adapter(
         )
 
     adapter_class = ADAPTERS[adapter_name]
+
+    # Pass model_size to adapters that support it (e.g., Qwen)
+    if adapter_name == "qwen" and model_size:
+        return adapter_class(voice=voice, model_size=model_size)
+
     return adapter_class(voice=voice)
 
 

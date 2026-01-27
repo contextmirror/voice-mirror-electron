@@ -29,9 +29,11 @@ const DEFAULT_CONFIG = {
 
     // Voice settings
     voice: {
-        ttsVoice: 'af_bella',
+        ttsAdapter: 'kokoro',    // 'kokoro' (default) or 'qwen' (voice cloning)
+        ttsVoice: 'af_bella',    // Voice ID (adapter-dependent)
+        ttsModelSize: '0.6B',    // Qwen3-TTS model size: '0.6B' (faster) or '1.7B' (better quality)
         ttsSpeed: 1.0,
-        sttModel: 'parakeet'  // or 'whisper'
+        sttModel: 'parakeet'     // or 'whisper'
     },
 
     // Appearance

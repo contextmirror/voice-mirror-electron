@@ -35,6 +35,7 @@ def load_voice_settings() -> Dict[str, Any]:
         "stt_model": None,  # None = use adapter's default model
         "tts_adapter": "kokoro",  # kokoro, qwen (future: piper, coqui, elevenlabs)
         "tts_voice": "af_bella",  # Voice ID (adapter-dependent)
+        "tts_model_size": "0.6B",  # Qwen3-TTS model size: "0.6B" (faster, ~2GB VRAM) or "1.7B" (better quality, ~4GB VRAM)
     }
 
     # Try to load cached settings first

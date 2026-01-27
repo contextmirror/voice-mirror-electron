@@ -340,8 +340,26 @@
                             <h3>Voice</h3>
                             <div class="settings-group">
                                 <div class="setting-row">
+                                    <label>TTS Engine</label>
+                                    <select id="tts-adapter">
+                                        <option value="kokoro">Kokoro (Fast, ~100MB)</option>
+                                        <option value="qwen">Qwen3-TTS (Voice cloning, ~3-7GB download)</option>
+                                    </select>
+                                </div>
+                                <div class="setting-row" id="tts-model-size-row" style="display: none;">
+                                    <label>Model Size</label>
+                                    <select id="tts-model-size">
+                                        <option value="0.6B">0.6B (~1.5GB disk, ~2GB VRAM)</option>
+                                        <option value="1.7B">1.7B (~3.5GB disk, ~4GB VRAM)</option>
+                                    </select>
+                                </div>
+                                <p class="settings-hint" id="tts-qwen-hint" style="display: none;">
+                                    ⚠️ Qwen3-TTS downloads models on first use (~3-7GB). Voice cloning requires both Base + CustomVoice models.
+                                </p>
+                                <div class="setting-row" id="tts-voice-row">
                                     <label>TTS Voice</label>
                                     <select id="tts-voice">
+                                        <!-- Kokoro voices (default) -->
                                         <option value="af_bella">Bella (Female)</option>
                                         <option value="af_nicole">Nicole (Female)</option>
                                         <option value="af_sarah">Sarah (Female)</option>

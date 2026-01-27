@@ -125,6 +125,19 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         getProvider: () => ipcRenderer.invoke('ai-get-provider')
     },
 
+    // Tool events (for local LLM tool system)
+    tools: {
+        // Listen for tool call events (when model invokes a tool)
+        onToolCall: (callback) => {
+            ipcRenderer.on('tool-call', (event, data) => callback(data));
+        },
+
+        // Listen for tool result events (when tool execution completes)
+        onToolResult: (callback) => {
+            ipcRenderer.on('tool-result', (event, data) => callback(data));
+        }
+    },
+
     // Combined controls
     startAll: () => ipcRenderer.invoke('start-all'),
     stopAll: () => ipcRenderer.invoke('stop-all'),

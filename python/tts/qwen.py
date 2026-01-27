@@ -255,8 +255,21 @@ class QwenTTSAdapter(TTSAdapter):
             return False
 
         try:
-            self.ref_audio = ref_audio
-            self.ref_text = ref_text
+            # Check if we need to switch to Base model for voice cloning
+            # CustomVoice model doesn't support voice cloning
+            current_model_name = self._get_model_name()
+            if "CustomVoice" in current_model_name:
+                print("🔄 Switching from CustomVoice to Base model for voice cloning...")
+                self.ref_audio = ref_audio  # Set this so _get_model_name returns Base
+                self.ref_text = ref_text
+
+                # Reload with Base model
+                if not self._reload_for_cloning():
+                    return False
+            else:
+                self.ref_audio = ref_audio
+                self.ref_text = ref_text
+
             self._voice_clone_prompt = self.model.create_voice_clone_prompt(
                 ref_audio=ref_audio,
                 ref_text=ref_text,
@@ -268,11 +281,116 @@ class QwenTTSAdapter(TTSAdapter):
             print(f"❌ Failed to create voice clone: {e}")
             return False
 
+    def _reload_for_cloning(self) -> bool:
+        """Reload model as Base variant for voice cloning support."""
+        try:
+            import torch
+            from qwen_tts import Qwen3TTSModel
+
+            model_name = self._get_model_name()  # Now returns Base model
+            print(f"📥 Loading Base model: {model_name}")
+
+            # Determine device and dtype
+            if torch.cuda.is_available():
+                device = "cuda:0"
+                dtype = torch.bfloat16
+                attn_impl = "flash_attention_2"
+            else:
+                device = "cpu"
+                dtype = torch.float32
+                attn_impl = "eager"
+
+            # Unload old model to free VRAM
+            del self.model
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+            # Load Base model
+            try:
+                self.model = Qwen3TTSModel.from_pretrained(
+                    model_name,
+                    device_map=device,
+                    dtype=dtype,
+                    attn_implementation=attn_impl,
+                )
+            except Exception as e:
+                if "flash" in str(e).lower():
+                    print(f"  FlashAttention not available, using eager attention")
+                    self.model = Qwen3TTSModel.from_pretrained(
+                        model_name,
+                        device_map=device,
+                        dtype=dtype,
+                        attn_implementation="eager",
+                    )
+                else:
+                    raise
+
+            print(f"✅ Base model loaded for voice cloning")
+            return True
+
+        except Exception as e:
+            print(f"❌ Failed to reload model for cloning: {e}")
+            return False
+
     def clear_voice_clone(self):
         """Clear voice cloning and return to preset speaker mode."""
+        was_cloning = self._voice_clone_prompt is not None
         self._voice_clone_prompt = None
         self.ref_audio = None
         self.ref_text = None
+
+        # If we were using voice cloning, reload CustomVoice model
+        if was_cloning and self.model is not None:
+            print("🔄 Switching back to CustomVoice model...")
+            self._reload_for_preset()
+
+    def _reload_for_preset(self):
+        """Reload model as CustomVoice variant for preset speakers."""
+        try:
+            import torch
+            from qwen_tts import Qwen3TTSModel
+
+            model_name = self._get_model_name()  # Now returns CustomVoice model
+            print(f"📥 Loading CustomVoice model: {model_name}")
+
+            # Determine device and dtype
+            if torch.cuda.is_available():
+                device = "cuda:0"
+                dtype = torch.bfloat16
+                attn_impl = "flash_attention_2"
+            else:
+                device = "cpu"
+                dtype = torch.float32
+                attn_impl = "eager"
+
+            # Unload old model to free VRAM
+            del self.model
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+            # Load CustomVoice model
+            try:
+                self.model = Qwen3TTSModel.from_pretrained(
+                    model_name,
+                    device_map=device,
+                    dtype=dtype,
+                    attn_implementation=attn_impl,
+                )
+            except Exception as e:
+                if "flash" in str(e).lower():
+                    self.model = Qwen3TTSModel.from_pretrained(
+                        model_name,
+                        device_map=device,
+                        dtype=dtype,
+                        attn_implementation="eager",
+                    )
+                else:
+                    raise
+
+            print(f"✅ CustomVoice model loaded")
+
+        except Exception as e:
+            print(f"❌ Failed to reload CustomVoice model: {e}")
 
     @property
     def name(self) -> str:

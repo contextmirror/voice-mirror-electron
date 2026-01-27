@@ -40,6 +40,30 @@ const PROVIDER_ICON_CLASSES = {
 // Local providers that can be auto-detected
 const LOCAL_PROVIDERS = ['ollama', 'lmstudio', 'jan'];
 
+// TTS voice options by adapter
+const TTS_VOICES = {
+    kokoro: [
+        { value: 'af_bella', label: 'Bella (Female)' },
+        { value: 'af_nicole', label: 'Nicole (Female)' },
+        { value: 'af_sarah', label: 'Sarah (Female)' },
+        { value: 'am_adam', label: 'Adam (Male)' },
+        { value: 'am_michael', label: 'Michael (Male)' },
+        { value: 'bf_emma', label: 'Emma (British)' },
+        { value: 'bm_george', label: 'George (British)' }
+    ],
+    qwen: [
+        { value: 'Ryan', label: 'Ryan (Male)' },
+        { value: 'Vivian', label: 'Vivian (Female)' },
+        { value: 'Serena', label: 'Serena (Female)' },
+        { value: 'Dylan', label: 'Dylan (Male)' },
+        { value: 'Eric', label: 'Eric (Male)' },
+        { value: 'Aiden', label: 'Aiden (Male)' },
+        { value: 'Uncle_Fu', label: 'Uncle Fu (Male)' },
+        { value: 'Ono_Anna', label: 'Ono Anna (Female, Japanese)' },
+        { value: 'Sohee', label: 'Sohee (Female, Korean)' }
+    ]
+};
+
 // Cloud providers that need API keys
 const CLOUD_PROVIDERS_WITH_APIKEY = ['openai', 'gemini', 'grok', 'groq', 'mistral', 'openrouter', 'deepseek'];
 
@@ -85,6 +109,10 @@ export async function loadSettingsUI() {
         document.getElementById('sensitivity-value').textContent = state.currentConfig.wakeWord?.sensitivity || 0.5;
 
         // Voice settings
+        const ttsAdapter = state.currentConfig.voice?.ttsAdapter || 'kokoro';
+        document.getElementById('tts-adapter').value = ttsAdapter;
+        document.getElementById('tts-model-size').value = state.currentConfig.voice?.ttsModelSize || '0.6B';
+        updateTTSAdapterUI(ttsAdapter);
         document.getElementById('tts-voice').value = state.currentConfig.voice?.ttsVoice || 'af_bella';
         document.getElementById('tts-speed').value = state.currentConfig.voice?.ttsSpeed || 1.0;
         document.getElementById('speed-value').textContent = (state.currentConfig.voice?.ttsSpeed || 1.0) + 'x';
@@ -164,6 +192,35 @@ export function updateAIProviderUI(provider) {
             endpointInput.dataset.provider = provider;
         }
     }
+}
+
+/**
+ * Update TTS adapter UI based on selected adapter
+ */
+export function updateTTSAdapterUI(adapter) {
+    const modelSizeRow = document.getElementById('tts-model-size-row');
+    const qwenHint = document.getElementById('tts-qwen-hint');
+    const voiceSelect = document.getElementById('tts-voice');
+    const currentVoice = voiceSelect.value;
+
+    // Show/hide model size row and storage hint (only for Qwen)
+    const isQwen = adapter === 'qwen';
+    modelSizeRow.style.display = isQwen ? 'flex' : 'none';
+    if (qwenHint) qwenHint.style.display = isQwen ? 'block' : 'none';
+
+    // Update voice options based on adapter
+    const voices = TTS_VOICES[adapter] || TTS_VOICES.kokoro;
+    voiceSelect.innerHTML = '';
+    for (const voice of voices) {
+        const option = document.createElement('option');
+        option.value = voice.value;
+        option.textContent = voice.label;
+        voiceSelect.appendChild(option);
+    }
+
+    // Try to preserve current voice if it exists in new adapter, otherwise use first
+    const voiceExists = voices.some(v => v.value === currentVoice);
+    voiceSelect.value = voiceExists ? currentVoice : voices[0].value;
 }
 
 /**
@@ -291,7 +348,9 @@ export async function saveSettings() {
             enabled: activationMode === 'wakeWord'
         },
         voice: {
+            ttsAdapter: document.getElementById('tts-adapter').value,
             ttsVoice: document.getElementById('tts-voice').value,
+            ttsModelSize: document.getElementById('tts-model-size').value,
             ttsSpeed: parseFloat(document.getElementById('tts-speed').value),
             sttModel: document.getElementById('stt-model').value
         },
@@ -498,6 +557,11 @@ export function initSettings() {
         });
     });
 
+    // TTS adapter change handler
+    document.getElementById('tts-adapter').addEventListener('change', (e) => {
+        updateTTSAdapterUI(e.target.value);
+    });
+
     // Slider value displays
     document.getElementById('wake-word-sensitivity').addEventListener('input', (e) => {
         document.getElementById('sensitivity-value').textContent = e.target.value;
@@ -597,3 +661,4 @@ window.resetSettings = resetSettings;
 window.loadSettingsUI = loadSettingsUI;
 window.scanProviders = scanProviders;
 window.updateAIProviderUI = updateAIProviderUI;
+window.updateTTSAdapterUI = updateTTSAdapterUI;

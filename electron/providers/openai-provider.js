@@ -6,9 +6,15 @@
  *
  * Unlike Claude provider, this does NOT use a PTY terminal - it communicates
  * via HTTP API calls.
+ *
+ * For local providers, includes tool support via JSON output format.
  */
 
 const { BaseProvider } = require('./base-provider');
+const { ToolExecutor } = require('../tools');
+
+// Limit conversation history to prevent context overflow in local LLMs
+const MAX_HISTORY_MESSAGES = 20;
 
 class OpenAIProvider extends BaseProvider {
     constructor(config = {}) {
@@ -22,6 +28,16 @@ class OpenAIProvider extends BaseProvider {
         this.messages = [];  // Conversation history
         this.systemPrompt = config.systemPrompt || null;
         this.abortController = null;
+
+        // Tool execution support for local models
+        this.toolExecutor = new ToolExecutor();
+        this.toolsEnabled = config.toolsEnabled !== false;  // Enabled by default
+        this.maxToolIterations = config.maxToolIterations || 3;
+        this.currentToolIteration = 0;
+
+        // Callback for tool events (set by main.js)
+        this.onToolCall = null;
+        this.onToolResult = null;
     }
 
     getType() {
@@ -56,6 +72,23 @@ class OpenAIProvider extends BaseProvider {
     }
 
     /**
+     * Check if this provider supports tools via JSON output.
+     * Local providers (Ollama, LM Studio, Jan) get tool support.
+     */
+    supportsTools() {
+        const localProviders = ['ollama', 'lmstudio', 'jan'];
+        return this.toolsEnabled && localProviders.includes(this.providerType);
+    }
+
+    /**
+     * Set tool event callbacks.
+     */
+    setToolCallbacks(onToolCall, onToolResult) {
+        this.onToolCall = onToolCall;
+        this.onToolResult = onToolResult;
+    }
+
+    /**
      * Start the provider (no actual spawning for API-based providers)
      */
     async spawn(options = {}) {
@@ -68,12 +101,23 @@ class OpenAIProvider extends BaseProvider {
         // Actual connection test could be done here
         this.running = true;
         this.messages = [];
+        this.currentToolIteration = 0;
 
-        // Add system prompt if provided
-        if (this.systemPrompt) {
+        // Add system prompt
+        // For local providers with tools enabled, use the tool system prompt
+        let systemPrompt = this.systemPrompt;
+        if (this.supportsTools() && !systemPrompt) {
+            systemPrompt = this.toolExecutor.getSystemPrompt({
+                location: options.location,
+                customInstructions: options.customInstructions
+            });
+            console.log(`[OpenAIProvider] Using tool-enabled system prompt`);
+        }
+
+        if (systemPrompt) {
             this.messages.push({
                 role: 'system',
-                content: this.systemPrompt
+                content: systemPrompt
             });
         }
 
@@ -98,20 +142,29 @@ class OpenAIProvider extends BaseProvider {
 
     /**
      * Send a message and get a response
+     *
+     * @param {string} text - User message (empty string for tool follow-up)
+     * @param {boolean} isToolFollowUp - Whether this is a follow-up after tool execution
      */
-    async sendInput(text) {
+    async sendInput(text, isToolFollowUp = false) {
         if (!this.running) {
             this.emitOutput('stderr', '[Error] Provider not running\n');
             return;
         }
 
-        // Add user message to history
-        this.messages.push({
-            role: 'user',
-            content: text
-        });
+        // Add user message to history (unless it's a tool follow-up with empty text)
+        if (text && !isToolFollowUp) {
+            this.messages.push({
+                role: 'user',
+                content: text
+            });
+            this.emitOutput('stdout', `\n> ${text}\n\n`);
+            // Reset tool iteration counter for new user input
+            this.currentToolIteration = 0;
+        }
 
-        this.emitOutput('stdout', `\n> ${text}\n\n`);
+        // Limit history before sending to prevent context overflow
+        this._limitMessageHistory();
 
         try {
             // Create abort controller for this request
@@ -191,6 +244,66 @@ class OpenAIProvider extends BaseProvider {
                 });
             }
 
+            // Check for tool call in response (only for local providers with tools enabled)
+            if (this.supportsTools() && fullResponse) {
+                const toolCall = this.toolExecutor.parseToolCall(fullResponse);
+
+                if (toolCall && toolCall.isToolCall) {
+                    // Check iteration limit
+                    if (this.currentToolIteration >= this.maxToolIterations) {
+                        console.log(`[OpenAIProvider] Max tool iterations (${this.maxToolIterations}) reached`);
+                        this.emitOutput('stdout', '\n[Max tool iterations reached]\n');
+                        return;
+                    }
+
+                    this.currentToolIteration++;
+
+                    // Handle unknown tool error
+                    if (toolCall.error) {
+                        this.emitOutput('stdout', `\n[Tool Error: ${toolCall.error}]\n`);
+                        return;
+                    }
+
+                    // Notify UI of tool call
+                    if (this.onToolCall) {
+                        this.onToolCall({
+                            tool: toolCall.tool,
+                            args: toolCall.args,
+                            iteration: this.currentToolIteration
+                        });
+                    }
+
+                    console.log(`[OpenAIProvider] Tool call detected: ${toolCall.tool}`);
+                    this.emitOutput('stdout', `\n[Executing tool: ${toolCall.tool}...]\n`);
+
+                    // Execute the tool
+                    const result = await this.toolExecutor.execute(toolCall.tool, toolCall.args);
+
+                    // Notify UI of tool result
+                    if (this.onToolResult) {
+                        this.onToolResult({
+                            tool: toolCall.tool,
+                            success: result.success,
+                            result: result.result || result.error
+                        });
+                    }
+
+                    // Format and inject result into conversation
+                    const resultMessage = this.toolExecutor.formatToolResult(toolCall.tool, result);
+                    this.messages.push({
+                        role: 'user',
+                        content: resultMessage
+                    });
+
+                    console.log(`[OpenAIProvider] Tool result: ${result.success ? 'success' : 'failed'}`);
+                    this.emitOutput('stdout', `[Tool ${result.success ? 'succeeded' : 'failed'}]\n\n`);
+
+                    // Get follow-up response from model
+                    await this.sendInput('', true);
+                    return;
+                }
+            }
+
             this.emitOutput('stdout', '\n\n');
 
         } catch (err) {
@@ -219,12 +332,44 @@ class OpenAIProvider extends BaseProvider {
      */
     clearHistory() {
         this.messages = [];
-        if (this.systemPrompt) {
+        this.currentToolIteration = 0;
+
+        // Re-add system prompt
+        let systemPrompt = this.systemPrompt;
+        if (this.supportsTools() && !systemPrompt) {
+            systemPrompt = this.toolExecutor.getSystemPrompt();
+        }
+
+        if (systemPrompt) {
             this.messages.push({
                 role: 'system',
-                content: this.systemPrompt
+                content: systemPrompt
             });
         }
+    }
+
+    /**
+     * Limit message history to prevent context overflow.
+     * Keeps system message + last N messages.
+     * @private
+     */
+    _limitMessageHistory() {
+        if (this.messages.length <= MAX_HISTORY_MESSAGES) return;
+
+        const system = this.messages.filter(m => m.role === 'system');
+        const nonSystem = this.messages.filter(m => m.role !== 'system');
+        const recent = nonSystem.slice(-MAX_HISTORY_MESSAGES);
+
+        this.messages = [...system, ...recent];
+        console.log(`[OpenAIProvider] Trimmed history to ${this.messages.length} messages`);
+    }
+
+    /**
+     * Enable or disable tool support
+     */
+    setToolsEnabled(enabled) {
+        this.toolsEnabled = enabled;
+        console.log(`[OpenAIProvider] Tools ${enabled ? 'enabled' : 'disabled'}`);
     }
 
     /**

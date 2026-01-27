@@ -458,6 +458,47 @@ function sendToPython(command) {
     }
 }
 
+/**
+ * Start required Docker services (SearXNG, n8n) in the background.
+ * These are needed for local LLM tool support.
+ */
+function startDockerServices() {
+    const { execSync } = require('child_process');
+
+    // Docker containers to start (name -> description)
+    const services = {
+        'searxng': 'SearXNG (web search)',
+        'n8n': 'n8n (workflow automation)'
+    };
+
+    for (const [containerName, description] of Object.entries(services)) {
+        try {
+            // Check if container exists
+            const exists = execSync(`docker ps -a --format "{{.Names}}" | grep -q "^${containerName}$" && echo "yes" || echo "no"`, {
+                encoding: 'utf-8',
+                timeout: 5000
+            }).trim();
+
+            if (exists === 'yes') {
+                // Check if it's running
+                const running = execSync(`docker ps --format "{{.Names}}" | grep -q "^${containerName}$" && echo "yes" || echo "no"`, {
+                    encoding: 'utf-8',
+                    timeout: 5000
+                }).trim();
+
+                if (running !== 'yes') {
+                    console.log(`[Voice Mirror] Starting ${description}...`);
+                    execSync(`docker start ${containerName}`, { timeout: 10000 });
+                    console.log(`[Voice Mirror] ✓ ${description} started`);
+                }
+            }
+        } catch (err) {
+            // Silently ignore - Docker might not be installed or container doesn't exist
+            // This is optional functionality
+        }
+    }
+}
+
 function startPythonVoiceMirror() {
     // Path to local Python backend (standalone - no external dependencies)
     const pythonPath = path.join(__dirname, '..', 'python');
@@ -689,7 +730,10 @@ function startClaudeCode() {
             text: '[Claude Code] PTY terminal started\n'
         });
         mainWindow?.webContents.send('voice-event', {
-            type: 'claude_connected'
+            type: 'claude_connected',
+            provider: 'claude',
+            providerName: 'Claude Code',
+            model: null
         });
         console.log('[Voice Mirror] Claude PTY started');
 
@@ -737,6 +781,10 @@ function stopClaudeCode() {
 function startAIProvider() {
     const providerType = appConfig?.ai?.provider || 'claude';
     const model = appConfig?.ai?.model || null;
+
+    // NOTE: Don't clear processedUserMessageIds here - it's seeded at startup
+    // and clearing would cause old inbox messages to be re-forwarded.
+    // Only clear when explicitly switching providers via config_update handler.
 
     console.log(`[Voice Mirror] Starting AI provider: ${providerType}${model ? ' (' + model + ')' : ''}`);
 
@@ -790,6 +838,30 @@ function startAIProvider() {
         });
     });
 
+    // Set up tool callbacks for local providers
+    if (activeProvider.setToolCallbacks) {
+        activeProvider.setToolCallbacks(
+            // onToolCall - when a tool is being executed
+            (data) => {
+                console.log(`[Voice Mirror] Tool call: ${data.tool}`);
+                mainWindow?.webContents.send('tool-call', {
+                    tool: data.tool,
+                    args: data.args,
+                    iteration: data.iteration
+                });
+            },
+            // onToolResult - when a tool execution completes
+            (data) => {
+                console.log(`[Voice Mirror] Tool result: ${data.tool} - ${data.success ? 'success' : 'failed'}`);
+                mainWindow?.webContents.send('tool-result', {
+                    tool: data.tool,
+                    success: data.success,
+                    result: data.result
+                });
+            }
+        );
+    }
+
     // Start the provider
     activeProvider.spawn().then(() => {
         mainWindow?.webContents.send('claude-terminal', {
@@ -797,8 +869,16 @@ function startAIProvider() {
             text: `[${activeProvider.getDisplayName()}] Ready\n`
         });
         mainWindow?.webContents.send('voice-event', {
-            type: 'claude_connected'
+            type: 'claude_connected',
+            provider: providerType,
+            providerName: activeProvider.getDisplayName(),
+            model: model
         });
+
+        // Log if tools are enabled
+        if (activeProvider.supportsTools && activeProvider.supportsTools()) {
+            console.log(`[Voice Mirror] Tool support enabled for ${providerType}`);
+        }
     }).catch((err) => {
         console.error(`[Voice Mirror] Failed to start ${providerType}:`, err);
         mainWindow?.webContents.send('claude-terminal', {
@@ -834,6 +914,11 @@ function stopAIProvider() {
     }
 
     if (stopped) {
+        // Clear processed user messages when provider is stopped (e.g., when switching providers)
+        // This ensures the new provider doesn't skip messages that the old one already handled
+        processedUserMessageIds.clear();
+        console.log('[Voice Mirror] Cleared processed user message IDs for provider switch');
+
         mainWindow?.webContents.send('voice-event', {
             type: 'claude_disconnected'
         });
@@ -891,6 +976,7 @@ function sendAIInput(text) {
  */
 let inboxWatcher = null;
 let displayedMessageIds = new Set();  // Track messages already shown in UI
+let processedUserMessageIds = new Set();  // Track user messages already forwarded to non-Claude providers
 
 function startInboxWatcher() {
     const dataDir = path.join(app.getPath('home'), '.config', 'voice-mirror-electron', 'data');
@@ -902,7 +988,8 @@ function startInboxWatcher() {
     }
 
     // Seed displayedMessageIds with existing messages to avoid showing stale history
-    // Only NEW messages that arrive after app starts will be displayed
+    // Also seed processedUserMessageIds to avoid re-forwarding old messages to non-Claude providers
+    // Only NEW messages that arrive after app starts will be displayed/processed
     try {
         if (fs.existsSync(inboxPath)) {
             const data = JSON.parse(fs.readFileSync(inboxPath, 'utf-8'));
@@ -910,9 +997,13 @@ function startInboxWatcher() {
             for (const msg of messages) {
                 if (msg.id) {
                     displayedMessageIds.add(msg.id);
+                    // Also seed processedUserMessageIds for "nathan" messages
+                    if (msg.from === 'nathan') {
+                        processedUserMessageIds.add(msg.id);
+                    }
                 }
             }
-            console.log(`[Voice Mirror] Seeded ${displayedMessageIds.size} existing message IDs`);
+            console.log(`[Voice Mirror] Seeded ${displayedMessageIds.size} display IDs, ${processedUserMessageIds.size} user message IDs`);
         }
     } catch (err) {
         console.error('[Voice Mirror] Failed to seed message IDs:', err);
@@ -965,6 +1056,58 @@ function startInboxWatcher() {
                 });
             }
 
+            // === Inbox Bridge for Non-Claude Providers ===
+            // Forward user messages to OpenAI-compatible providers (Ollama, LM Studio, etc.)
+            // Claude handles inbox directly via MCP tools, but other providers need this bridge
+            if (!isClaudeRunning() && activeProvider && activeProvider.isRunning()) {
+                for (const msg of messages) {
+                    // Skip if already processed or not from voice user
+                    if (processedUserMessageIds.has(msg.id) || msg.from !== 'nathan') continue;
+
+                    // Mark as processed immediately to avoid duplicate forwarding
+                    processedUserMessageIds.add(msg.id);
+
+                    // Keep Set size bounded
+                    if (processedUserMessageIds.size > 100) {
+                        const iterator = processedUserMessageIds.values();
+                        processedUserMessageIds.delete(iterator.next().value);
+                    }
+
+                    const providerName = activeProvider.getDisplayName();
+                    console.log(`[Voice Mirror] Forwarding inbox message to ${providerName}: ${msg.message?.slice(0, 50)}...`);
+
+                    // Send to UI as user message
+                    mainWindow?.webContents.send('chat-message', {
+                        role: 'user',
+                        text: msg.message,
+                        source: 'voice',
+                        timestamp: msg.timestamp,
+                        id: msg.id
+                    });
+
+                    // Capture response and write back to inbox for Python TTS
+                    captureProviderResponse(activeProvider, msg.message).then((response) => {
+                        if (response) {
+                            // Strip any echoed/quoted user message from the response
+                            const cleanedResponse = stripEchoedContent(response);
+
+                            // Write to inbox so Python can speak it
+                            writeResponseToInbox(cleanedResponse, providerName, msg.id);
+
+                            // Also display in chat UI
+                            mainWindow?.webContents.send('chat-message', {
+                                role: 'assistant',
+                                text: cleanedResponse,
+                                source: providerName.toLowerCase(),
+                                timestamp: new Date().toISOString()
+                            });
+                        }
+                    }).catch((err) => {
+                        console.error(`[Voice Mirror] Error forwarding to ${providerName}:`, err);
+                    });
+                }
+            }
+
         } catch (err) {
             // Silently ignore parse errors
         }
@@ -978,6 +1121,258 @@ function stopInboxWatcher() {
         clearInterval(inboxWatcher);
         inboxWatcher = null;
     }
+}
+
+/**
+ * Capture streamed response from an OpenAI-compatible provider.
+ * Intercepts the provider's output and collects the full response.
+ * Handles tool calls by waiting for the tool loop to complete.
+ * @param {Object} provider - The provider instance
+ * @param {string} message - The message to send
+ * @returns {Promise<string|null>} The final response (after tool execution) or null on timeout
+ */
+async function captureProviderResponse(provider, message) {
+    return new Promise((resolve) => {
+        let fullResponse = '';
+        let toolInProgress = false;
+        let finalResponse = '';
+        const originalEmit = provider.emitOutput.bind(provider);
+
+        // Track tool execution state via callbacks
+        const originalOnToolCall = provider.onToolCall;
+        const originalOnToolResult = provider.onToolResult;
+
+        provider.onToolCall = (data) => {
+            toolInProgress = true;
+            console.log(`[Voice Mirror] Tool call in progress: ${data.tool}`);
+            if (originalOnToolCall) originalOnToolCall(data);
+        };
+
+        provider.onToolResult = (data) => {
+            console.log(`[Voice Mirror] Tool result received: ${data.tool} (success: ${data.success})`);
+            // Reset fullResponse to capture the follow-up response
+            // The provider will send another request after injecting tool result
+            fullResponse = '';
+            lastLength = 0;  // Reset lastLength too so stability detection works correctly
+            stableCount = 0;
+            toolCompleted = true;  // Mark that tool has completed, now wait for follow-up
+            toolInProgress = false;  // Allow stability counting to resume
+            if (originalOnToolResult) originalOnToolResult(data);
+        };
+
+        // Intercept output to capture the response
+        provider.emitOutput = (type, text) => {
+            originalEmit(type, text);
+            if (type === 'stdout' && text) {
+                fullResponse += text;
+            }
+        };
+
+        // Send the message
+        provider.sendInput(message);
+
+        // Wait for response to complete (detect when output stops)
+        let lastLength = 0;
+        let stableCount = 0;
+        let toolCompleted = false;  // Track if we've received a tool result
+        const requiredStableChecks = 4;  // 2 seconds of stability
+        const checkInterval = setInterval(() => {
+            // Don't count stability while tool is executing (waiting for result)
+            // Only start counting after tool completes OR if no tool was called
+            if (toolInProgress && !toolCompleted) {
+                // Tool is executing, don't count stability yet
+                stableCount = 0;
+                lastLength = fullResponse.length;
+                return;
+            }
+
+            if (fullResponse.length === lastLength && fullResponse.length > 0) {
+                stableCount++;
+                // After tool completion, need a bit more time for follow-up response
+                const neededChecks = toolCompleted ? requiredStableChecks + 2 : requiredStableChecks;
+                if (stableCount >= neededChecks) {
+                    clearInterval(checkInterval);
+                    cleanup();
+
+                    // Extract final speakable response (skip tool JSON and system messages)
+                    finalResponse = extractSpeakableResponse(fullResponse);
+                    console.log(`[Voice Mirror] Captured response (${fullResponse.length} chars) -> speakable: "${finalResponse?.slice(0, 100)}..."`);
+                    resolve(finalResponse || null);
+                }
+            } else {
+                stableCount = 0;
+            }
+            lastLength = fullResponse.length;
+        }, 500);
+
+        function cleanup() {
+            provider.emitOutput = originalEmit;
+            provider.onToolCall = originalOnToolCall;
+            provider.onToolResult = originalOnToolResult;
+        }
+
+        // Timeout after 60 seconds (longer to allow for tool execution)
+        setTimeout(() => {
+            clearInterval(checkInterval);
+            cleanup();
+            finalResponse = extractSpeakableResponse(fullResponse);
+            resolve(finalResponse || null);
+        }, 60000);
+    });
+}
+
+/**
+ * Extract the final speakable response from provider output.
+ * Filters out tool JSON, system messages, and intermediate output.
+ * Returns only the final natural language response after tool execution.
+ * @param {string} output - The full captured output
+ * @returns {string} The final response suitable for TTS
+ */
+function extractSpeakableResponse(output) {
+    if (!output) return '';
+
+    // Split by common section markers to find the final response
+    // After tool execution, the model typically outputs a natural response
+    const sections = output.split(/\[Tool (?:succeeded|failed)\]/i);
+
+    // If we have sections after tool execution, use the last one
+    let relevantOutput = sections.length > 1 ? sections[sections.length - 1] : output;
+
+    const lines = relevantOutput.split('\n');
+    const speakableLines = [];
+    let inCodeBlock = false;
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+
+        // Skip empty lines
+        if (!trimmed) continue;
+
+        // Track markdown code blocks (skip everything inside them)
+        if (trimmed.startsWith('```')) {
+            inCodeBlock = !inCodeBlock;
+            continue;
+        }
+        if (inCodeBlock) continue;
+
+        // Skip tool-related system messages
+        if (trimmed.startsWith('[Executing tool:') ||
+            trimmed.startsWith('[Tool Error:') ||
+            trimmed.startsWith('[Max tool iterations') ||
+            trimmed.startsWith('Tool "') ||
+            trimmed.startsWith('[Tool succeeded]') ||
+            trimmed.startsWith('[Tool failed]')) {
+            continue;
+        }
+
+        // Skip JSON tool calls (detect by pattern)
+        if (trimmed.startsWith('{') && trimmed.includes('"tool"')) {
+            continue;
+        }
+
+        // Skip lines that look like pre-tool-call announcements
+        if (trimmed.match(/I'll (?:search|look|check|use|execute|call)/i) &&
+            trimmed.match(/tool|search|web_search/i)) {
+            continue;
+        }
+
+        // Skip user echo lines (> prefix)
+        if (trimmed.startsWith('>')) continue;
+
+        // Skip numbered list items that are just URLs or metadata
+        if (trimmed.match(/^\d+\.\s*(https?:|www\.)/)) continue;
+
+        // Keep this line
+        speakableLines.push(trimmed);
+    }
+
+    // Return the collected speakable content
+    const result = speakableLines.join(' ').trim();
+
+    // Clean up the result
+    // Remove markdown artifacts
+    let cleaned = result
+        .replace(/\*\*/g, '')           // Bold markers
+        .replace(/\*/g, '')              // Italic markers
+        .replace(/`[^`]+`/g, '')         // Inline code
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')  // Links -> just text
+        .replace(/#+\s*/g, '')           // Headers
+        .replace(/\s+/g, ' ')            // Multiple spaces
+        .trim();
+
+    // If the result is still mostly JSON or system output, return empty
+    if (cleaned.startsWith('{') || cleaned.startsWith('[')) {
+        return '';
+    }
+
+    return cleaned;
+}
+
+/**
+ * Strip echoed/quoted user message from AI response.
+ * Many models quote the user's message before responding (e.g., "> User's question\n\nResponse")
+ * @param {string} response - The AI response text
+ * @returns {string} Cleaned response without quoted echo
+ */
+function stripEchoedContent(response) {
+    if (!response) return response;
+
+    // Pattern 1: Lines starting with > (blockquotes)
+    // Pattern 2: Lines starting with "User:" or similar
+    // Remove leading quoted lines until we hit actual content
+    const lines = response.split('\n');
+    let startIndex = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        // Skip empty lines, blockquotes, and "User:" prefixes
+        if (line === '' || line.startsWith('>') || line.match(/^(user|you|human):/i)) {
+            startIndex = i + 1;
+        } else {
+            break;
+        }
+    }
+
+    return lines.slice(startIndex).join('\n').trim();
+}
+
+/**
+ * Write AI response to inbox so Python TTS can speak it.
+ * @param {string} response - The AI response text
+ * @param {string} providerName - Display name of the provider
+ * @param {string} replyToId - ID of the message being replied to
+ */
+function writeResponseToInbox(response, providerName, replyToId) {
+    const dataDir = path.join(app.getPath('home'), '.config', 'voice-mirror-electron', 'data');
+    const inboxPath = path.join(dataDir, 'inbox.json');
+
+    let data = { messages: [] };
+    if (fs.existsSync(inboxPath)) {
+        try {
+            data = JSON.parse(fs.readFileSync(inboxPath, 'utf-8'));
+            if (!data.messages) data.messages = [];
+        } catch {
+            data = { messages: [] };
+        }
+    }
+
+    // Create sender ID from provider name (e.g., "Ollama (qwen-coder)" -> "ollama-qwen-coder")
+    const senderId = providerName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+    const newMessage = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        from: senderId,
+        message: response,
+        timestamp: new Date().toISOString(),
+        read_by: [],
+        reply_to: replyToId,
+        thread_id: 'voice-mirror'
+    };
+
+    data.messages.push(newMessage);
+    fs.writeFileSync(inboxPath, JSON.stringify(data, null, 2));
+
+    console.log(`[Voice Mirror] Wrote response to inbox from ${senderId}`);
 }
 
 /**
@@ -1676,6 +2071,9 @@ app.whenReady().then(() => {
         console.log('[Voice Mirror] Registering PTT key from saved config:', appConfig.behavior.pttKey);
         registerPushToTalk(appConfig.behavior.pttKey);
     }
+
+    // Start Docker services (SearXNG, n8n) if available
+    startDockerServices();
 
     // Auto-start Voice Mirror (Python + AI provider) on app launch
     try {

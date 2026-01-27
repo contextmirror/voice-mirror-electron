@@ -491,6 +491,38 @@ async def process_commands(agent):
                         json.dump({"active": activation_mode == "callMode"}, f)
                     emit_event("mode_change", {"mode": activation_mode})
 
+                # Apply TTS settings changes immediately
+                voice_cfg = cfg.get("voice", {})
+                tts_adapter = voice_cfg.get("ttsAdapter")
+                tts_voice = voice_cfg.get("ttsVoice")
+                tts_model_size = voice_cfg.get("ttsModelSize")
+
+                if tts_adapter or tts_voice or tts_model_size:
+                    # Update voice_settings.json (read by voice_agent)
+                    settings_path = Path.home() / ".config" / "voice-mirror-electron" / "data" / "voice_settings.json"
+                    try:
+                        voice_settings = {}
+                        if settings_path.exists():
+                            with open(settings_path, 'r') as f:
+                                voice_settings = json.load(f)
+
+                        # Update only the fields that were provided
+                        if tts_adapter:
+                            voice_settings["tts_adapter"] = tts_adapter
+                        if tts_voice:
+                            voice_settings["tts_voice"] = tts_voice
+                        if tts_model_size:
+                            voice_settings["tts_model_size"] = tts_model_size
+
+                        with open(settings_path, 'w') as f:
+                            json.dump(voice_settings, f, indent=2)
+
+                        # Tell the agent to refresh TTS settings
+                        if hasattr(agent, 'refresh_tts_settings'):
+                            agent.refresh_tts_settings()
+                    except Exception as e:
+                        emit_error(f"Failed to update TTS settings: {e}")
+
             elif command == "start_recording":
                 # Push-to-talk: start recording immediately
                 # Don't emit here - ElectronOutputCapture will emit when voice_agent prints

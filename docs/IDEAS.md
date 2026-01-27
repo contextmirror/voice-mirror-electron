@@ -6,9 +6,9 @@ Ideas and features for future development.
 
 ## Voice Cloning via Conversation
 
-**Status:** Concept
+**Status:** ✅ Implemented
 **Priority:** High (differentiating feature)
-**Dependencies:** Qwen3-TTS adapter (implemented), MCP tool (needed)
+**Dependencies:** Qwen3-TTS adapter (implemented), MCP tool (implemented)
 
 ### The Vision
 
@@ -24,35 +24,29 @@ Claude autonomously:
 
 All in one conversational turn. No menus, no file uploads, no restart.
 
-### Implementation Plan
+### Implementation (Completed)
 
-**1. Add `clone_voice` MCP tool** (`mcp-server/`)
-```python
-@tool
-async def clone_voice(
-    audio_url: str = None,      # URL to download
-    audio_path: str = None,     # Local file path
-    voice_name: str = "custom"  # Name for this voice
-) -> dict:
-    """
-    Clone a voice from audio sample for TTS.
+**MCP Tools** (`mcp-server/index.js`):
+- `clone_voice` - Clone a voice from URL or local file
+- `clear_voice_clone` - Return to preset speaker voice
+- `list_voice_clones` - List saved voice clones
 
-    Handles: download, trim to 3s, normalize, transcribe, setup clone.
-    Returns: {"success": true, "voice_name": "custom", "message": "..."}
-    """
-```
+**Audio Processing Pipeline**:
+- Download audio via `yt-dlp` (YouTube, SoundCloud) or `curl` (direct URLs)
+- Convert to WAV 16kHz mono via `ffmpeg`
+- Trim to 5 seconds with silence removal and normalization
+- Auto-transcribe using STT adapter (Parakeet/Whisper)
+- Call `tts.set_voice_clone()` on Qwen adapter
 
-**2. Audio processing pipeline**
-- Download audio (requests/urllib)
-- Convert to WAV 16kHz mono (ffmpeg)
-- Trim to best 3-second segment (ffmpeg + silence detection)
-- Transcribe with STT adapter
-- Call Qwen adapter's `set_voice_clone()`
+**Voice Persistence**:
+- Saved to `~/.config/voice-mirror-electron/data/voices/`
+- Metadata stored as `{voice_name}.json`
+- Processed audio stored as `{voice_name}_processed.wav`
 
-**3. Voice persistence** (optional)
-- Save cloned voices to `~/.config/voice-mirror-electron/voices/`
-- Allow switching between saved clones
-- `list_voices` and `delete_voice` MCP tools
+**Settings UI**:
+- TTS Engine selector (Kokoro / Qwen3-TTS)
+- Model size selector for Qwen (0.6B / 1.7B)
+- Voice selector updates based on engine
 
 ### Use Cases
 
@@ -65,10 +59,22 @@ async def clone_voice(
 
 ### Technical Notes
 
-- Qwen3-TTS 1.7B needs ~4GB VRAM
+**Storage Requirements:**
+- 0.6B model: ~1.5GB per variant (Base + CustomVoice = ~3GB total)
+- 1.7B model: ~3.5GB per variant (Base + CustomVoice = ~7GB total)
+- Voice cloning downloads BOTH Base (for cloning) and CustomVoice (for presets)
+- Models cached in HuggingFace cache: `~/.cache/huggingface/`
+
+**VRAM Requirements:**
+- 0.6B: ~2GB VRAM
+- 1.7B: ~4GB VRAM
+- CPU fallback available but significantly slower
+
+**Quality Notes:**
 - Voice clone prompt is cached for efficiency
 - Clone quality depends on sample clarity
 - Works best with clear speech, minimal background noise
+- 3-5 seconds of audio is optimal for cloning
 
 ---
 

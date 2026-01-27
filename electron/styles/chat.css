@@ -336,3 +336,113 @@
     background: rgba(255, 255, 255, 0.03);
     font-weight: 600;
 }
+
+/* ========== Tool Cards (Claude Code-style) ========== */
+.tool-card {
+    margin: 12px 0;
+    border-radius: 8px;
+    font-size: 13px;
+    animation: rise var(--duration-normal) var(--ease-out);
+    -webkit-app-region: no-drag;
+    overflow: hidden;
+}
+
+.tool-card.tool-call {
+    background: rgba(30, 32, 40, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tool-card.tool-result {
+    display: none;  /* Hide result card - info shown in tool-call card */
+}
+
+.tool-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.tool-icon {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    opacity: 0.8;
+}
+
+.tool-name {
+    font-weight: 500;
+    color: var(--text);
+    font-size: 13px;
+    flex: 1;
+}
+
+.tool-status {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.tool-status.running {
+    background: rgba(102, 126, 234, 0.15);
+    color: #8b9cff;
+    animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+.tool-status.success {
+    background: rgba(46, 204, 113, 0.15);
+    color: #5ed18f;
+}
+
+.tool-status.error {
+    background: rgba(231, 76, 60, 0.15);
+    color: #e74c3c;
+}
+
+@keyframes pulse-subtle {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.tool-card-args {
+    color: var(--muted);
+    font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 11px;
+    padding: 10px 14px;
+    background: rgba(0, 0, 0, 0.15);
+    overflow-x: auto;
+    white-space: nowrap;
+    border-top: none;
+}
+
+.tool-card-args:empty {
+    display: none;
+}
+
+/* Result shown inline in tool card */
+.tool-card-result {
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 10px 14px;
+    background: rgba(0, 0, 0, 0.1);
+    border-top: 1px solid rgba(255, 255, 255, 0.03);
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+.tool-card-result:empty {
+    display: none;
+}
+
+.tool-result-icon {
+    display: none;  /* Hidden - status badge shows success/error */
+}

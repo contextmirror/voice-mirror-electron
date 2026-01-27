@@ -64,6 +64,10 @@ VOICE_CALL_PATH = VM_DATA_DIR / "voice_call.json"
 # Push-to-talk trigger file (written by Electron)
 PTT_TRIGGER_PATH = VM_DATA_DIR / "ptt_trigger.json"
 
+# Voice cloning IPC files (written by MCP server)
+VOICE_CLONE_REQUEST_PATH = VM_DATA_DIR / "voice_clone_request.json"
+VOICE_CLONE_RESPONSE_PATH = VM_DATA_DIR / "voice_clone_response.json"
+
 # Audio settings
 SAMPLE_RATE = 16000
 CHANNELS = 1
@@ -188,11 +192,14 @@ class VoiceMirror:
         # Load TTS adapter from settings
         tts_adapter = settings.get("tts_adapter", "kokoro")
         tts_voice = settings.get("tts_voice", TTS_VOICE)
+        tts_model_size = settings.get("tts_model_size", "0.6B")
 
         try:
             print(f"Loading TTS adapter: {tts_adapter}")
             print(f"  Voice: {tts_voice}")
-            self.tts = create_tts_adapter(tts_adapter, voice=tts_voice)
+            if tts_adapter == "qwen":
+                print(f"  Model size: {tts_model_size}")
+            self.tts = create_tts_adapter(tts_adapter, voice=tts_voice, model_size=tts_model_size)
         except ValueError as e:
             print(f"⚠️ {e}")
             print(f"   Falling back to kokoro")
@@ -273,6 +280,129 @@ class VoiceMirror:
     def send_to_inbox(self, message: str):
         """Send transcribed message to MCP inbox."""
         return self.inbox.send(message)
+
+    async def check_voice_clone_request(self):
+        """
+        Check for voice clone requests from MCP server.
+        Handles clone and clear actions.
+        """
+        try:
+            if not VOICE_CLONE_REQUEST_PATH.exists():
+                return
+
+            with open(VOICE_CLONE_REQUEST_PATH, 'r') as f:
+                request = json.load(f)
+
+            # Clear request file immediately to avoid re-processing
+            VOICE_CLONE_REQUEST_PATH.unlink()
+
+            action = request.get('action')
+            print(f"🎤 Voice clone request: {action}")
+
+            if action == 'clone':
+                await self._handle_voice_clone(request)
+            elif action == 'clear':
+                await self._handle_voice_clone_clear()
+            else:
+                print(f"⚠️ Unknown voice clone action: {action}")
+
+        except json.JSONDecodeError:
+            pass  # File might be partially written
+        except FileNotFoundError:
+            pass  # Already processed
+        except Exception as e:
+            print(f"❌ Voice clone request error: {e}")
+            self._write_voice_clone_response(False, str(e))
+
+    async def _handle_voice_clone(self, request: dict):
+        """Process a voice cloning request."""
+        audio_path = request.get('audio_path')
+        voice_name = request.get('voice_name', 'custom')
+        transcript = request.get('transcript')
+
+        if not audio_path or not Path(audio_path).exists():
+            self._write_voice_clone_response(False, f"Audio file not found: {audio_path}")
+            return
+
+        # Check if TTS adapter supports voice cloning (Qwen)
+        if not hasattr(self.tts, 'set_voice_clone'):
+            self._write_voice_clone_response(
+                False,
+                "Current TTS adapter does not support voice cloning. Switch to Qwen3-TTS in settings."
+            )
+            return
+
+        # Auto-transcribe if no transcript provided
+        if not transcript:
+            print(f"🎤 Auto-transcribing reference audio...")
+            try:
+                import soundfile as sf
+                audio_data, sr = sf.read(audio_path)
+
+                # Ensure STT is loaded
+                if not self.stt_adapter.is_loaded:
+                    await self.stt_adapter.load()
+
+                # Transcribe (expects float32 mono at 16kHz)
+                if len(audio_data.shape) > 1:
+                    audio_data = audio_data[:, 0]  # Mono
+                if sr != SAMPLE_RATE:
+                    # Resample if needed (ffmpeg should have done this, but just in case)
+                    import scipy.signal
+                    audio_data = scipy.signal.resample(
+                        audio_data,
+                        int(len(audio_data) * SAMPLE_RATE / sr)
+                    )
+                audio_data = audio_data.astype(np.float32)
+
+                transcript = await self.stt_adapter.transcribe(audio_data, SAMPLE_RATE)
+                print(f"📝 Transcription: \"{transcript}\"")
+
+                if not transcript or len(transcript.strip()) < 2:
+                    self._write_voice_clone_response(
+                        False,
+                        "Could not transcribe audio. Please provide a transcript manually."
+                    )
+                    return
+
+            except Exception as e:
+                self._write_voice_clone_response(False, f"Transcription failed: {e}")
+                return
+
+        # Set up voice clone
+        print(f"🎤 Setting up voice clone: {voice_name}")
+        try:
+            success = self.tts.set_voice_clone(audio_path, transcript)
+            if success:
+                print(f"✅ Voice clone '{voice_name}' activated!")
+                self._write_voice_clone_response(True, transcript=transcript)
+            else:
+                self._write_voice_clone_response(False, "Failed to create voice clone prompt")
+        except Exception as e:
+            self._write_voice_clone_response(False, f"Voice clone setup failed: {e}")
+
+    async def _handle_voice_clone_clear(self):
+        """Clear current voice clone."""
+        if hasattr(self.tts, 'clear_voice_clone'):
+            self.tts.clear_voice_clone()
+            print("✅ Voice clone cleared, using preset voice")
+            self._write_voice_clone_response(True)
+        else:
+            self._write_voice_clone_response(True)  # No-op for adapters without cloning
+
+    def _write_voice_clone_response(self, success: bool, error: str = None, transcript: str = None):
+        """Write response file for MCP server."""
+        response = {
+            'success': success,
+            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S')
+        }
+        if error:
+            response['error'] = error
+        if transcript:
+            response['transcript'] = transcript
+
+        with open(VOICE_CLONE_RESPONSE_PATH, 'w') as f:
+            json.dump(response, f, indent=2)
 
     async def wait_for_claude_response(self, my_message_id: str, timeout: float = 60.0) -> str:
         """Wait for AI provider to respond to our message via inbox polling."""
@@ -556,6 +686,9 @@ class VoiceMirror:
             try:
                 while True:
                     await asyncio.sleep(0.1)
+
+                    # Check for voice clone requests from MCP server
+                    await self.check_voice_clone_request()
 
                     # Check for PTT release (process immediately)
                     if self.audio_state.ptt_process_pending:

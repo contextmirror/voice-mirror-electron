@@ -5,7 +5,7 @@
 
 import { state } from './state.js';
 import { initMarkdown } from './markdown.js';
-import { addMessage, isDuplicate, copyMessage } from './messages.js';
+import { addMessage, isDuplicate, copyMessage, addToolCallCard, addToolResultCard } from './messages.js';
 import { initXterm, handleAIOutput, updateAIStatus, toggleTerminal, startAI, stopAI, updateProviderDisplay } from './terminal.js';
 import { initSettings, toggleSettings } from './settings.js';
 import { initNavigation, navigateTo, toggleSidebarCollapse } from './navigation.js';
@@ -345,6 +345,10 @@ function handleVoiceEvent(data) {
             break;
         case 'claude_connected':
             updateAIStatus(true);
+            // Update provider display if info is included
+            if (data.provider && data.providerName) {
+                updateProviderDisplay(data.providerName, data.provider, data.model);
+            }
             break;
         case 'claude_disconnected':
             updateAIStatus(false);
@@ -455,6 +459,17 @@ async function init() {
 
     // Listen for AI terminal output
     window.voiceMirror.claude.onOutput(handleAIOutput);
+
+    // Listen for tool events (local LLM tool system)
+    window.voiceMirror.tools.onToolCall((data) => {
+        console.log('[Tool Call]', data);
+        addToolCallCard(data);
+    });
+
+    window.voiceMirror.tools.onToolResult((data) => {
+        console.log('[Tool Result]', data);
+        addToolResultCard(data);
+    });
 
     // Listen for open-settings command from tray menu
     window.voiceMirror.onOpenSettings(() => {

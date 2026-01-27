@@ -19,6 +19,44 @@ function stripProviderPrefix(text) {
 }
 
 /**
+ * Strip tool call JSON from message text.
+ * Local LLMs output JSON for tool calls - don't show that in the chat bubble.
+ */
+function stripToolJson(text) {
+    if (!text) return text;
+
+    // Pattern 1: Standalone JSON tool call
+    // {"tool": "web_search", "args": {...}}
+    const jsonPattern = /\{[\s\S]*?"tool"[\s\S]*?"args"[\s\S]*?\}/g;
+
+    // Pattern 2: "Sure!" followed by JSON (common Ollama pattern)
+    const prefixJsonPattern = /^(Sure!?\s*)?(\{[\s\S]*?"tool"[\s\S]*?"args"[\s\S]*?\})\s*/i;
+
+    let cleaned = text;
+
+    // Remove inline JSON tool calls
+    cleaned = cleaned.replace(jsonPattern, '').trim();
+
+    // Remove "Sure! {json}" patterns
+    cleaned = cleaned.replace(prefixJsonPattern, '').trim();
+
+    // Remove common pre-tool-call phrases that make no sense without the JSON
+    cleaned = cleaned.replace(/^(Sure!?|I'll search|Let me search|Searching)[.!]?\s*$/i, '').trim();
+
+    return cleaned;
+}
+
+/**
+ * Check if text is primarily a tool call JSON (should not be shown as message)
+ */
+function isToolCallOnly(text) {
+    if (!text) return false;
+    const stripped = stripToolJson(text);
+    // If after stripping tool JSON we have very little left, it was just a tool call
+    return stripped.length < 10 || stripped.match(/^(Sure!?|OK|Okay)[.!]?\s*$/i);
+}
+
+/**
  * Check if message is a duplicate (within dedup window)
  */
 export function isDuplicate(text) {
@@ -84,17 +122,31 @@ export function addMessage(role, text, imageBase64 = null) {
     }
 
     if (text) {
-        const textNode = document.createElement('div');
-        // Use markdown rendering for assistant messages, plain text for user
+        // For assistant messages, clean up the text
+        let displayText = text;
         if (role === 'assistant') {
             // Strip provider prefix (e.g., "Claude: ") since sender is shown in header
-            const cleanText = stripProviderPrefix(text);
-            textNode.className = 'markdown-content';
-            textNode.innerHTML = renderMarkdown(cleanText);
-        } else {
-            textNode.textContent = text;
+            displayText = stripProviderPrefix(text);
+            // Strip tool JSON from message (shown in tool cards instead)
+            displayText = stripToolJson(displayText);
+
+            // If the message was just a tool call with no real content, don't show it
+            if (isToolCallOnly(text)) {
+                return; // Don't add empty message bubble
+            }
         }
-        bubble.appendChild(textNode);
+
+        if (displayText) {
+            const textNode = document.createElement('div');
+            // Use markdown rendering for assistant messages, plain text for user
+            if (role === 'assistant') {
+                textNode.className = 'markdown-content';
+                textNode.innerHTML = renderMarkdown(displayText);
+            } else {
+                textNode.textContent = displayText;
+            }
+            bubble.appendChild(textNode);
+        }
     }
 
     // Add copy button for assistant messages
@@ -147,4 +199,110 @@ export function copyMessage(btn) {
             `;
         }, 2000);
     });
+}
+
+/**
+ * Add a tool call card to the chat.
+ * Shows which tool is being called and its arguments.
+ *
+ * @param {Object} data - Tool call data
+ * @param {string} data.tool - Tool name
+ * @param {Object} data.args - Tool arguments
+ * @returns {HTMLElement} The created card element
+ */
+export function addToolCallCard(data) {
+    const chatContainer = document.getElementById('chat-container');
+
+    const card = document.createElement('div');
+    card.className = 'tool-card tool-call';
+    card.dataset.tool = data.tool;
+
+    const icon = getToolIcon(data.tool);
+    const argsStr = Object.keys(data.args).length > 0
+        ? Object.entries(data.args).map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`).join(', ')
+        : 'no arguments';
+
+    card.innerHTML = `
+        <div class="tool-card-header">
+            <span class="tool-icon">${icon}</span>
+            <span class="tool-name">${formatToolName(data.tool)}</span>
+            <span class="tool-status running">Running...</span>
+        </div>
+        <div class="tool-card-args">${argsStr}</div>
+    `;
+
+    chatContainer.appendChild(card);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+
+    return card;
+}
+
+/**
+ * Add a tool result to the existing tool call card.
+ * Updates the card inline rather than creating a separate result card.
+ *
+ * @param {Object} data - Tool result data
+ * @param {string} data.tool - Tool name
+ * @param {boolean} data.success - Whether the tool succeeded
+ * @param {string} data.result - Result or error message
+ * @returns {HTMLElement|null} The updated card element or null
+ */
+export function addToolResultCard(data) {
+    const chatContainer = document.getElementById('chat-container');
+
+    // Find and update the corresponding tool-call card
+    const callCards = chatContainer.querySelectorAll(`.tool-card.tool-call[data-tool="${data.tool}"]`);
+    const lastCallCard = callCards[callCards.length - 1];
+
+    if (lastCallCard) {
+        // Update status badge
+        const statusEl = lastCallCard.querySelector('.tool-status');
+        if (statusEl) {
+            statusEl.className = `tool-status ${data.success ? 'success' : 'error'}`;
+            statusEl.textContent = data.success ? 'Done' : 'Failed';
+        }
+
+        // Add result content inline (if not already added)
+        if (!lastCallCard.querySelector('.tool-card-result') && data.result) {
+            const resultDiv = document.createElement('div');
+            resultDiv.className = 'tool-card-result';
+            resultDiv.textContent = truncateResult(data.result, 300);
+            lastCallCard.appendChild(resultDiv);
+        }
+
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+        return lastCallCard;
+    }
+
+    // Fallback: no matching card found (shouldn't happen normally)
+    return null;
+}
+
+/**
+ * Get icon for a tool.
+ */
+function getToolIcon(tool) {
+    const icons = {
+        capture_screen: '&#128247;',  // Camera
+        web_search: '&#128269;',      // Magnifying glass
+        memory_search: '&#128218;',   // Book
+        memory_remember: '&#128190;'  // Floppy disk
+    };
+    return icons[tool] || '&#128295;';  // Wrench as default
+}
+
+/**
+ * Format tool name for display.
+ */
+function formatToolName(tool) {
+    return tool.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+/**
+ * Truncate result string for display.
+ */
+function truncateResult(result, maxLength) {
+    if (!result) return 'No result';
+    if (result.length <= maxLength) return result;
+    return result.slice(0, maxLength) + '...';
 }
