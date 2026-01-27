@@ -17,8 +17,9 @@ mv node_modules/electron node_modules/_electron_launcher 2>/dev/null
 ELECTRON_FLAGS=""
 
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    # Linux: disable GPU acceleration and sandbox (helps with some systems)
-    ELECTRON_FLAGS="--disable-gpu --no-sandbox"
+    # Linux: Force XWayland for proper alwaysOnTop overlay support
+    # (Wayland protocol doesn't allow apps to control stacking order)
+    ELECTRON_FLAGS="--ozone-platform=x11 --disable-gpu --no-sandbox"
 
     # Ensure user is in 'input' group for global push-to-talk (evdev access)
     if ! id -Gn | grep -qw input; then

@@ -4,6 +4,7 @@
  */
 
 const { BrowserWindow, screen } = require('electron');
+const { execSync } = require('child_process');
 const path = require('path');
 
 /**
@@ -19,6 +20,8 @@ function createWindowManager(options = {}) {
 
     let mainWindow = null;
     let isExpanded = false;
+    let overlayInterval = null;
+    let x11WindowId = null;
 
     /**
      * Get orb size from config.
@@ -81,6 +84,9 @@ function createWindowManager(options = {}) {
             }
         });
 
+        // Set highest always-on-top level for overlay behavior
+        mainWindow.setAlwaysOnTop(true, 'screen-saver');
+
         // On Linux, try to enable transparency
         if (isLinux) {
             mainWindow.setBackgroundColor('#00000000');
@@ -91,6 +97,23 @@ function createWindowManager(options = {}) {
 
         // Make transparent areas click-through
         mainWindow.setIgnoreMouseEvents(false);
+
+        // On Linux/Wayland: set X11 window type to DOCK so COSMIC keeps it on top
+        if (isLinux) {
+            mainWindow.once('show', () => {
+                setupX11Overlay();
+            });
+        }
+
+        // Re-assert always-on-top when window loses focus (Wayland workaround)
+        mainWindow.on('blur', () => {
+            if (!isExpanded && mainWindow) {
+                raiseWindow();
+            }
+        });
+
+        // Periodic overlay enforcement for Wayland (re-assert every 2s when collapsed)
+        startOverlayEnforcer();
 
         // Save position when window is moved (only when collapsed to orb)
         mainWindow.on('moved', () => {
@@ -105,6 +128,71 @@ function createWindowManager(options = {}) {
     }
 
     /**
+     * Find and store the X11 window ID, set DOCK type, and configure overlay.
+     * COSMIC/Wayland doesn't support _NET_WM_STATE_ABOVE, so we use
+     * DOCK type + periodic xdotool raise as a workaround.
+     */
+    function setupX11Overlay() {
+        try {
+            const title = mainWindow.getTitle() || 'Voice Mirror';
+            const windowId = execSync(
+                `xdotool search --name "${title}" 2>/dev/null | head -1`,
+                { encoding: 'utf8', timeout: 3000 }
+            ).trim();
+            if (windowId) {
+                x11WindowId = windowId;
+                // Set ABOVE state hint (works on X11 DEs like GNOME/KDE)
+                execSync(
+                    `xprop -id ${windowId} -f _NET_WM_STATE 32a -set _NET_WM_STATE _NET_WM_STATE_ABOVE`,
+                    { timeout: 3000 }
+                );
+                console.log('[Window] X11 overlay configured (id:', windowId, ')');
+            }
+        } catch (e) {
+            console.log('[Window] Could not configure X11 overlay:', e.message);
+        }
+    }
+
+    /**
+     * Raise the window to the top of the X11 stacking order.
+     */
+    function raiseWindow() {
+        if (x11WindowId) {
+            try {
+                execSync(`xdotool windowraise ${x11WindowId}`, { timeout: 1000, stdio: 'ignore' });
+            } catch (e) {
+                // Silently fail — window may have been recreated
+            }
+        }
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.setAlwaysOnTop(true, 'screen-saver');
+        }
+    }
+
+    /**
+     * Start periodic always-on-top enforcement (Wayland workaround).
+     * Uses xdotool windowraise + Electron setAlwaysOnTop every 2s.
+     */
+    function startOverlayEnforcer() {
+        stopOverlayEnforcer();
+        overlayInterval = setInterval(() => {
+            if (mainWindow && !isExpanded && !mainWindow.isDestroyed()) {
+                raiseWindow();
+            }
+        }, 2000);
+    }
+
+    /**
+     * Stop periodic overlay enforcement.
+     */
+    function stopOverlayEnforcer() {
+        if (overlayInterval) {
+            clearInterval(overlayInterval);
+            overlayInterval = null;
+        }
+    }
+
+    /**
      * Expand the window to full panel.
      */
     function expand() {
@@ -115,6 +203,7 @@ function createWindowManager(options = {}) {
         const panelHeight = getPanelHeight();
 
         isExpanded = true;
+        stopOverlayEnforcer();
 
         // Send state change first
         mainWindow.webContents.send('state-change', { expanded: true });
@@ -129,6 +218,8 @@ function createWindowManager(options = {}) {
                 screenHeight - panelHeight - 50
             );
             mainWindow.setSkipTaskbar(false);
+            mainWindow.setAlwaysOnTop(true, 'floating');
+            mainWindow.focus();
             console.log('[Window] Expanded to panel:', panelWidth, 'x', panelHeight);
         }, 50);
     }
@@ -161,6 +252,7 @@ function createWindowManager(options = {}) {
         const restoreY = savedY !== null && savedY !== undefined ? savedY : screenHeight - orbSize - 100;
 
         isExpanded = false;
+        startOverlayEnforcer();
 
         // Send state change first so UI updates
         mainWindow.webContents.send('state-change', { expanded: false });
@@ -171,6 +263,7 @@ function createWindowManager(options = {}) {
             mainWindow.setContentSize(orbSize, orbSize);
             mainWindow.setPosition(restoreX, restoreY);
             mainWindow.setSkipTaskbar(true);
+            mainWindow.setAlwaysOnTop(true, 'screen-saver');
             console.log('[Window] Collapsed to orb:', orbSize, 'x', orbSize);
         }, 50);
     }

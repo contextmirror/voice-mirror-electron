@@ -12,6 +12,10 @@
 const { app, BrowserWindow, ipcMain, desktopCapturer, screen, globalShortcut, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+
+// Note: --ozone-platform=x11 is passed via CLI (package.json/launch.sh)
+// to force XWayland on Linux for proper alwaysOnTop overlay support.
+// Wayland protocol doesn't allow apps to control stacking order.
 const config = require('./config');
 // Note: claude-spawner and providers are now used via ai-manager service
 const { createLogger } = require('./services/logger');

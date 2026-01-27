@@ -4,8 +4,8 @@
   "description": "Voice-controlled AI agent overlay for your entire computer",
   "main": "electron/main.js",
   "scripts": {
-    "start": "env -u ELECTRON_RUN_AS_NODE electron .",
-    "dev": "env -u ELECTRON_RUN_AS_NODE electron . --dev",
+    "start": "env -u ELECTRON_RUN_AS_NODE electron . --ozone-platform=x11 --disable-gpu --no-sandbox",
+    "dev": "env -u ELECTRON_RUN_AS_NODE electron . --ozone-platform=x11 --disable-gpu --no-sandbox --dev",
     "build": "electron-builder"
   },
   "author": "Nathan + Claude",
