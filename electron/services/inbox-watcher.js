@@ -1,0 +1,510 @@
+/**
+ * Inbox watcher service for Voice Mirror Electron.
+ * Watches for Claude messages in the MCP inbox and forwards user messages
+ * to non-Claude providers (Ollama, LM Studio, etc.)
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+/**
+ * Create an inbox watcher service instance.
+ * @param {Object} options - Service options
+ * @param {string} options.dataDir - Path to data directory
+ * @param {Function} options.isClaudeRunning - Check if Claude is running
+ * @param {Function} options.getProvider - Get active provider instance
+ * @param {Function} options.onClaudeMessage - Callback for Claude messages
+ * @param {Function} options.onUserMessage - Callback for user messages (chat UI)
+ * @param {Function} options.onAssistantMessage - Callback for assistant messages (chat UI)
+ * @param {Function} options.onVoiceEvent - Callback for voice events
+ * @returns {Object} Inbox watcher service instance
+ */
+function createInboxWatcher(options = {}) {
+    const {
+        dataDir,
+        isClaudeRunning,
+        getProvider,
+        onClaudeMessage,
+        onUserMessage,
+        onAssistantMessage,
+        onVoiceEvent
+    } = options;
+
+    let watcher = null;
+    let displayedMessageIds = new Set();  // Track messages already shown in UI
+    let processedUserMessageIds = new Set();  // Track user messages already forwarded to non-Claude providers
+
+    /**
+     * Start watching for inbox messages.
+     */
+    function start() {
+        if (watcher) {
+            console.log('[InboxWatcher] Already running');
+            return;
+        }
+
+        const contextMirrorDir = dataDir || path.join(process.env.HOME || process.env.USERPROFILE, '.config', 'voice-mirror-electron', 'data');
+        const inboxPath = path.join(contextMirrorDir, 'inbox.json');
+
+        // Ensure data directory exists
+        if (!fs.existsSync(contextMirrorDir)) {
+            fs.mkdirSync(contextMirrorDir, { recursive: true });
+        }
+
+        // Seed displayedMessageIds with existing messages to avoid showing stale history
+        // Also seed processedUserMessageIds to avoid re-forwarding old messages to non-Claude providers
+        // Only NEW messages that arrive after app starts will be displayed/processed
+        try {
+            if (fs.existsSync(inboxPath)) {
+                const data = JSON.parse(fs.readFileSync(inboxPath, 'utf-8'));
+                const messages = data.messages || [];
+                for (const msg of messages) {
+                    if (msg.id) {
+                        displayedMessageIds.add(msg.id);
+                        // Also seed processedUserMessageIds for "nathan" messages
+                        if (msg.from === 'nathan') {
+                            processedUserMessageIds.add(msg.id);
+                        }
+                    }
+                }
+                console.log(`[InboxWatcher] Seeded ${displayedMessageIds.size} display IDs, ${processedUserMessageIds.size} user message IDs`);
+            }
+        } catch (err) {
+            console.error('[InboxWatcher] Failed to seed message IDs:', err);
+        }
+
+        // Poll every 500ms for new Claude messages
+        watcher = setInterval(() => {
+            try {
+                if (!fs.existsSync(inboxPath)) return;
+
+                const data = JSON.parse(fs.readFileSync(inboxPath, 'utf-8'));
+                const messages = data.messages || [];
+
+                if (messages.length === 0) return;
+
+                // Watch for Claude responses and display in UI
+                let latestClaudeMessage = null;
+                for (let i = messages.length - 1; i >= 0; i--) {
+                    const msg = messages[i];
+                    const sender = (msg.from || '').toLowerCase();
+                    if (sender.includes('claude') && msg.thread_id === 'voice-mirror') {
+                        latestClaudeMessage = msg;
+                        break;
+                    }
+                }
+
+                if (latestClaudeMessage && !displayedMessageIds.has(latestClaudeMessage.id)) {
+                    displayedMessageIds.add(latestClaudeMessage.id);
+
+                    // Keep Set size bounded
+                    if (displayedMessageIds.size > 100) {
+                        const iterator = displayedMessageIds.values();
+                        displayedMessageIds.delete(iterator.next().value);
+                    }
+
+                    console.log('[InboxWatcher] New Claude message:', latestClaudeMessage.message?.slice(0, 50));
+
+                    // Send to UI via callbacks
+                    if (onClaudeMessage) {
+                        onClaudeMessage({
+                            role: 'assistant',
+                            text: latestClaudeMessage.message,
+                            source: 'claude',
+                            timestamp: latestClaudeMessage.timestamp,
+                            id: latestClaudeMessage.id
+                        });
+                    }
+
+                    if (onVoiceEvent) {
+                        onVoiceEvent({
+                            type: 'claude_message',
+                            text: latestClaudeMessage.message
+                        });
+                    }
+                }
+
+                // === Inbox Bridge for Non-Claude Providers ===
+                // Forward user messages to OpenAI-compatible providers (Ollama, LM Studio, etc.)
+                // Claude handles inbox directly via MCP tools, but other providers need this bridge
+                const claudeRunning = isClaudeRunning ? isClaudeRunning() : false;
+                const activeProvider = getProvider ? getProvider() : null;
+
+                if (!claudeRunning && activeProvider && activeProvider.isRunning()) {
+                    for (const msg of messages) {
+                        // Skip if already processed or not from voice user
+                        if (processedUserMessageIds.has(msg.id) || msg.from !== 'nathan') continue;
+
+                        // Mark as processed immediately to avoid duplicate forwarding
+                        processedUserMessageIds.add(msg.id);
+
+                        // Keep Set size bounded
+                        if (processedUserMessageIds.size > 100) {
+                            const iterator = processedUserMessageIds.values();
+                            processedUserMessageIds.delete(iterator.next().value);
+                        }
+
+                        const providerName = activeProvider.getDisplayName();
+                        console.log(`[InboxWatcher] Forwarding inbox message to ${providerName}: ${msg.message?.slice(0, 50)}...`);
+
+                        // Send to UI as user message
+                        if (onUserMessage) {
+                            onUserMessage({
+                                role: 'user',
+                                text: msg.message,
+                                source: 'voice',
+                                timestamp: msg.timestamp,
+                                id: msg.id
+                            });
+                        }
+
+                        // Capture response and write back to inbox for Python TTS
+                        captureProviderResponse(activeProvider, msg.message).then((response) => {
+                            if (response) {
+                                // Strip any echoed/quoted user message from the response
+                                const cleanedResponse = stripEchoedContent(response);
+
+                                // Write to inbox so Python can speak it
+                                writeResponseToInbox(contextMirrorDir, cleanedResponse, providerName, msg.id);
+
+                                // Also display in chat UI
+                                if (onAssistantMessage) {
+                                    onAssistantMessage({
+                                        role: 'assistant',
+                                        text: cleanedResponse,
+                                        source: providerName.toLowerCase(),
+                                        timestamp: new Date().toISOString()
+                                    });
+                                }
+                            }
+                        }).catch((err) => {
+                            console.error(`[InboxWatcher] Error forwarding to ${providerName}:`, err);
+                        });
+                    }
+                }
+
+            } catch (err) {
+                // Silently ignore parse errors
+            }
+        }, 500);
+
+        console.log('[InboxWatcher] Started');
+    }
+
+    /**
+     * Stop watching for inbox messages.
+     */
+    function stop() {
+        if (watcher) {
+            clearInterval(watcher);
+            watcher = null;
+            console.log('[InboxWatcher] Stopped');
+        }
+    }
+
+    /**
+     * Check if watcher is running.
+     * @returns {boolean} True if running
+     */
+    function isRunning() {
+        return watcher !== null;
+    }
+
+    /**
+     * Add a message ID to the displayed set (for deduplication).
+     * @param {string} id - Message ID to add
+     */
+    function addDisplayedMessageId(id) {
+        displayedMessageIds.add(id);
+        // Keep Set size bounded
+        if (displayedMessageIds.size > 100) {
+            const iterator = displayedMessageIds.values();
+            displayedMessageIds.delete(iterator.next().value);
+        }
+    }
+
+    /**
+     * Clear processed user message IDs (for provider switch).
+     */
+    function clearProcessedUserMessageIds() {
+        processedUserMessageIds.clear();
+    }
+
+    /**
+     * Get the current count of displayed message IDs.
+     * @returns {number} Count of displayed message IDs
+     */
+    function getDisplayedMessageCount() {
+        return displayedMessageIds.size;
+    }
+
+    return {
+        start,
+        stop,
+        isRunning,
+        addDisplayedMessageId,
+        clearProcessedUserMessageIds,
+        getDisplayedMessageCount
+    };
+}
+
+/**
+ * Capture streamed response from an OpenAI-compatible provider.
+ * Intercepts the provider's output and collects the full response.
+ * Handles tool calls by waiting for the tool loop to complete.
+ * @param {Object} provider - The provider instance
+ * @param {string} message - The message to send
+ * @returns {Promise<string|null>} The final response (after tool execution) or null on timeout
+ */
+async function captureProviderResponse(provider, message) {
+    return new Promise((resolve) => {
+        let fullResponse = '';
+        let toolInProgress = false;
+        let finalResponse = '';
+        const originalEmit = provider.emitOutput.bind(provider);
+
+        // Track tool execution state via callbacks
+        const originalOnToolCall = provider.onToolCall;
+        const originalOnToolResult = provider.onToolResult;
+
+        let lastLength = 0;
+        let stableCount = 0;
+        let toolCompleted = false;
+
+        provider.onToolCall = (data) => {
+            toolInProgress = true;
+            console.log(`[InboxWatcher] Tool call in progress: ${data.tool}`);
+            if (originalOnToolCall) originalOnToolCall(data);
+        };
+
+        provider.onToolResult = (data) => {
+            console.log(`[InboxWatcher] Tool result received: ${data.tool} (success: ${data.success})`);
+            // Reset fullResponse to capture the follow-up response
+            // The provider will send another request after injecting tool result
+            fullResponse = '';
+            lastLength = 0;  // Reset lastLength too so stability detection works correctly
+            stableCount = 0;
+            toolCompleted = true;  // Mark that tool has completed, now wait for follow-up
+            toolInProgress = false;  // Allow stability counting to resume
+            if (originalOnToolResult) originalOnToolResult(data);
+        };
+
+        // Intercept output to capture the response
+        provider.emitOutput = (type, text) => {
+            originalEmit(type, text);
+            if (type === 'stdout' && text) {
+                fullResponse += text;
+            }
+        };
+
+        // Send the message
+        provider.sendInput(message);
+
+        // Wait for response to complete (detect when output stops)
+        const requiredStableChecks = 4;  // 2 seconds of stability
+        const checkInterval = setInterval(() => {
+            // Don't count stability while tool is executing (waiting for result)
+            // Only start counting after tool completes OR if no tool was called
+            if (toolInProgress && !toolCompleted) {
+                // Tool is executing, don't count stability yet
+                stableCount = 0;
+                lastLength = fullResponse.length;
+                return;
+            }
+
+            if (fullResponse.length === lastLength && fullResponse.length > 0) {
+                stableCount++;
+                // After tool completion, need a bit more time for follow-up response
+                const neededChecks = toolCompleted ? requiredStableChecks + 2 : requiredStableChecks;
+                if (stableCount >= neededChecks) {
+                    clearInterval(checkInterval);
+                    cleanup();
+
+                    // Extract final speakable response (skip tool JSON and system messages)
+                    finalResponse = extractSpeakableResponse(fullResponse);
+                    console.log(`[InboxWatcher] Captured response (${fullResponse.length} chars) -> speakable: "${finalResponse?.slice(0, 100)}..."`);
+                    resolve(finalResponse || null);
+                }
+            } else {
+                stableCount = 0;
+            }
+            lastLength = fullResponse.length;
+        }, 500);
+
+        function cleanup() {
+            provider.emitOutput = originalEmit;
+            provider.onToolCall = originalOnToolCall;
+            provider.onToolResult = originalOnToolResult;
+        }
+
+        // Timeout after 60 seconds (longer to allow for tool execution)
+        setTimeout(() => {
+            clearInterval(checkInterval);
+            cleanup();
+            finalResponse = extractSpeakableResponse(fullResponse);
+            resolve(finalResponse || null);
+        }, 60000);
+    });
+}
+
+/**
+ * Extract the final speakable response from provider output.
+ * Filters out tool JSON, system messages, and intermediate output.
+ * Returns only the final natural language response after tool execution.
+ * @param {string} output - The full captured output
+ * @returns {string} The final response suitable for TTS
+ */
+function extractSpeakableResponse(output) {
+    if (!output) return '';
+
+    // Split by common section markers to find the final response
+    // After tool execution, the model typically outputs a natural response
+    const sections = output.split(/\[Tool (?:succeeded|failed)\]/i);
+
+    // If we have sections after tool execution, use the last one
+    let relevantOutput = sections.length > 1 ? sections[sections.length - 1] : output;
+
+    const lines = relevantOutput.split('\n');
+    const speakableLines = [];
+    let inCodeBlock = false;
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+
+        // Skip empty lines
+        if (!trimmed) continue;
+
+        // Track markdown code blocks (skip everything inside them)
+        if (trimmed.startsWith('```')) {
+            inCodeBlock = !inCodeBlock;
+            continue;
+        }
+        if (inCodeBlock) continue;
+
+        // Skip tool-related system messages
+        if (trimmed.startsWith('[Executing tool:') ||
+            trimmed.startsWith('[Tool Error:') ||
+            trimmed.startsWith('[Max tool iterations') ||
+            trimmed.startsWith('Tool "') ||
+            trimmed.startsWith('[Tool succeeded]') ||
+            trimmed.startsWith('[Tool failed]')) {
+            continue;
+        }
+
+        // Skip JSON tool calls (detect by pattern)
+        if (trimmed.startsWith('{') && trimmed.includes('"tool"')) {
+            continue;
+        }
+
+        // Skip lines that look like pre-tool-call announcements
+        if (trimmed.match(/I'll (?:search|look|check|use|execute|call)/i) &&
+            trimmed.match(/tool|search|web_search/i)) {
+            continue;
+        }
+
+        // Skip user echo lines (> prefix)
+        if (trimmed.startsWith('>')) continue;
+
+        // Skip numbered list items that are just URLs or metadata
+        if (trimmed.match(/^\d+\.\s*(https?:|www\.)/)) continue;
+
+        // Keep this line
+        speakableLines.push(trimmed);
+    }
+
+    // Return the collected speakable content
+    const result = speakableLines.join(' ').trim();
+
+    // Clean up the result
+    // Remove markdown artifacts and URLs (not speakable)
+    let cleaned = result
+        .replace(/\*\*/g, '')           // Bold markers
+        .replace(/\*/g, '')              // Italic markers
+        .replace(/`[^`]+`/g, '')         // Inline code
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')  // [text](url) -> just text
+        .replace(/<(https?:\/\/[^>]+)>/g, '')     // <url> -> remove entirely
+        .replace(/https?:\/\/[^\s)>\]]+/g, '')    // Raw URLs -> remove
+        .replace(/www\.[^\s)>\]]+/g, '')          // www. URLs -> remove
+        .replace(/#+\s*/g, '')           // Headers
+        .replace(/\s*-\s*(?=\s|$)/g, ' ')         // Orphaned dashes from removed URLs
+        .replace(/\s+/g, ' ')            // Multiple spaces
+        .trim();
+
+    // If the result is still mostly JSON or system output, return empty
+    if (cleaned.startsWith('{') || cleaned.startsWith('[')) {
+        return '';
+    }
+
+    return cleaned;
+}
+
+/**
+ * Strip echoed/quoted user message from AI response.
+ * Many models quote the user's message before responding (e.g., "> User's question\n\nResponse")
+ * @param {string} response - The AI response text
+ * @returns {string} Cleaned response without quoted echo
+ */
+function stripEchoedContent(response) {
+    if (!response) return response;
+
+    // Pattern 1: Lines starting with > (blockquotes)
+    // Pattern 2: Lines starting with "User:" or similar
+    // Remove leading quoted lines until we hit actual content
+    const lines = response.split('\n');
+    let startIndex = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        // Skip empty lines, blockquotes, and "User:" prefixes
+        if (line === '' || line.startsWith('>') || line.match(/^(user|you|human):/i)) {
+            startIndex = i + 1;
+        } else {
+            break;
+        }
+    }
+
+    return lines.slice(startIndex).join('\n').trim();
+}
+
+/**
+ * Write AI response to inbox so Python TTS can speak it.
+ * @param {string} dataDir - Path to data directory
+ * @param {string} response - The AI response text
+ * @param {string} providerName - Display name of the provider
+ * @param {string} replyToId - ID of the message being replied to
+ */
+function writeResponseToInbox(dataDir, response, providerName, replyToId) {
+    const inboxPath = path.join(dataDir, 'inbox.json');
+
+    let data = { messages: [] };
+    if (fs.existsSync(inboxPath)) {
+        try {
+            data = JSON.parse(fs.readFileSync(inboxPath, 'utf-8'));
+            if (!data.messages) data.messages = [];
+        } catch {
+            data = { messages: [] };
+        }
+    }
+
+    // Create sender ID from provider name (e.g., "Ollama (qwen-coder)" -> "ollama-qwen-coder")
+    const senderId = providerName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+    const newMessage = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        from: senderId,
+        message: response,
+        timestamp: new Date().toISOString(),
+        read_by: [],
+        reply_to: replyToId,
+        thread_id: 'voice-mirror'
+    };
+
+    data.messages.push(newMessage);
+    fs.writeFileSync(inboxPath, JSON.stringify(data, null, 2));
+
+    console.log(`[InboxWatcher] Wrote response to inbox from ${senderId}`);
+}
+
+module.exports = {
+    createInboxWatcher
+};
