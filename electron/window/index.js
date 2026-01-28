@@ -16,7 +16,7 @@ const path = require('path');
  * @returns {Object} Window manager service instance
  */
 function createWindowManager(options = {}) {
-    const { getConfig, updateConfig, isLinux } = options;
+    const { getConfig, updateConfig, isLinux, startHidden } = options;
 
     let mainWindow = null;
     let isExpanded = false;
@@ -70,6 +70,7 @@ function createWindowManager(options = {}) {
             height: orbSize,
             x: startX,
             y: startY,
+            show: !(typeof startHidden === 'function' ? startHidden() : startHidden),
             transparent: true,
             frame: false,
             alwaysOnTop: true,

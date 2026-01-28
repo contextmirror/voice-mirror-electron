@@ -86,6 +86,7 @@ fn main() {
         pointer: None,
         exit: false,
         first_configure: true,
+        needs_redraw: false,
         width: DEFAULT_SIZE,
         height: DEFAULT_SIZE,
         visible: true,
@@ -175,9 +176,9 @@ fn main() {
         }
 
         // Read and dispatch Wayland events
-        event_queue
-            .flush()
-            .expect("Wayland flush failed");
+        if let Err(e) = event_queue.flush() {
+            eprintln!("Wayland flush error: {}", e);
+        }
 
         event_queue
             .dispatch_pending(&mut state)
@@ -195,12 +196,14 @@ fn main() {
             break;
         }
 
-        // Redraw if visible and configured
-        if !state.first_configure {
+        // Only draw when explicitly requested (IPC state change, visibility toggle, etc.)
+        // After drawing, the frame callback chain keeps animation going.
+        if state.needs_redraw && !state.first_configure {
+            state.needs_redraw = false;
             state.draw(&event_queue.handle());
         }
 
-        // Brief sleep to avoid busy-waiting (targeting ~60fps when animating)
+        // Brief sleep to avoid busy-waiting (~60fps)
         std::thread::sleep(std::time::Duration::from_millis(16));
     }
 }
@@ -212,16 +215,20 @@ fn handle_ipc_message(state: &mut OrbApp, msg: ElectronMessage) {
             state.orb_state = new_state;
             state.anim_phase = 0.0;
             state.last_frame = Instant::now();
+            state.needs_redraw = true;
         }
         ElectronMessage::Show => {
             state.visible = true;
+            state.needs_redraw = true;
         }
         ElectronMessage::Hide => {
             state.visible = false;
+            state.needs_redraw = true;
         }
         ElectronMessage::SetSize { size } => {
             state.width = size;
             state.height = size;
+            state.needs_redraw = true;
             if let Some(ref layer) = state.layer {
                 layer.set_size(size, size);
                 layer.commit();
@@ -263,6 +270,7 @@ struct OrbApp {
 
     exit: bool,
     first_configure: bool,
+    needs_redraw: bool,
     width: u32,
     height: u32,
     visible: bool,

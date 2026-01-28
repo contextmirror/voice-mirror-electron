@@ -258,6 +258,8 @@ class ElectronOutputCapture:
             # Extract the text being spoken
             spoken_text = text.replace("🔊 Speaking:", "").strip()
             emit_event("speaking_start", {"text": spoken_text})
+        elif "Speaking done" in text:
+            emit_event("speaking_end", {})
 
         # Transcription result
         elif "You said:" in text:

@@ -416,6 +416,7 @@ class VoiceMirror:
             self.audio_state.is_listening = False
 
         def on_speech_end():
+            print("🔇 Speaking done")
             self.audio_state.is_listening = True
             self.wake_word.clear_buffer()
 
@@ -666,6 +667,7 @@ class VoiceMirror:
                     self.audio_state.is_listening = False
 
                 def on_notification_speech_end(enter_conversation_mode: bool):
+                    print("🔇 Speaking done")
                     self.audio_state.is_listening = True
                     self.wake_word.clear_buffer()
                     if enter_conversation_mode:

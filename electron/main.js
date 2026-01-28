@@ -328,7 +328,8 @@ app.whenReady().then(() => {
     windowManager = createWindowManager({
         getConfig: () => appConfig,
         updateConfig: config.updateConfig,
-        isLinux
+        isLinux,
+        startHidden: () => waylandOrb?.isAvailable() || false
     });
 
     // Initialize Python backend service
@@ -376,6 +377,7 @@ app.whenReady().then(() => {
         },
         onVoiceEvent: (event) => {
             mainWindow?.webContents.send('voice-event', event);
+            forwardVoiceEventToOrb(event);
         },
         onToolCall: (data) => {
             mainWindow?.webContents.send('tool-call', data);
@@ -810,9 +812,8 @@ app.whenReady().then(() => {
         return { stopped: true };
     });
 
-    createWindow();
-
-    // Start native Wayland overlay orb (if available)
+    // Initialize native Wayland overlay orb before creating window
+    // so we know whether to start the Electron window hidden
     if (isLinux) {
         waylandOrb = createWaylandOrb({
             onExpandRequested: () => {
@@ -824,7 +825,6 @@ app.whenReady().then(() => {
             },
             onReady: () => {
                 console.log('[Voice Mirror] Wayland overlay orb active — hiding Electron orb');
-                // Hide the Electron orb window; the Rust binary now owns the collapsed orb
                 if (!isExpanded && mainWindow) {
                     mainWindow.hide();
                 }
@@ -833,10 +833,14 @@ app.whenReady().then(() => {
                 console.log('[Voice Mirror] Wayland orb exited (code:', code, ')');
             }
         });
-        if (waylandOrb.isAvailable()) {
-            const savedOutput = appConfig?.overlay?.outputName || null;
-            waylandOrb.start(savedOutput);
-        }
+    }
+
+    createWindow();
+
+    // Start the Wayland orb after window is created (needs to exist for expand)
+    if (waylandOrb?.isAvailable()) {
+        const savedOutput = appConfig?.overlay?.outputName || null;
+        waylandOrb.start(savedOutput);
     }
 
     createTray();
