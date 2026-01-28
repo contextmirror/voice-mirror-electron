@@ -594,6 +594,16 @@ window.toggleSettings = toggleSettings;
 window.navigateTo = navigateTo;
 window.toggleSidebarCollapse = toggleSidebarCollapse;
 
+// Tertiary hotkey fallback: detect Ctrl+Shift+V (or Cmd+Shift+V on Mac) via DOM keydown.
+// This only works when the Electron window has focus, but provides a safety net
+// when both uiohook and globalShortcut layers have failed.
+document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === 'KeyV') {
+        e.preventDefault();
+        window.voiceMirror.hotkeyFallback('toggle-panel');
+    }
+});
+
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

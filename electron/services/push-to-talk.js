@@ -4,17 +4,8 @@
  * or globalShortcut for keyboard shortcuts.
  */
 
-// Try to load uiohook-napi (optional dependency)
-let uIOhook = null;
-let UiohookKey = null;
-try {
-    const uiohookModule = require('uiohook-napi');
-    uIOhook = uiohookModule.uIOhook;
-    UiohookKey = uiohookModule.UiohookKey;
-    console.log('[Push-to-Talk] uiohook-napi loaded successfully');
-} catch (err) {
-    console.warn('[Push-to-Talk] uiohook-napi not available, PTT will use keyboard shortcuts only:', err.message);
-}
+// Use shared uiohook singleton (also used by hotkey-manager)
+const uiohookShared = require('./uiohook-shared');
 
 /**
  * Create a push-to-talk service instance.
@@ -28,7 +19,7 @@ function createPushToTalk(options = {}) {
     // Internal state
     let pttKey = null;
     let pttActive = false;  // Currently holding PTT key
-    let uiohookStarted = false;
+    let listenersAttached = false;
     let onStartRecording = null;
     let onStopRecording = null;
 
@@ -122,7 +113,7 @@ function createPushToTalk(options = {}) {
         pttKey = parsePttKey(key);
         console.log(`[Push-to-Talk] PTT key parsed:`, pttKey);
 
-        if (!uIOhook) {
+        if (!uiohookShared.isAvailable()) {
             // Fallback to globalShortcut for keyboard shortcuts only
             if ((pttKey.type === 'shortcut' || pttKey.type === 'keyboard') && globalShortcut) {
                 console.log('[Push-to-Talk] uiohook not available, using globalShortcut fallback');
@@ -146,9 +137,10 @@ function createPushToTalk(options = {}) {
         }
 
         // Use uiohook for proper key down/up detection
-        if (!uiohookStarted) {
-            // Set up event handlers
-            uIOhook.on('mousedown', (e) => {
+        if (!listenersAttached) {
+            const hook = uiohookShared.getHook();
+
+            hook.on('mousedown', (e) => {
                 if (pttKey?.type === 'mouse' && e.button === pttKey.button && !pttActive) {
                     pttActive = true;
                     console.log(`[Push-to-Talk] Start recording (mouse button ${e.button})`);
@@ -156,7 +148,7 @@ function createPushToTalk(options = {}) {
                 }
             });
 
-            uIOhook.on('mouseup', (e) => {
+            hook.on('mouseup', (e) => {
                 if (pttKey?.type === 'mouse' && e.button === pttKey.button && pttActive) {
                     pttActive = false;
                     console.log(`[Push-to-Talk] Stop recording (mouse button ${e.button})`);
@@ -164,7 +156,7 @@ function createPushToTalk(options = {}) {
                 }
             });
 
-            uIOhook.on('keydown', (e) => {
+            hook.on('keydown', (e) => {
                 if (pttKey?.type === 'keyboard' && e.keycode === pttKey.keycode && !pttActive) {
                     pttActive = true;
                     console.log(`[Push-to-Talk] Start recording (keycode ${e.keycode})`);
@@ -172,7 +164,7 @@ function createPushToTalk(options = {}) {
                 }
             });
 
-            uIOhook.on('keyup', (e) => {
+            hook.on('keyup', (e) => {
                 if (pttKey?.type === 'keyboard' && e.keycode === pttKey.keycode && pttActive) {
                     pttActive = false;
                     console.log(`[Push-to-Talk] Stop recording (keycode ${e.keycode})`);
@@ -180,15 +172,11 @@ function createPushToTalk(options = {}) {
                 }
             });
 
-            // Start the hook
-            try {
-                uIOhook.start();
-                uiohookStarted = true;
-                console.log('[Push-to-Talk] uiohook started');
-            } catch (err) {
-                console.error('[Push-to-Talk] Failed to start uiohook:', err);
-            }
+            listenersAttached = true;
         }
+
+        // Ensure uiohook is started (shared module handles idempotency)
+        uiohookShared.ensureStarted();
 
         console.log(`[Push-to-Talk] Registered: ${key} (${pttKey.type})`);
     }
@@ -209,26 +197,17 @@ function createPushToTalk(options = {}) {
             pttKey = null;
             pttActive = false;
         }
-        // Note: We don't stop uiohook here as it may be reused
+        // Note: We don't stop uiohook here — shared module manages lifecycle
     }
 
     /**
-     * Stop uiohook completely (for app shutdown).
+     * Stop PTT service (for app shutdown).
+     * Does NOT stop uiohook — that's managed by uiohook-shared.
      */
     function stop() {
         unregister();
-        if (uIOhook && uiohookStarted) {
-            try {
-                uIOhook.stop();
-                uiohookStarted = false;
-                console.log('[Push-to-Talk] uiohook stopped');
-                return true;
-            } catch (err) {
-                // Ignore errors during cleanup
-                return false;
-            }
-        }
-        return false;
+        // uiohook lifecycle is now managed by uiohook-shared.stop()
+        return true;
     }
 
     /**
@@ -244,7 +223,7 @@ function createPushToTalk(options = {}) {
      * @returns {boolean} True if uiohook-napi is loaded
      */
     function isUiohookAvailable() {
-        return uIOhook !== null;
+        return uiohookShared.isAvailable();
     }
 
     /**

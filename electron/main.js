@@ -9,7 +9,7 @@
  * NOTE: Uses Electron 28. The basic window works - tested 2026-01-24.
  */
 
-const { app, BrowserWindow, ipcMain, desktopCapturer, screen, globalShortcut, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, desktopCapturer, screen, globalShortcut, shell, powerMonitor } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -21,6 +21,8 @@ const config = require('./config');
 // Note: claude-spawner and providers are now used via ai-manager service
 const { createLogger } = require('./services/logger');
 const { createPushToTalk } = require('./services/push-to-talk');
+const { createHotkeyManager } = require('./services/hotkey-manager');
+const uiohookShared = require('./services/uiohook-shared');
 const { createPythonBackend, startDockerServices } = require('./services/python-backend');
 const { createScreenCaptureWatcher } = require('./services/screen-capture-watcher');
 const { createBrowserWatcher } = require('./services/browser-watcher');
@@ -35,6 +37,9 @@ const logger = createLogger();
 
 // Push-to-talk service (initialized after app.whenReady with globalShortcut)
 let pttService = null;
+
+// Hotkey manager (dual-layer: uiohook + globalShortcut)
+let hotkeyManager = null;
 
 // Tray service
 const trayService = createTrayService();
@@ -429,6 +434,16 @@ app.whenReady().then(() => {
         return isExpanded;
     });
 
+    // Hotkey fallback from renderer — only honored when primary layers both failed
+    ipcMain.on('hotkey-fallback', (event, id) => {
+        if (!hotkeyManager) return;
+        const binding = hotkeyManager.getBinding(id);
+        if (binding && !binding.uiohookActive && !binding.globalShortcutActive) {
+            logger.log('HOTKEY', `Fallback triggered for "${id}" from renderer`);
+            binding.callback();
+        }
+    });
+
     ipcMain.handle('capture-screen', async () => {
         const sources = await desktopCapturer.getSources({
             types: ['screen'],
@@ -549,19 +564,19 @@ app.whenReady().then(() => {
 
         appConfig = config.updateConfig(updates);
 
-        // Re-register global shortcut if hotkey changed
-        if (updates.behavior?.hotkey && updates.behavior.hotkey !== oldHotkey) {
-            globalShortcut.unregister(oldHotkey);
-            const newShortcut = updates.behavior.hotkey;
-            const registered = globalShortcut.register(newShortcut, () => {
-                console.log('[Voice Mirror] Global shortcut triggered');
-                if (isExpanded) {
-                    collapseToOrb();
-                } else {
-                    expandPanel();
-                }
-            });
-            console.log(`[Voice Mirror] Re-registered shortcut: ${newShortcut} (${registered ? 'success' : 'failed'})`);
+        // Re-register global shortcut if hotkey changed (with rollback on failure)
+        if (updates.behavior?.hotkey && updates.behavior.hotkey !== oldHotkey && hotkeyManager) {
+            const toggleCallback = () => {
+                if (isExpanded) collapseToOrb();
+                else expandPanel();
+            };
+            const ok = hotkeyManager.updateBinding('toggle-panel', updates.behavior.hotkey, toggleCallback);
+            if (!ok) {
+                // Rollback already happened in updateBinding; revert config too
+                logger.log('HOTKEY', `Reverted config hotkey to "${oldHotkey}"`);
+                appConfig.behavior.hotkey = oldHotkey;
+                config.updateConfig({ behavior: { hotkey: oldHotkey } });
+            }
         }
 
         // Handle push-to-talk key registration (only if activation mode or PTT key actually changed)
@@ -858,22 +873,19 @@ app.whenReady().then(() => {
     startInboxWatcher();
     startBrowserRequestWatcher();
 
-    // Register global shortcut to toggle panel (Ctrl+Shift+V)
-    const shortcut = 'CommandOrControl+Shift+V';
-    const registered = globalShortcut.register(shortcut, () => {
-        console.log('[Voice Mirror] Global shortcut triggered');
+    // Initialize dual-layer hotkey manager (uiohook + globalShortcut)
+    hotkeyManager = createHotkeyManager({ log: (cat, msg) => logger.log(cat, msg) });
+    hotkeyManager.init();
+
+    const toggleHotkey = appConfig?.behavior?.hotkey || 'CommandOrControl+Shift+V';
+    hotkeyManager.register('toggle-panel', toggleHotkey, () => {
+        logger.log('HOTKEY', 'Toggle panel triggered');
         if (isExpanded) {
             collapseToOrb();
         } else {
             expandPanel();
         }
     });
-
-    if (registered) {
-        console.log(`[Voice Mirror] Global shortcut registered: ${shortcut}`);
-    } else {
-        console.log(`[Voice Mirror] Failed to register shortcut: ${shortcut}`);
-    }
 
     // Register PTT keybind from saved config on startup
     if (appConfig?.behavior?.activationMode === 'pushToTalk' && appConfig?.behavior?.pttKey) {
@@ -935,7 +947,10 @@ app.on('before-quit', () => {
     app.isQuitting = true;
     logger.log('APP', 'Shutting down...');
 
-    // Unregister all shortcuts
+    // Destroy hotkey manager (unregisters all shortcuts)
+    if (hotkeyManager) {
+        hotkeyManager.destroy();
+    }
     globalShortcut.unregisterAll();
 
     // Stop wayland orb
@@ -944,9 +959,13 @@ app.on('before-quit', () => {
     }
 
     // Stop push-to-talk service
-    if (pttService && pttService.stop()) {
+    if (pttService) {
+        pttService.stop();
         logger.log('APP', 'PTT service stopped');
     }
+
+    // Stop shared uiohook (after PTT and hotkey manager are done)
+    uiohookShared.stop();
 
     // Stop watchers
     stopScreenCaptureWatcher();

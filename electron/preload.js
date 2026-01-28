@@ -160,5 +160,9 @@ contextBridge.exposeInMainWorld('voiceMirror', {
     // Listen for open-settings command from tray menu
     onOpenSettings: (callback) => {
         ipcRenderer.on('open-settings', () => callback());
-    }
+    },
+
+    // Hotkey fallback — renderer sends this when it detects the hotkey via DOM keydown
+    // (only honored if primary uiohook + globalShortcut layers both failed)
+    hotkeyFallback: (id) => ipcRenderer.send('hotkey-fallback', id)
 });

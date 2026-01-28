@@ -175,6 +175,8 @@ async function openTab(url, profileName) {
     const { profile } = resolveProfileContext(profileName);
     await ensureBrowserAvailable(profileName);
 
+    let result = null;
+
     // Try CDP createTarget first
     try {
         const { targetId } = await createTargetViaCdp({ cdpUrl: profile.cdpUrl, url });
@@ -185,28 +187,44 @@ async function openTab(url, profileName) {
         while (Date.now() < deadline) {
             const tabs = await listTabs(profileName).catch(() => []);
             const found = tabs.find(t => t.targetId === targetId);
-            if (found) return found;
+            if (found) { result = found; break; }
             await new Promise(r => setTimeout(r, 100));
         }
-        return { targetId, title: '', url, type: 'page' };
+        if (!result) result = { targetId, title: '', url, type: 'page' };
     } catch { /* fallback */ }
 
     // Fallback: /json/new
-    try {
-        const endpoint = appendCdpPath(profile.cdpUrl, `/json/new?${encodeURIComponent(url)}`);
-        const created = await fetchJson(endpoint, 1500);
-        if (created?.id) {
-            lastTargetIds.set(profile.name, created.id);
-            return {
-                targetId: created.id,
-                title: created.title || '',
-                url: created.url || url,
-                type: created.type || 'page'
-            };
-        }
-    } catch { /* ignore */ }
+    if (!result) {
+        try {
+            const endpoint = appendCdpPath(profile.cdpUrl, `/json/new?${encodeURIComponent(url)}`);
+            const created = await fetchJson(endpoint, 1500);
+            if (created?.id) {
+                lastTargetIds.set(profile.name, created.id);
+                result = {
+                    targetId: created.id,
+                    title: created.title || '',
+                    url: created.url || url,
+                    type: created.type || 'page'
+                };
+            }
+        } catch { /* ignore */ }
+    }
 
-    throw new Error('Failed to open tab. Browser may not be responding.');
+    if (!result) {
+        throw new Error('Failed to open tab. Browser may not be responding.');
+    }
+
+    // Clean up about:blank tabs left over from Chrome launch
+    try {
+        const tabs = await listTabs(profileName).catch(() => []);
+        for (const tab of tabs) {
+            if (tab.url === 'about:blank' && tab.targetId !== result.targetId) {
+                await closeTab(tab.targetId, profileName).catch(() => {});
+            }
+        }
+    } catch { /* non-critical cleanup */ }
+
+    return result;
 }
 
 /**
