@@ -206,8 +206,9 @@ export function updateAIProviderUI(provider) {
     // Show/hide endpoint row for local providers
     endpointRow.style.display = LOCAL_PROVIDERS.includes(provider) ? 'flex' : 'none';
 
-    // Show/hide API key row for cloud providers
-    apikeyRow.style.display = CLOUD_PROVIDERS_WITH_APIKEY.includes(provider) ? 'flex' : 'none';
+    // Show/hide API key row for cloud providers and CLI agents that need keys (codex, gemini-cli)
+    const needsApiKey = CLOUD_PROVIDERS_WITH_APIKEY.includes(provider) || (isCLI && provider !== 'claude');
+    apikeyRow.style.display = needsApiKey ? 'flex' : 'none';
 
     // Model row: hide for CLI providers (they use their own CLI), show for others
     modelRow.style.display = isCLI ? 'none' : 'flex';
@@ -239,6 +240,13 @@ export function updateAIProviderUI(provider) {
         if (!endpointInput.value || endpointInput.dataset.provider !== provider) {
             endpointInput.value = defaultEndpoints[provider] || '';
             endpointInput.dataset.provider = provider;
+        }
+
+        // Auto-enable detection and scan when selecting a local provider
+        const autoDetectCheckbox = document.getElementById('ai-auto-detect');
+        if (autoDetectCheckbox && !autoDetectCheckbox.checked) {
+            autoDetectCheckbox.checked = true;
+            scanProviders();
         }
     }
 }

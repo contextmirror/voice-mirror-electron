@@ -27,7 +27,7 @@ const { createProvider } = require('../providers');
  * @returns {Object} AI manager service instance
  */
 function createAIManager(options = {}) {
-    const { getConfig, onOutput, onVoiceEvent, onToolCall, onToolResult, onProviderSwitch, onSystemSpeak } = options;
+    const { getConfig, onOutput, onVoiceEvent, onToolCall, onToolResult, onProviderSwitch, onSystemSpeak, getActivationHint } = options;
 
     let activeProvider = null;  // Current OpenAI-compatible provider instance
     let hasStartedOnce = false; // Track initial startup vs provider switch
@@ -152,7 +152,8 @@ function createAIManager(options = {}) {
             startClaudeCode();
             if (isSwitch && onSystemSpeak) {
                 // Delay to let PTY initialize
-                setTimeout(() => onSystemSpeak('System check complete. Claude is online.'), 3000);
+                const hint = getActivationHint ? ` ${getActivationHint()}` : '';
+                setTimeout(() => onSystemSpeak(`Claude is online.${hint}`), 3000);
             }
             return true;
         }
@@ -240,7 +241,8 @@ function createAIManager(options = {}) {
             // Announce provider switch via TTS
             if (isSwitch && onSystemSpeak) {
                 const displayName = activeProvider.getDisplayName();
-                onSystemSpeak(`System check complete. ${displayName} is online.`);
+                const hint = getActivationHint ? ` ${getActivationHint()}` : '';
+                onSystemSpeak(`${displayName} is online.${hint}`);
             }
         }).catch((err) => {
             console.error(`[AIManager] Failed to start ${providerType}:`, err);

@@ -339,29 +339,43 @@ app.whenReady().then(() => {
         return 'evening';
     }
 
+    function getActivationHint() {
+        const mode = appConfig?.behavior?.activationMode || 'wakeWord';
+        switch (mode) {
+            case 'pushToTalk': {
+                const key = appConfig?.behavior?.pttKey || 'Space';
+                return `Hold ${key} to talk.`;
+            }
+            case 'wakeWord': {
+                const phrase = (appConfig?.wakeWord?.phrase || 'hey_claude')
+                    .replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                return `Say ${phrase} to begin.`;
+            }
+            case 'callMode':
+                return 'Listening.';
+            default:
+                return '';
+        }
+    }
+
     function doStartupGreeting() {
         if (!pythonBackend?.isRunning()) return;
+        const hint = getActivationHint();
 
         // First-ever launch
         if (!appConfig.system?.firstLaunchDone) {
-            pythonBackend.systemSpeak('Welcome to Voice Mirror.');
+            pythonBackend.systemSpeak(`Welcome to Voice Mirror. ${hint}`);
             appConfig = config.updateConfig({ system: { ...appConfig.system, firstLaunchDone: true } });
             return; // Don't also do time greeting on first launch
         }
 
-        // Once-per-period greeting
+        // Greeting on every startup
         const period = getTimePeriod();
-        const date = new Date().toISOString().slice(0, 10);
-        const dateKey = `${period}-${date}`;
-        if (appConfig.system?.lastGreetingPeriod === dateKey) return;
-
-        // Use model name if available (e.g. "qwen3"), otherwise provider name
         const model = appConfig.ai?.model;
         const provider = appConfig.ai?.provider || 'claude';
         const displayName = model ? model.split(':')[0] : provider;
-        const greeting = `Good ${period}. Voice Mirror online. ${displayName} standing by.`;
+        const greeting = `Good ${period}. Voice Mirror online. ${displayName} standing by. ${hint}`;
         pythonBackend.systemSpeak(greeting);
-        appConfig = config.updateConfig({ system: { ...appConfig.system, lastGreetingPeriod: dateKey } });
     }
 
     // Set up Python backend event handler
@@ -417,6 +431,7 @@ app.whenReady().then(() => {
         onSystemSpeak: (text) => {
             pythonBackend?.systemSpeak(text);
         },
+        getActivationHint,
         onProviderSwitch: () => {
             // Clear processed user messages when provider is switched
             if (inboxWatcherService) {

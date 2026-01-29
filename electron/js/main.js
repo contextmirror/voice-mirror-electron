@@ -319,8 +319,22 @@ function handleVoiceEvent(data) {
             statusIndicator.className = '';
             break;
         case 'ready':
-            statusText.textContent = 'Ready - say "Hey Claude"';
             statusIndicator.className = '';
+            window.voiceMirror.config.get().then(cfg => {
+                const mode = cfg.behavior?.activationMode || 'wakeWord';
+                if (mode === 'pushToTalk') {
+                    const key = cfg.behavior?.pttKey || 'Space';
+                    statusText.textContent = `Ready - hold ${key} to talk`;
+                } else if (mode === 'callMode') {
+                    statusText.textContent = 'Ready - listening';
+                } else {
+                    const phrase = (cfg.wakeWord?.phrase || 'hey_claude')
+                        .replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                    statusText.textContent = `Ready - say "${phrase}"`;
+                }
+            }).catch(() => {
+                statusText.textContent = 'Ready';
+            });
             break;
         case 'wake':
             orb.className = 'listening';
