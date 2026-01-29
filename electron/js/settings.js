@@ -10,6 +10,8 @@ import { updateProviderDisplay, clearTerminal } from './terminal.js';
 // Provider display names
 const PROVIDER_NAMES = {
     claude: 'Claude Code',
+    codex: 'OpenAI Codex',
+    'gemini-cli': 'Gemini CLI',
     ollama: 'Ollama',
     lmstudio: 'LM Studio',
     jan: 'Jan',
@@ -25,6 +27,8 @@ const PROVIDER_NAMES = {
 // Provider icon CSS classes
 const PROVIDER_ICON_CLASSES = {
     claude: 'provider-icon-claude',
+    codex: 'provider-icon-codex',
+    'gemini-cli': 'provider-icon-gemini-cli',
     ollama: 'provider-icon-ollama',
     lmstudio: 'provider-icon-lmstudio',
     jan: 'provider-icon-jan',
@@ -36,6 +40,9 @@ const PROVIDER_ICON_CLASSES = {
     openrouter: 'provider-icon-openrouter',
     deepseek: 'provider-icon-deepseek'
 };
+
+// CLI agent providers (PTY-based, full terminal access)
+const CLI_PROVIDERS = ['claude', 'codex', 'gemini-cli'];
 
 // Local providers that can be auto-detected
 const LOCAL_PROVIDERS = ['ollama', 'lmstudio', 'jan'];
@@ -187,6 +194,14 @@ export function updateAIProviderUI(provider) {
     const endpointRow = document.getElementById('ai-endpoint-row');
     const apikeyRow = document.getElementById('ai-apikey-row');
     const contextLengthRow = document.getElementById('ai-context-length-row');
+    const cliWarning = document.getElementById('cli-warning');
+
+    const isCLI = CLI_PROVIDERS.includes(provider);
+
+    // Show/hide CLI warning
+    if (cliWarning) {
+        cliWarning.style.display = isCLI ? 'block' : 'none';
+    }
 
     // Show/hide endpoint row for local providers
     endpointRow.style.display = LOCAL_PROVIDERS.includes(provider) ? 'flex' : 'none';
@@ -194,8 +209,8 @@ export function updateAIProviderUI(provider) {
     // Show/hide API key row for cloud providers
     apikeyRow.style.display = CLOUD_PROVIDERS_WITH_APIKEY.includes(provider) ? 'flex' : 'none';
 
-    // Model row: show for local providers (populated from detection), hide for Claude (uses CLI)
-    modelRow.style.display = provider === 'claude' ? 'none' : 'flex';
+    // Model row: hide for CLI providers (they use their own CLI), show for others
+    modelRow.style.display = isCLI ? 'none' : 'flex';
 
     // Context length: show for local providers (Ollama, LM Studio, Jan)
     if (contextLengthRow) {

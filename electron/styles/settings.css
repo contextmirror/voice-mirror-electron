@@ -690,6 +690,76 @@
     font-size: 12px;
 }
 
+/* Codex - OpenAI green with terminal style */
+.provider-icon-codex {
+    background: linear-gradient(135deg, #10a37f, #065f46);
+    color: white;
+}
+.provider-icon-codex::before {
+    content: ">_";
+    font-size: 9px;
+    font-family: monospace;
+    font-weight: 700;
+}
+
+/* Gemini CLI - Google colors with terminal accent */
+.provider-icon-gemini-cli {
+    background: linear-gradient(135deg, #4285f4, #1a73e8);
+    color: white;
+}
+.provider-icon-gemini-cli::before {
+    content: "✦";
+    font-size: 14px;
+}
+
+/* ========== Provider Badge (inline pill next to name) ========== */
+.provider-badge {
+    display: inline-block;
+    padding: 1px 7px;
+    margin-left: auto;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    border-radius: 8px;
+    background: rgba(102, 126, 234, 0.2);
+    color: rgba(102, 126, 234, 0.9);
+    white-space: nowrap;
+}
+
+/* ========== Group Badge (in group header) ========== */
+.group-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    margin-left: 6px;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    border-radius: 6px;
+    vertical-align: middle;
+}
+
+.group-badge.cli-badge {
+    background: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+}
+
+/* ========== CLI Warning Info Box ========== */
+.settings-info-box {
+    padding: 10px 14px;
+    margin: 8px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.settings-info-box.cli-warning {
+    background: rgba(251, 191, 36, 0.08);
+    border-left: 3px solid #fbbf24;
+    color: rgba(255, 255, 255, 0.7);
+}
+
 /* ============================================
    Tool Profiles
    ============================================ */

@@ -251,6 +251,22 @@
                                         </button>
                                         <div class="provider-dropdown" id="ai-provider-dropdown">
                                             <div class="provider-group">
+                                                <div class="provider-group-label">CLI Agents <span class="group-badge cli-badge">Terminal Access</span></div>
+                                                <div class="provider-option" data-value="claude">
+                                                    <span class="provider-icon provider-icon-claude"></span>
+                                                    <span>Claude Code</span>
+                                                    <span class="provider-badge">MCP</span>
+                                                </div>
+                                                <div class="provider-option" data-value="codex">
+                                                    <span class="provider-icon provider-icon-codex"></span>
+                                                    <span>OpenAI Codex</span>
+                                                </div>
+                                                <div class="provider-option" data-value="gemini-cli">
+                                                    <span class="provider-icon provider-icon-gemini-cli"></span>
+                                                    <span>Gemini CLI</span>
+                                                </div>
+                                            </div>
+                                            <div class="provider-group">
                                                 <div class="provider-group-label">Local (Auto-detected)</div>
                                                 <div class="provider-option" data-value="ollama">
                                                     <span class="provider-icon provider-icon-ollama"></span>
@@ -266,11 +282,7 @@
                                                 </div>
                                             </div>
                                             <div class="provider-group">
-                                                <div class="provider-group-label">Cloud (CLI/API)</div>
-                                                <div class="provider-option" data-value="claude">
-                                                    <span class="provider-icon provider-icon-claude"></span>
-                                                    <span>Claude Code</span>
-                                                </div>
+                                                <div class="provider-group-label">Cloud API</div>
                                                 <div class="provider-option" data-value="openai">
                                                     <span class="provider-icon provider-icon-openai"></span>
                                                     <span>OpenAI</span>
@@ -304,6 +316,9 @@
                                         <!-- Hidden input for form value -->
                                         <input type="hidden" id="ai-provider" value="claude">
                                     </div>
+                                </div>
+                                <div class="settings-info-box cli-warning" id="cli-warning" style="display: none;">
+                                    CLI Agent &mdash; This provider has full terminal access and can execute commands on your system.
                                 </div>
                                 <div class="setting-row" id="ai-model-row">
                                     <label>Model</label>

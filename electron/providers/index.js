@@ -6,11 +6,14 @@
 
 const { BaseProvider } = require('./base-provider');
 const { ClaudeProvider } = require('./claude-provider');
+const { CLIProvider } = require('./cli-provider');
 const { OpenAIProvider, createOpenAIProvider } = require('./openai-provider');
 
 // Provider type constants
 const PROVIDER_TYPES = {
     CLAUDE: 'claude',
+    CODEX: 'codex',
+    GEMINI_CLI: 'gemini-cli',
     OLLAMA: 'ollama',
     LMSTUDIO: 'lmstudio',
     JAN: 'jan',
@@ -23,6 +26,9 @@ const PROVIDER_TYPES = {
     DEEPSEEK: 'deepseek'
 };
 
+// CLI agent providers (full terminal access, PTY-based)
+const CLI_PROVIDERS = ['claude', 'codex', 'gemini-cli'];
+
 // Local providers (don't require API key)
 const LOCAL_PROVIDERS = ['ollama', 'lmstudio', 'jan'];
 
@@ -32,6 +38,8 @@ const CLOUD_PROVIDERS = ['openai', 'gemini', 'groq', 'grok', 'mistral', 'openrou
 // Provider display names
 const PROVIDER_NAMES = {
     claude: 'Claude Code',
+    codex: 'OpenAI Codex',
+    'gemini-cli': 'Gemini CLI',
     ollama: 'Ollama',
     lmstudio: 'LM Studio',
     jan: 'Jan',
@@ -53,6 +61,11 @@ const PROVIDER_NAMES = {
 function createProvider(type, config = {}) {
     if (type === PROVIDER_TYPES.CLAUDE) {
         return new ClaudeProvider(config);
+    }
+
+    // CLI agent providers (Codex, Gemini CLI)
+    if (type === PROVIDER_TYPES.CODEX || type === PROVIDER_TYPES.GEMINI_CLI) {
+        return new CLIProvider(type, config);
     }
 
     // All other providers use OpenAI-compatible API
@@ -101,7 +114,7 @@ function isCloudProvider(type) {
  * @returns {boolean}
  */
 function isPTYProvider(type) {
-    return type === PROVIDER_TYPES.CLAUDE;
+    return CLI_PROVIDERS.includes(type);
 }
 
 /**
@@ -127,6 +140,26 @@ function getProviderList() {
             requiresApiKey: false,
             supportsVision: true,
             supportsMCP: true
+        },
+        {
+            type: 'codex',
+            name: 'OpenAI Codex',
+            description: 'OpenAI Codex CLI agent',
+            isLocal: false,
+            isPTY: true,
+            requiresApiKey: false,
+            supportsVision: false,
+            supportsMCP: false
+        },
+        {
+            type: 'gemini-cli',
+            name: 'Gemini CLI',
+            description: 'Google Gemini CLI agent',
+            isLocal: false,
+            isPTY: true,
+            requiresApiKey: false,
+            supportsVision: false,
+            supportsMCP: false
         },
         {
             type: 'ollama',
@@ -242,6 +275,7 @@ module.exports = {
     // Classes
     BaseProvider,
     ClaudeProvider,
+    CLIProvider,
     OpenAIProvider,
 
     // Factory
@@ -251,6 +285,7 @@ module.exports = {
     // Constants
     PROVIDER_TYPES,
     PROVIDER_NAMES,
+    CLI_PROVIDERS,
     LOCAL_PROVIDERS,
     CLOUD_PROVIDERS,
 
