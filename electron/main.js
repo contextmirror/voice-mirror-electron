@@ -334,7 +334,10 @@ app.whenReady().then(() => {
         getConfig: () => appConfig,
         updateConfig: config.updateConfig,
         isLinux,
-        startHidden: () => waylandOrb?.isAvailable() || false
+        startHidden: () => waylandOrb?.isAvailable() || false,
+        onWindowStateChanged: () => {
+            if (hotkeyManager) hotkeyManager.reRegisterAll();
+        }
     });
 
     // Initialize Python backend service
@@ -980,6 +983,14 @@ app.whenReady().then(() => {
     startScreenCaptureWatcher();
     startInboxWatcher();
     startBrowserRequestWatcher();
+
+    // Start diagnostic pipeline tracer
+    try {
+        const diagnosticWatcher = require('./services/diagnostic-watcher');
+        diagnosticWatcher.start();
+    } catch (err) {
+        console.log('[Diagnostic] Watcher not started:', err.message);
+    }
 
     // Initialize dual-layer hotkey manager (uiohook + globalShortcut)
     hotkeyManager = createHotkeyManager({ log: (cat, msg) => logger.log(cat, msg) });

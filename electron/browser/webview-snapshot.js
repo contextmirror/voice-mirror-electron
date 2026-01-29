@@ -248,6 +248,36 @@ async function takeDomSnapshot() {
  * @returns {Promise<string>}
  */
 async function getPageText() {
+    // First, extract structured table data (league tables, stats, etc.)
+    let tableText = '';
+    try {
+        const tableResult = await cdp.evaluate(`(function() {
+            try {
+                var tables = document.querySelectorAll('table');
+                if (!tables.length) return '';
+                var out = [];
+                for (var t = 0; t < Math.min(tables.length, 5); t++) {
+                    var table = tables[t];
+                    var rows = table.querySelectorAll('tr');
+                    if (rows.length < 2) continue;
+                    var tableRows = [];
+                    for (var r = 0; r < Math.min(rows.length, 30); r++) {
+                        var cells = rows[r].querySelectorAll('th, td');
+                        var rowData = [];
+                        for (var c = 0; c < cells.length; c++) {
+                            var cellText = (cells[c].innerText || '').replace(/\\n/g, ' ').trim();
+                            if (cellText) rowData.push(cellText);
+                        }
+                        if (rowData.length > 0) tableRows.push(rowData.join(' | '));
+                    }
+                    if (tableRows.length > 1) out.push(tableRows.join('\\n'));
+                }
+                return out.join('\\n\\n');
+            } catch(e) { return ''; }
+        })()`);
+        tableText = tableResult?.result?.value || '';
+    } catch { /* ignore */ }
+
     const { result } = await cdp.evaluate(`(function() {
         try {
             var text = document.body.innerText || '';
@@ -284,12 +314,20 @@ async function getPageText() {
     // Remove repeated time labels (weather charts repeat "02:00 05:00 08:00..." many times)
     // Keep only the first occurrence of a time sequence
     text = text.replace(/((?:\d{2}:\d{2}\s*){4,})(?:[\s\S]*?\1)+/g, '$1');
-    // Remove long runs of small numbers from chart/graph data (e.g. "1 2 1 2 4 4 3 2 3 3")
-    text = text.replace(/(?:\b\d{1,2}\b[ ,]+){8,}/g, '');
-    return text
+    // Remove long runs of single-digit numbers from chart/graph data (e.g. "1 2 1 2 4 4 3 2 3 3")
+    // Only strip sequences of single digits — keep 2-digit numbers (table stats like "23 15 5 3 42 17")
+    text = text.replace(/(?:\b\d\b[ ,]+){10,}/g, '');
+    text = text
         .replace(/  +/g, ' ')
         .replace(/\n /g, '\n')
         .trim();
+
+    // Append structured table data if extracted
+    if (tableText) {
+        text += '\n\n--- Table Data ---\n' + tableText.substring(0, 3000);
+    }
+
+    return text;
 }
 
 /**

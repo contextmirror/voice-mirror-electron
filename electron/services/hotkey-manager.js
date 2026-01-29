@@ -48,7 +48,7 @@ const NAMED_KEYCODES = {
 };
 
 const DEBOUNCE_MS = 300;
-const HEALTH_CHECK_INTERVAL_MS = 60000;
+const HEALTH_CHECK_INTERVAL_MS = 10000;
 const RESUME_DELAY_MS = 2000;
 const UNLOCK_DELAY_MS = 1000;
 
@@ -157,9 +157,20 @@ function createHotkeyManager(options = {}) {
         }
     }
 
-    // --- uiohook setup (once) ---
+    // --- uiohook setup ---
 
     function setupUiohook() {
+        // Subscribe to restart events so we can reattach listeners
+        uiohookShared.on('restarted', () => {
+            log('HOTKEY', 'uiohook restarted — reattaching key listeners');
+            uiohookListenersAttached = false;
+            attachKeyListeners();
+        });
+
+        attachKeyListeners();
+    }
+
+    function attachKeyListeners() {
         if (uiohookListenersAttached) return;
         const hook = uiohookShared.getHook();
         if (!hook) return;
@@ -207,6 +218,11 @@ function createHotkeyManager(options = {}) {
                     log('HOTKEY', `Health check: "${id}" lost globalShortcut registration, re-registering`);
                     registerGlobalShortcut(binding);
                 }
+            }
+            // Also check if uiohook died and hasn't auto-recovered
+            if (uiohookShared.isAvailable() && !uiohookShared.isStarted()) {
+                log('HOTKEY', 'Health check: uiohook not started, forcing restart');
+                uiohookShared.restart();
             }
         }, HEALTH_CHECK_INTERVAL_MS);
     }

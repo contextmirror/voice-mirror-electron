@@ -24,6 +24,7 @@ const { HOME_DATA_DIR, LISTENER_LOCK_PATH } = require('./paths');
 // Handlers
 const core = require('./handlers/core');
 const { handleCaptureScreen } = require('./handlers/screen');
+const { handlePipelineTrace } = require('./handlers/diagnostic');
 const { handleMemorySearch, handleMemoryGet, handleMemoryRemember, handleMemoryForget, handleMemoryStats } = require('./handlers/memory');
 const { handleCloneVoice, handleClearVoiceClone, handleListVoiceClones } = require('./handlers/voice-clone');
 const { handleBrowserControl, handleBrowserSearch, handleBrowserFetch } = require('./handlers/browser');
@@ -496,6 +497,30 @@ const TOOL_GROUPS = {
                 inputSchema: { type: 'object', properties: {} }
             }
         ]
+    },
+    diagnostic: {
+        description: 'Pipeline diagnostic tools — trace message flow through the app with real data',
+        keywords: ['diagnostic', 'trace', 'pipeline', 'debug', 'test pipeline'],
+        tools: [
+            {
+                name: 'pipeline_trace',
+                description: 'Send a test message through the live Voice Mirror pipeline and trace every stage (inbox → provider → tool calls → browser → formatting → truncation → model response → TTS). Returns detailed trace showing what data is captured, transformed, truncated, and lost at each stage.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        message: {
+                            type: 'string',
+                            description: 'The test message to send through the pipeline (e.g. "What is the Premier League table?")'
+                        },
+                        timeout_seconds: {
+                            type: 'number',
+                            description: 'Max wait time for pipeline completion (default: 30)'
+                        }
+                    },
+                    required: ['message']
+                }
+            }
+        ]
     }
 };
 
@@ -860,6 +885,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             return await n8n.handleN8nDeleteTag(args);
         case 'n8n_list_variables':
             return await n8n.handleN8nListVariables(args);
+        // Diagnostic tools
+        case 'pipeline_trace':
+            return await handlePipelineTrace(args);
         default:
             return {
                 content: [{ type: 'text', text: `Unknown tool: ${name}` }],

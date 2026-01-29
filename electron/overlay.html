@@ -311,6 +311,17 @@
                                         <option value="">Auto (default)</option>
                                     </select>
                                 </div>
+                                <div class="setting-row" id="ai-context-length-row" style="display: none;">
+                                    <label>Context Length</label>
+                                    <select id="ai-context-length">
+                                        <option value="4096">4K (4,096 tokens)</option>
+                                        <option value="8192">8K (8,192 tokens)</option>
+                                        <option value="16384">16K (16,384 tokens)</option>
+                                        <option value="32768" selected>32K (32,768 tokens)</option>
+                                        <option value="65536">64K (65,536 tokens)</option>
+                                        <option value="131072">128K (131,072 tokens)</option>
+                                    </select>
+                                </div>
                                 <div class="setting-row" id="ai-endpoint-row" style="display: none;">
                                     <label>Endpoint</label>
                                     <input type="text" id="ai-endpoint" placeholder="http://127.0.0.1:11434">

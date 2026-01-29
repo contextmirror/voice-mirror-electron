@@ -59,10 +59,39 @@ async function browserControl(args = {}) {
                     return { success: false, error: 'Failed to snapshot search results' };
                 }
 
+                // Diagnostic trace: raw snapshot data
+                try {
+                    const dc = require('../../services/diagnostic-collector');
+                    if (dc.hasActiveTrace()) {
+                        dc.addActiveStage('browser_snapshot_raw', {
+                            snapshot_chars: (snap.snapshot || '').length,
+                            page_text_chars: (snap.pageText || '').length,
+                            interactive_elements: snap.stats?.interactive || 0,
+                            lines: snap.stats?.lines || 0,
+                            page_text_preview: (snap.pageText || '').substring(0, 500)
+                        });
+                    }
+                } catch { /* diagnostic not available */ }
+
                 const formatted = formatSnapshotForLLM(snap, query);
                 console.log('[BrowserControl] Full snapshot text:\n' + (snap.snapshot || '').substring(0, 3000));
                 console.log('[BrowserControl] Page text (' + (snap.pageText || '').length + ' chars):\n' + (snap.pageText || '').substring(0, 1500));
                 console.log('[BrowserControl] Formatted result length: ' + formatted.length);
+
+                // Diagnostic trace: formatted snapshot
+                try {
+                    const dc = require('../../services/diagnostic-collector');
+                    if (dc.hasActiveTrace()) {
+                        dc.addActiveStage('format_snapshot', {
+                            output_chars: formatted.length,
+                            page_text_included: Math.min((snap.pageText || '').length, 6000),
+                            page_text_total: (snap.pageText || '').length,
+                            page_text_capped: (snap.pageText || '').length > 6000 ? `6000/${(snap.pageText || '').length}` : null,
+                            formatted_preview: formatted.substring(0, 500)
+                        });
+                    }
+                } catch { /* diagnostic not available */ }
+
                 return { success: true, result: formatted };
             }
 
@@ -225,17 +254,27 @@ function formatSnapshotForLLM(snap, context) {
     // Page text FIRST — this is the readable content the model should use for answers
     // (scores, weather, prices, tables, etc. that may not appear in the element tree)
     if (snap.pageText) {
-        const trimmed = snap.pageText.trim();
-        if (trimmed.length > 20) {
+        // Strip common Google UI chrome that wastes context
+        let cleanedText = snap.pageText.trim()
+            .replace(/^Accessibility links\n.*?\nSearch Results\n/s, '')
+            .replace(/^Skip to main content\n/m, '')
+            .replace(/^Accessibility help\n/m, '')
+            .replace(/^Accessibility feedback\n/m, '')
+            .replace(/^Sign in\n/m, '')
+            .replace(/^Filters and topics\n.*?(?=\n[A-Z])/s, '')
+            .trim();
+
+        if (cleanedText.length > 20) {
             lines.push('\n--- Page Content (answer questions using this) ---');
-            lines.push(trimmed.substring(0, 3000));
+            lines.push(cleanedText.substring(0, 8000));
         }
     }
 
     // Element tree for interaction (click, type, etc.)
+    // Use smaller budget — page text has the answer data, elements are for interaction
     lines.push('\n--- Interactive Elements ---');
     const snapshotText = snap.snapshot || '';
-    const maxChars = 8000;
+    const maxChars = 3000;
     if (snapshotText.length > maxChars) {
         lines.push(snapshotText.slice(0, maxChars));
         lines.push('\n...(element tree truncated)...');

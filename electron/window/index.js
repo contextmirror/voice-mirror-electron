@@ -16,7 +16,7 @@ const path = require('path');
  * @returns {Object} Window manager service instance
  */
 function createWindowManager(options = {}) {
-    const { getConfig, updateConfig, isLinux, startHidden } = options;
+    const { getConfig, updateConfig, isLinux, startHidden, onWindowStateChanged } = options;
 
     let mainWindow = null;
     let isExpanded = false;
@@ -223,6 +223,8 @@ function createWindowManager(options = {}) {
             mainWindow.setAlwaysOnTop(true, 'floating');
             mainWindow.focus();
             console.log('[Window] Expanded to panel:', panelWidth, 'x', panelHeight);
+            // Re-register hotkeys after compositor settles
+            if (onWindowStateChanged) setTimeout(onWindowStateChanged, 150);
         }, 50);
     }
 
@@ -267,6 +269,8 @@ function createWindowManager(options = {}) {
             mainWindow.setSkipTaskbar(true);
             mainWindow.setAlwaysOnTop(true, 'screen-saver');
             console.log('[Window] Collapsed to orb:', orbSize, 'x', orbSize);
+            // Re-register hotkeys after compositor settles
+            if (onWindowStateChanged) setTimeout(onWindowStateChanged, 150);
         }, 50);
     }
 

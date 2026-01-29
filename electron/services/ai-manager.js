@@ -185,7 +185,8 @@ function createAIManager(options = {}) {
         activeProvider = createProvider(providerType, {
             model: model,
             baseUrl: endpoints[providerType] || undefined,
-            apiKey: apiKey
+            apiKey: apiKey,
+            contextLength: config?.ai?.contextLength || 32768
         });
 
         // Set up output handlers

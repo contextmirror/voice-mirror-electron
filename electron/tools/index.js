@@ -10,7 +10,7 @@ const { getToolSystemPrompt, getBasicSystemPrompt } = require('./prompts');
 const handlers = require('./handlers');
 
 // Limits for tool results (prevent context overflow in local LLMs)
-const TOOL_RESULT_MAX_CHARS = 8000;
+const TOOL_RESULT_MAX_CHARS = 12000;
 const TOOL_ERROR_MAX_CHARS = 400;
 const TOOL_TIMEOUT_MS = 30000;
 
@@ -21,7 +21,35 @@ const TOOL_TIMEOUT_MS = 30000;
  * @returns {string} Truncated text
  */
 function truncateText(text, maxChars) {
-    if (!text || text.length <= maxChars) return text;
+    if (!text || text.length <= maxChars) {
+        // Diagnostic trace: no truncation needed
+        try {
+            const dc = require('../services/diagnostic-collector');
+            if (dc.hasActiveTrace()) {
+                dc.addActiveStage('truncate_text', {
+                    input: text?.length || 0,
+                    output: text?.length || 0,
+                    max_chars: maxChars,
+                    truncated: false,
+                    lost: 0
+                });
+            }
+        } catch { /* diagnostic not available */ }
+        return text;
+    }
+    // Diagnostic trace: truncation occurred
+    try {
+        const dc = require('../services/diagnostic-collector');
+        if (dc.hasActiveTrace()) {
+            dc.addActiveStage('truncate_text', {
+                input: text.length,
+                output: maxChars,
+                max_chars: maxChars,
+                truncated: true,
+                lost: text.length - maxChars
+            });
+        }
+    } catch { /* diagnostic not available */ }
     return text.slice(0, maxChars) + '\n…(truncated)…';
 }
 
@@ -242,13 +270,30 @@ class ToolExecutor {
      * @returns {string} Formatted result for the model
      */
     formatToolResult(toolName, result) {
+        let formatted;
         if (result.success) {
             const truncated = truncateText(result.result, TOOL_RESULT_MAX_CHARS);
-            return `Tool "${toolName}" result:\n${truncated}`;
+            formatted = `Tool "${toolName}" result:\n${truncated}`;
         } else {
             const truncated = truncateText(result.error, TOOL_ERROR_MAX_CHARS);
-            return `Tool "${toolName}" failed: ${truncated}`;
+            formatted = `Tool "${toolName}" failed: ${truncated}`;
         }
+
+        // Diagnostic trace: formatted tool result
+        try {
+            const dc = require('../services/diagnostic-collector');
+            if (dc.hasActiveTrace()) {
+                dc.addActiveStage('format_tool_result', {
+                    tool: toolName,
+                    success: result.success,
+                    raw_result_length: result.success ? (result.result || '').length : (result.error || '').length,
+                    formatted_length: formatted.length,
+                    formatted_preview: formatted.substring(0, 500)
+                });
+            }
+        } catch { /* diagnostic not available */ }
+
+        return formatted;
     }
 }
 

@@ -134,9 +134,16 @@ export async function loadSettingsUI() {
         setProviderSelectorValue(selectedProvider);
         updateAIProviderUI(selectedProvider);
 
+        // Context length
+        const contextLengthSelect = document.getElementById('ai-context-length');
+        if (contextLengthSelect) {
+            contextLengthSelect.value = String(aiConfig.contextLength || 32768);
+        }
+
         // Track current provider/model for change detection on save
         state.currentProvider = selectedProvider;
         state.currentModel = aiConfig.model || null;
+        state.currentContextLength = aiConfig.contextLength || 32768;
 
         // Set endpoint if custom
         const endpoints = aiConfig.endpoints || {};
@@ -179,6 +186,7 @@ export function updateAIProviderUI(provider) {
     const modelRow = document.getElementById('ai-model-row');
     const endpointRow = document.getElementById('ai-endpoint-row');
     const apikeyRow = document.getElementById('ai-apikey-row');
+    const contextLengthRow = document.getElementById('ai-context-length-row');
 
     // Show/hide endpoint row for local providers
     endpointRow.style.display = LOCAL_PROVIDERS.includes(provider) ? 'flex' : 'none';
@@ -188,6 +196,11 @@ export function updateAIProviderUI(provider) {
 
     // Model row: show for local providers (populated from detection), hide for Claude (uses CLI)
     modelRow.style.display = provider === 'claude' ? 'none' : 'flex';
+
+    // Context length: show for local providers (Ollama, LM Studio, Jan)
+    if (contextLengthRow) {
+        contextLengthRow.style.display = LOCAL_PROVIDERS.includes(provider) ? 'flex' : 'none';
+    }
 
     // Tool profiles: only show for Claude Code
     const toolProfileSection = document.getElementById('tool-profile-section');
@@ -331,11 +344,14 @@ export async function saveSettings() {
     const aiAutoDetect = document.getElementById('ai-auto-detect').checked;
     const aiEndpoint = document.getElementById('ai-endpoint').value;
 
+    const aiContextLength = parseInt(document.getElementById('ai-context-length')?.value) || 32768;
+
     // Build AI config
     const aiUpdates = {
         provider: aiProvider,
         model: aiModel,
-        autoDetect: aiAutoDetect
+        autoDetect: aiAutoDetect,
+        contextLength: aiContextLength
     };
 
     // Update endpoint if it's a local provider with custom endpoint
@@ -411,12 +427,14 @@ export async function saveSettings() {
         }
         updateProviderDisplay(displayName, aiProvider, aiModel);
 
-        // If AI provider or model changed, clear terminal and restart if running
+        // If AI provider, model, or context length changed, clear terminal and restart if running
         const oldProvider = state.currentProvider;
         const oldModel = state.currentModel;
+        const oldContextLength = state.currentContextLength;
         const providerChanged = oldProvider !== aiProvider;
         const modelChanged = oldModel !== aiModel;
-        if (providerChanged || modelChanged) {
+        const contextLengthChanged = oldContextLength !== aiContextLength;
+        if (providerChanged || modelChanged || contextLengthChanged) {
             // Clear terminal when provider or model changes
             clearTerminal();
             console.log(`[Settings] Provider/model changed: ${oldProvider}/${oldModel} -> ${aiProvider}/${aiModel}`);
@@ -433,6 +451,7 @@ export async function saveSettings() {
             // Update state so next save can detect changes correctly
             state.currentProvider = aiProvider;
             state.currentModel = aiModel;
+            state.currentContextLength = aiContextLength;
         }
 
         // Show save confirmation

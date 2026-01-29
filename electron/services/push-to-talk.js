@@ -20,6 +20,7 @@ function createPushToTalk(options = {}) {
     let pttKey = null;
     let pttActive = false;  // Currently holding PTT key
     let listenersAttached = false;
+    let restartSubscribed = false;
     let onStartRecording = null;
     let onStopRecording = null;
 
@@ -97,6 +98,51 @@ function createPushToTalk(options = {}) {
     }
 
     /**
+     * Attach uiohook mouse/keyboard listeners for PTT.
+     * Extracted so it can be re-called after uiohook restarts.
+     */
+    function attachUiohookListeners() {
+        if (listenersAttached) return;
+        const hook = uiohookShared.getHook();
+        if (!hook) return;
+
+        hook.on('mousedown', (e) => {
+            if (pttKey?.type === 'mouse' && e.button === pttKey.button && !pttActive) {
+                pttActive = true;
+                console.log(`[Push-to-Talk] Start recording (mouse button ${e.button})`);
+                if (onStartRecording) onStartRecording();
+            }
+        });
+
+        hook.on('mouseup', (e) => {
+            if (pttKey?.type === 'mouse' && e.button === pttKey.button && pttActive) {
+                pttActive = false;
+                console.log(`[Push-to-Talk] Stop recording (mouse button ${e.button})`);
+                if (onStopRecording) onStopRecording();
+            }
+        });
+
+        hook.on('keydown', (e) => {
+            if (pttKey?.type === 'keyboard' && e.keycode === pttKey.keycode && !pttActive) {
+                pttActive = true;
+                console.log(`[Push-to-Talk] Start recording (keycode ${e.keycode})`);
+                if (onStartRecording) onStartRecording();
+            }
+        });
+
+        hook.on('keyup', (e) => {
+            if (pttKey?.type === 'keyboard' && e.keycode === pttKey.keycode && pttActive) {
+                pttActive = false;
+                console.log(`[Push-to-Talk] Stop recording (keycode ${e.keycode})`);
+                if (onStopRecording) onStopRecording();
+            }
+        });
+
+        listenersAttached = true;
+        console.log('[Push-to-Talk] uiohook listeners attached');
+    }
+
+    /**
      * Register push-to-talk with uiohook (supports mouse buttons).
      * When held, starts recording. When released, stops.
      * @param {string} key - Key to register (e.g., 'MouseButton4', 'Space', 'F13')
@@ -136,46 +182,18 @@ function createPushToTalk(options = {}) {
             return;
         }
 
-        // Use uiohook for proper key down/up detection
-        if (!listenersAttached) {
-            const hook = uiohookShared.getHook();
-
-            hook.on('mousedown', (e) => {
-                if (pttKey?.type === 'mouse' && e.button === pttKey.button && !pttActive) {
-                    pttActive = true;
-                    console.log(`[Push-to-Talk] Start recording (mouse button ${e.button})`);
-                    onStartRecording();
-                }
+        // Subscribe to uiohook restart events (once per PTT instance)
+        if (!restartSubscribed) {
+            uiohookShared.on('restarted', () => {
+                console.log('[Push-to-Talk] uiohook restarted — reattaching listeners');
+                listenersAttached = false;
+                pttActive = false;
+                if (pttKey) attachUiohookListeners();
             });
-
-            hook.on('mouseup', (e) => {
-                if (pttKey?.type === 'mouse' && e.button === pttKey.button && pttActive) {
-                    pttActive = false;
-                    console.log(`[Push-to-Talk] Stop recording (mouse button ${e.button})`);
-                    onStopRecording();
-                }
-            });
-
-            hook.on('keydown', (e) => {
-                if (pttKey?.type === 'keyboard' && e.keycode === pttKey.keycode && !pttActive) {
-                    pttActive = true;
-                    console.log(`[Push-to-Talk] Start recording (keycode ${e.keycode})`);
-                    onStartRecording();
-                }
-            });
-
-            hook.on('keyup', (e) => {
-                if (pttKey?.type === 'keyboard' && e.keycode === pttKey.keycode && pttActive) {
-                    pttActive = false;
-                    console.log(`[Push-to-Talk] Stop recording (keycode ${e.keycode})`);
-                    onStopRecording();
-                }
-            });
-
-            listenersAttached = true;
+            restartSubscribed = true;
         }
 
-        // Ensure uiohook is started (shared module handles idempotency)
+        attachUiohookListeners();
         uiohookShared.ensureStarted();
 
         console.log(`[Push-to-Talk] Registered: ${key} (${pttKey.type})`);

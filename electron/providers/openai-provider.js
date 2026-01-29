@@ -29,6 +29,9 @@ class OpenAIProvider extends BaseProvider {
         this.systemPrompt = config.systemPrompt || null;
         this.abortController = null;
 
+        // Context window size for local models (tokens)
+        this.contextLength = config.contextLength || 32768;
+
         // Tool execution support for local models
         this.toolExecutor = new ToolExecutor();
         this.toolsEnabled = config.toolsEnabled !== false;  // Enabled by default
@@ -186,10 +189,28 @@ class OpenAIProvider extends BaseProvider {
                 stream: true  // Use streaming for real-time output
             };
 
+            // Diagnostic trace: capture what the model receives
+            try {
+                const dc = require('../services/diagnostic-collector');
+                if (dc.hasActiveTrace()) {
+                    dc.addActiveStage('provider_request', {
+                        message_count: this.messages.length,
+                        total_chars: this.messages.reduce((s, m) => s + (typeof m.content === 'string' ? m.content.length : 0), 0),
+                        messages: this.messages.map(m => ({
+                            role: m.role,
+                            length: typeof m.content === 'string' ? m.content.length : 0,
+                            preview: typeof m.content === 'string' ? m.content.substring(0, 200) : '(non-string)'
+                        })),
+                        is_tool_followup: isToolFollowUp,
+                        model: this.model
+                    });
+                }
+            } catch { /* diagnostic not available */ }
+
             // Ollama: set context window size (default 2048 is too small for tool use)
             // Browser tool results can be 10K+ chars, need room for system prompt + history
             if (this.providerType === 'ollama') {
-                body.options = { num_ctx: 16384 };
+                body.options = { num_ctx: this.contextLength };
             }
 
             if (!this.model) {
@@ -242,6 +263,18 @@ class OpenAIProvider extends BaseProvider {
                 }
             }
 
+            // Diagnostic trace: model response complete
+            try {
+                const dc = require('../services/diagnostic-collector');
+                if (dc.hasActiveTrace()) {
+                    dc.addActiveStage('model_response', {
+                        is_tool_followup: isToolFollowUp,
+                        response_length: fullResponse.length,
+                        response_text: fullResponse
+                    });
+                }
+            } catch { /* diagnostic not available */ }
+
             // Add assistant response to history
             if (fullResponse) {
                 this.messages.push({
@@ -282,6 +315,19 @@ class OpenAIProvider extends BaseProvider {
                     console.log(`[OpenAIProvider] Tool call detected: ${toolCall.tool}`);
                     this.emitOutput('stdout', `\n[Executing tool: ${toolCall.tool}...]\n`);
 
+                    // Diagnostic trace: tool call detected
+                    try {
+                        const dc = require('../services/diagnostic-collector');
+                        if (dc.hasActiveTrace()) {
+                            dc.addActiveStage('tool_call_detected', {
+                                tool: toolCall.tool,
+                                args: toolCall.args,
+                                raw_response_length: fullResponse.length,
+                                raw_response_preview: fullResponse.substring(0, 300)
+                            });
+                        }
+                    } catch { /* diagnostic not available */ }
+
                     // Execute the tool
                     const result = await this.toolExecutor.execute(toolCall.tool, toolCall.args);
 
@@ -295,11 +341,27 @@ class OpenAIProvider extends BaseProvider {
                     }
 
                     // Format and inject result into conversation
+                    // Append instruction directly to result message (avoids dual system messages confusing small models)
                     const resultMessage = this.toolExecutor.formatToolResult(toolCall.tool, result);
                     this.messages.push({
                         role: 'user',
-                        content: resultMessage
+                        content: resultMessage + '\n\n[INSTRUCTION] The above is REAL, CURRENT data from a live web page. Read it carefully and answer my original question using ONLY facts from this data. Respond in plain natural language, under 3 sentences. No JSON. No markdown.'
                     });
+
+                    // Diagnostic trace: tool result injected
+                    try {
+                        const dc = require('../services/diagnostic-collector');
+                        if (dc.hasActiveTrace()) {
+                            dc.addActiveStage('tool_result_injected', {
+                                tool: toolCall.tool,
+                                success: result.success,
+                                result_message_length: resultMessage.length,
+                                result_message_preview: resultMessage.substring(0, 500),
+                                conversation_size: this.messages.length,
+                                total_context_chars: this.messages.reduce((s, m) => s + (typeof m.content === 'string' ? m.content.length : 0), 0)
+                            });
+                        }
+                    } catch { /* diagnostic not available */ }
 
                     console.log(`[OpenAIProvider] Tool result: ${result.success ? 'success' : 'failed'}`);
                     this.emitOutput('stdout', `[Tool ${result.success ? 'succeeded' : 'failed'}]\n\n`);
@@ -540,7 +602,8 @@ function createOpenAIProvider(type, config = {}) {
         chatEndpoint: config.chatEndpoint || defaults.chatEndpoint,
         apiKey: config.apiKey || null,
         model: config.model || defaults.defaultModel,
-        systemPrompt: config.systemPrompt || null
+        systemPrompt: config.systemPrompt || null,
+        contextLength: config.contextLength || 32768
     });
 }
 

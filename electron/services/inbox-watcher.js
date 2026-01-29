@@ -154,6 +154,18 @@ function createInboxWatcher(options = {}) {
                         console.log(`[InboxWatcher] Forwarding inbox message to ${providerName}: ${msg.message?.slice(0, 50)}...`);
                         _devlog('BACKEND', 'forwarding', { text: msg.message, source: providerName, msgId: msg.id });
 
+                        // Diagnostic trace: provider forward
+                        try {
+                            const dc = require('./diagnostic-collector');
+                            if (dc.hasActiveTrace()) {
+                                dc.addActiveStage('provider_forward', {
+                                    provider: providerName,
+                                    message: msg.message,
+                                    message_id: msg.id
+                                });
+                            }
+                        } catch { /* diagnostic not available */ }
+
                         // Send to UI as user message
                         if (onUserMessage) {
                             onUserMessage({
@@ -443,6 +455,20 @@ async function captureProviderResponse(provider, message, _devlog = () => {}) {
 
                 if (stableCount >= neededChecks) {
                     finalResponse = extractSpeakableResponse(fullResponse);
+
+                    // Diagnostic trace: extract speakable
+                    try {
+                        const dc = require('./diagnostic-collector');
+                        if (dc.hasActiveTrace()) {
+                            dc.addActiveStage('extract_speakable', {
+                                input_length: fullResponse.length,
+                                input_preview: fullResponse.substring(0, 500),
+                                output_length: finalResponse?.length || 0,
+                                output_text: finalResponse || ''
+                            });
+                        }
+                    } catch { /* diagnostic not available */ }
+
                     console.log(`[InboxWatcher] Captured response (${fullResponse.length} chars) -> speakable: "${finalResponse?.slice(0, 100)}..."`);
                     _devlog('BACKEND', 'response-captured', { text: finalResponse, chars: fullResponse.length, reason: 'stable' });
                     finish(finalResponse, 'stable');
@@ -520,9 +546,14 @@ function extractSpeakableResponse(output) {
             continue;
         }
 
-        // Skip JSON tool calls (detect by pattern)
-        if (trimmed.startsWith('{') && trimmed.includes('"tool"')) {
-            continue;
+        // Skip JSON objects (tool calls, raw tool output, etc.)
+        if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+            try {
+                JSON.parse(trimmed);
+                continue; // Valid JSON object — skip it
+            } catch {
+                // Not valid JSON, keep it
+            }
         }
 
         // Skip lines that look like pre-tool-call announcements
@@ -560,9 +591,13 @@ function extractSpeakableResponse(output) {
         .trim();
 
     // If the result is still mostly JSON or system output, return empty
-    // But don't discard responses that just happen to start with [ for lists/tables
-    if (cleaned.startsWith('{') && cleaned.includes('"tool"')) {
-        return '';
+    if (cleaned.startsWith('{') && cleaned.endsWith('}')) {
+        try {
+            JSON.parse(cleaned);
+            return '';
+        } catch {
+            // Not valid JSON, keep it
+        }
     }
 
     return cleaned;
@@ -604,6 +639,19 @@ function stripEchoedContent(response) {
  * @param {string} replyToId - ID of the message being replied to
  */
 function writeResponseToInbox(dataDir, response, providerName, replyToId) {
+    // Diagnostic trace: response written to inbox
+    try {
+        const dc = require('./diagnostic-collector');
+        if (dc.hasActiveTrace()) {
+            dc.addActiveStage('inbox_response', {
+                provider: providerName,
+                reply_to: replyToId,
+                final_text: response,
+                final_length: response?.length || 0
+            });
+        }
+    } catch { /* diagnostic not available */ }
+
     const inboxPath = path.join(dataDir, 'inbox.json');
 
     let data = { messages: [] };
