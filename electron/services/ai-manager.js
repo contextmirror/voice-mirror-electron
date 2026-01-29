@@ -27,9 +27,10 @@ const { createProvider } = require('../providers');
  * @returns {Object} AI manager service instance
  */
 function createAIManager(options = {}) {
-    const { getConfig, onOutput, onVoiceEvent, onToolCall, onToolResult, onProviderSwitch } = options;
+    const { getConfig, onOutput, onVoiceEvent, onToolCall, onToolResult, onProviderSwitch, onSystemSpeak } = options;
 
     let activeProvider = null;  // Current OpenAI-compatible provider instance
+    let hasStartedOnce = false; // Track initial startup vs provider switch
 
     /**
      * Send output to the terminal UI.
@@ -138,6 +139,8 @@ function createAIManager(options = {}) {
         const model = config?.ai?.model || null;
 
         console.log(`[AIManager] Starting AI provider: ${providerType}${model ? ' (' + model + ')' : ''}`);
+        const isSwitch = hasStartedOnce;
+        hasStartedOnce = true;
 
         // Check if already running
         if (providerType === 'claude') {
@@ -147,6 +150,10 @@ function createAIManager(options = {}) {
                 return false;
             }
             startClaudeCode();
+            if (isSwitch && onSystemSpeak) {
+                // Delay to let PTY initialize
+                setTimeout(() => onSystemSpeak('System check complete. Claude is online.'), 3000);
+            }
             return true;
         }
 
@@ -228,9 +235,18 @@ function createAIManager(options = {}) {
             if (activeProvider.supportsTools && activeProvider.supportsTools()) {
                 console.log(`[AIManager] Tool support enabled for ${providerType}`);
             }
+
+            // Announce provider switch via TTS
+            if (isSwitch && onSystemSpeak) {
+                const displayName = activeProvider.getDisplayName();
+                onSystemSpeak(`System check complete. ${displayName} is online.`);
+            }
         }).catch((err) => {
             console.error(`[AIManager] Failed to start ${providerType}:`, err);
             sendOutput('stderr', `[Error] Failed to start ${providerType}: ${err.message}\n`);
+            if (isSwitch && onSystemSpeak) {
+                onSystemSpeak(`System check failed. ${providerType} is not responding.`);
+            }
         });
 
         return true;

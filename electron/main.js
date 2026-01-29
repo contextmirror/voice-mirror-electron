@@ -345,11 +345,49 @@ app.whenReady().then(() => {
         log: (level, msg) => logger.log(level, msg)
     });
 
+    // --- Jarvis-style startup greeting ---
+    function getTimePeriod() {
+        const hour = new Date().getHours();
+        if (hour < 12) return 'morning';
+        if (hour < 17) return 'afternoon';
+        return 'evening';
+    }
+
+    function doStartupGreeting() {
+        if (!pythonBackend?.isRunning()) return;
+
+        // First-ever launch
+        if (!appConfig.system?.firstLaunchDone) {
+            pythonBackend.systemSpeak('Welcome to Voice Mirror.');
+            appConfig = config.updateConfig({ system: { ...appConfig.system, firstLaunchDone: true } });
+            return; // Don't also do time greeting on first launch
+        }
+
+        // Once-per-period greeting
+        const period = getTimePeriod();
+        const date = new Date().toISOString().slice(0, 10);
+        const dateKey = `${period}-${date}`;
+        if (appConfig.system?.lastGreetingPeriod === dateKey) return;
+
+        // Use model name if available (e.g. "qwen3"), otherwise provider name
+        const model = appConfig.ai?.model;
+        const provider = appConfig.ai?.provider || 'claude';
+        const displayName = model ? model.split(':')[0] : provider;
+        const greeting = `Good ${period}. Voice Mirror online. ${displayName} standing by.`;
+        pythonBackend.systemSpeak(greeting);
+        appConfig = config.updateConfig({ system: { ...appConfig.system, lastGreetingPeriod: dateKey } });
+    }
+
     // Set up Python backend event handler
     pythonBackend.onEvent((event) => {
         // Send voice events to renderer
         mainWindow?.webContents.send('voice-event', event);
         forwardVoiceEventToOrb(event);
+
+        // Startup greeting when Python backend is ready
+        if (event.type === 'ready') {
+            setTimeout(() => doStartupGreeting(), 2000);
+        }
 
         // Handle chat messages from transcription/response events
         if (event.chatMessage) {
@@ -389,6 +427,9 @@ app.whenReady().then(() => {
         },
         onToolResult: (data) => {
             mainWindow?.webContents.send('tool-result', data);
+        },
+        onSystemSpeak: (text) => {
+            pythonBackend?.systemSpeak(text);
         },
         onProviderSwitch: () => {
             // Clear processed user messages when provider is switched
@@ -554,7 +595,12 @@ app.whenReady().then(() => {
         return config.loadConfig();
     });
 
-    ipcMain.handle('set-config', (event, updates) => {
+    ipcMain.handle('set-config', async (event, updates) => {
+        const oldProvider = appConfig?.ai?.provider;
+        const oldModel = appConfig?.ai?.model;
+        if (updates.ai) {
+            console.log(`[Config] AI update: provider=${oldProvider}->${updates.ai.provider}, model=${oldModel}->${updates.ai.model}`);
+        }
         const oldHotkey = appConfig?.behavior?.hotkey;
         const oldPttKey = appConfig?.behavior?.pttKey;
         const oldActivationMode = appConfig?.behavior?.activationMode;
@@ -563,6 +609,22 @@ app.whenReady().then(() => {
         const oldWakeWord = appConfig?.wakeWord;
 
         appConfig = config.updateConfig(updates);
+
+        // Auto-restart AI provider if provider or model changed
+        if (updates.ai) {
+            const newProvider = appConfig.ai?.provider;
+            const newModel = appConfig.ai?.model;
+            const providerChanged = oldProvider !== newProvider;
+            const modelChanged = oldModel !== newModel;
+
+            if ((providerChanged || modelChanged) && isAIProviderRunning()) {
+                console.log(`[Config] Provider/model changed, restarting AI: ${oldProvider}/${oldModel} -> ${newProvider}/${newModel}`);
+                stopAIProvider();
+                // Small delay for clean shutdown
+                await new Promise(resolve => setTimeout(resolve, 500));
+                startAIProvider();
+            }
+        }
 
         // Re-register global shortcut if hotkey changed (with rollback on failure)
         if (updates.behavior?.hotkey && updates.behavior.hotkey !== oldHotkey && hotkeyManager) {

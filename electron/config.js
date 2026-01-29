@@ -77,6 +77,12 @@ const DEFAULT_CONFIG = {
         collapsed: false  // Whether sidebar is collapsed to icons-only
     },
 
+    // System announcements (Jarvis-style TTS)
+    system: {
+        firstLaunchDone: false,       // Set true after first-ever launch greeting
+        lastGreetingPeriod: null      // e.g. "morning-2026-01-29" to avoid repeat greetings
+    },
+
     // AI Provider settings
     ai: {
         provider: 'claude',           // 'claude' | 'ollama' | 'lmstudio' | 'jan' | 'openai' | etc.

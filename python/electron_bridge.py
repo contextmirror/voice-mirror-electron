@@ -572,6 +572,14 @@ async def process_commands(agent):
                 with open(ptt_path, 'w') as f:
                     json.dump({"action": "stop", "timestamp": datetime.now().isoformat()}, f)
 
+            elif command == "system_speak":
+                # Speak text via TTS without entering conversation mode or touching inbox
+                text = cmd.get("text", "")
+                if text and agent:
+                    emit_event("speaking_start", {"text": text})
+                    await agent.speak(text, enter_conversation_mode=False)
+                    emit_event("speaking_end", {})
+
             elif command == "stop":
                 emit_event("stopping", {})
                 break

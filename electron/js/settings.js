@@ -134,6 +134,10 @@ export async function loadSettingsUI() {
         setProviderSelectorValue(selectedProvider);
         updateAIProviderUI(selectedProvider);
 
+        // Track current provider/model for change detection on save
+        state.currentProvider = selectedProvider;
+        state.currentModel = aiConfig.model || null;
+
         // Set endpoint if custom
         const endpoints = aiConfig.endpoints || {};
         const provider = aiConfig.provider || 'claude';
@@ -290,12 +294,15 @@ export async function scanProviders() {
         const providerData = results.find(p => p.type === currentProvider);
 
         if (providerData?.models?.length > 0) {
+            // Preserve user's saved model selection from config
+            const savedModel = state.currentConfig?.ai?.model || null;
             modelSelect.innerHTML = '<option value="">Auto (default)</option>';
             for (const model of providerData.models) {
                 const option = document.createElement('option');
                 option.value = model;
                 option.textContent = model;
-                if (model === providerData.model) {
+                // Select saved config model, falling back to detected default
+                if (savedModel ? model === savedModel : model === providerData.model) {
                     option.selected = true;
                 }
                 modelSelect.appendChild(option);
@@ -409,7 +416,6 @@ export async function saveSettings() {
         const oldModel = state.currentModel;
         const providerChanged = oldProvider !== aiProvider;
         const modelChanged = oldModel !== aiModel;
-
         if (providerChanged || modelChanged) {
             // Clear terminal when provider or model changes
             clearTerminal();
@@ -423,6 +429,10 @@ export async function saveSettings() {
                 await new Promise(resolve => setTimeout(resolve, 500));
                 await window.voiceMirror.claude.start();
             }
+
+            // Update state so next save can detect changes correctly
+            state.currentProvider = aiProvider;
+            state.currentModel = aiModel;
         }
 
         // Show save confirmation

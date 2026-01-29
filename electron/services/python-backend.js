@@ -461,12 +461,23 @@ function createPythonBackend(options = {}) {
         onResponseIdCallback = callback;
     }
 
+    /**
+     * Speak text via TTS without entering conversation mode or touching inbox.
+     * Used for system announcements (startup greeting, provider switch, etc.)
+     * @param {string} text - Text to speak
+     * @returns {boolean} True if sent
+     */
+    function systemSpeak(text) {
+        return send({ command: 'system_speak', text });
+    }
+
     return {
         start,
         stop,
         kill,
         send,
         sendImage,
+        systemSpeak,
         isRunning,
         getProcess,
         onEvent,

@@ -33,6 +33,7 @@
 #sidebar-header .sidebar-logo {
     width: 28px;
     height: 28px;
+    object-fit: contain;
     flex-shrink: 0;
     cursor: pointer;
     -webkit-app-region: no-drag;
@@ -56,6 +57,12 @@
     opacity: 0;
     width: 0;
     overflow: hidden;
+}
+
+#sidebar.collapsed #sidebar-header {
+    padding: 14px 0;
+    justify-content: center;
+    gap: 0;
 }
 
 /* ========== Window Controls ========== */

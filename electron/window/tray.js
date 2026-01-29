@@ -3,7 +3,7 @@
  * Creates a tray icon with context menu for quick access.
  */
 
-const { Tray, Menu, app } = require('electron');
+const { Tray, Menu, app, nativeImage } = require('electron');
 const path = require('path');
 
 /**
@@ -24,10 +24,18 @@ function createTrayService(options = {}) {
      * @returns {Tray|null} The created tray instance or null if icon not found
      */
     function create(callbacks = {}) {
-        const iconPath = options.iconPath || path.join(__dirname, '../../assets/tray-icon.png');
+        const assetsDir = path.join(__dirname, '../../assets');
 
         try {
-            tray = new Tray(iconPath);
+            let icon;
+            if (process.platform === 'darwin') {
+                // macOS: use Template images for light/dark menu bar
+                icon = nativeImage.createFromPath(path.join(assetsDir, 'tray-iconTemplate.png'));
+            } else {
+                // Linux/Windows: use standard icon, Electron picks up @2x automatically
+                icon = nativeImage.createFromPath(path.join(assetsDir, 'tray-icon.png'));
+            }
+            tray = new Tray(icon);
         } catch (e) {
             console.log('[Tray] Icon not found, skipping tray creation');
             return null;
