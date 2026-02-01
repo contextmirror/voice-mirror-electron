@@ -5,7 +5,7 @@
 
 import * as p from '@clack/prompts';
 import chalk from 'chalk';
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, unlinkSync } from 'fs';
 import { execSync } from 'child_process';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -495,19 +495,20 @@ function createDesktopShortcut(projectDir) {
             const vmCmd = join(npmGlobal, 'voice-mirror.cmd');
             const target = existsSync(vmCmd) ? vmCmd : 'cmd.exe';
             const args = existsSync(vmCmd) ? 'start' : '/c voice-mirror start';
-            const icoPath = join(projectDir, 'assets', 'icon-256.ico');
-            // Use PowerShell to create .lnk shortcut via COM
-            const psScript = [
-                '$ws = New-Object -ComObject WScript.Shell',
-                `$s = $ws.CreateShortcut("${lnkPath.replace(/\\/g, '\\\\')}")`,
-                `$s.TargetPath = "${target.replace(/\\/g, '\\\\')}"`,
-                `$s.Arguments = "${args}"`,
-                `$s.WorkingDirectory = "${projectDir.replace(/\\/g, '\\\\')}"`,
-                '$s.Description = "Voice Mirror - Voice-controlled AI agent overlay"',
-                existsSync(icoPath) ? `$s.IconLocation = "${icoPath.replace(/\\/g, '\\\\')}"` : '',
-                '$s.Save()',
-            ].filter(Boolean).join('; ');
-            execSync(`powershell -NoProfile -Command "${psScript}"`, { stdio: 'pipe' });
+            // Write a temp .ps1 script to avoid quote-escaping issues
+            const tmpPs1 = join(process.env.TEMP || homedir(), 'vm-shortcut.ps1');
+            const lines = [
+                `$ws = New-Object -ComObject WScript.Shell`,
+                `$s = $ws.CreateShortcut('${lnkPath}')`,
+                `$s.TargetPath = '${target}'`,
+                `$s.Arguments = '${args}'`,
+                `$s.WorkingDirectory = '${projectDir}'`,
+                `$s.Description = 'Voice Mirror - Voice-controlled AI agent overlay'`,
+                `$s.Save()`,
+            ];
+            writeFileSync(tmpPs1, lines.join('\r\n'));
+            execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tmpPs1}"`, { stdio: 'pipe' });
+            try { unlinkSync(tmpPs1); } catch {}
             return true;
         }
 
