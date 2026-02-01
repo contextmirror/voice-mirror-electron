@@ -209,7 +209,12 @@ class VoiceMirror:
             self.tts = create_tts_adapter("kokoro", voice=tts_voice)
 
         # Load TTS model
-        self.tts.load()
+        try:
+            self.tts.load()
+        except Exception as e:
+            print(f"⚠️ TTS failed to load: {e}")
+            print("   Voice output will be unavailable. Run setup to fix.")
+            self.tts = None
 
     def is_call_active(self) -> bool:
         """

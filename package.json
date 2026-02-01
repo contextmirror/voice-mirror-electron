@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node scripts/launch.js",
     "dev": "node scripts/launch.js --dev",
-    "build": "electron-builder"
+    "build": "electron-builder",
+    "setup": "node cli/index.mjs setup",
+    "doctor": "node cli/index.mjs doctor",
+    "test": "node --test test/unit/*.test.js mcp-server/lib/memory/*.test.js"
   },
   "author": "",
   "license": "MIT",

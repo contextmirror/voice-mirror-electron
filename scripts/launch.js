@@ -10,10 +10,26 @@
  */
 
 const { spawn } = require('child_process');
+const { existsSync } = require('fs');
 const path = require('path');
 
 const isLinux = process.platform === 'linux';
+const isWindows = process.platform === 'win32';
 const isDev = process.argv.includes('--dev');
+const projectDir = path.join(__dirname, '..');
+
+// Pre-flight checks: verify critical dependencies exist before launching Electron
+const venvPython = isWindows
+    ? path.join(projectDir, 'python', '.venv', 'Scripts', 'python.exe')
+    : path.join(projectDir, 'python', '.venv', 'bin', 'python');
+
+if (!existsSync(venvPython)) {
+    console.error('\n❌ Python virtual environment not found.');
+    console.error(`   Expected: ${venvPython}`);
+    console.error('\n   Run setup first:  node cli/index.mjs setup');
+    console.error('   Or on Windows:    .\\install.ps1\n');
+    process.exit(1);
+}
 
 // Ensure ELECTRON_RUN_AS_NODE is not set (equivalent to `env -u ELECTRON_RUN_AS_NODE`)
 const env = { ...process.env };

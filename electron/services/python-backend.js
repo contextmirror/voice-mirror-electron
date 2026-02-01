@@ -293,12 +293,16 @@ function createPythonBackend(options = {}) {
         pythonProcess.on('error', (err) => {
             console.error(`[Python] Spawn error:`, err);
             if (log) log('PYTHON', `Spawn error: ${err.message}`);
+            if (onEventCallback) onEventCallback({ type: "error", message: `Python spawn failed: ${err.message}` });
         });
 
         pythonProcess.on('close', (code) => {
             console.log(`[Python] Process exited with code ${code}`);
             if (log) log('PYTHON', `Process exited with code ${code}`);
             pythonProcess = null;
+            if (code !== 0 && onEventCallback) {
+                onEventCallback({ type: "error", message: `Python exited with code ${code}` });
+            }
             if (onEventCallback) {
                 onEventCallback({ type: 'disconnected' });
             }

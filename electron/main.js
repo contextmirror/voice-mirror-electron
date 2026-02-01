@@ -82,6 +82,7 @@ const { isWindows, isMac, isLinux } = config;
 
 let mainWindow = null;  // Reference to windowManager's window (for backward compatibility)
 let appConfig = null;
+let pythonReadyTimeout = null;
 
 // Window state - kept in sync with windowManager
 let isExpanded = false;
@@ -271,6 +272,16 @@ function startOllamaServer(config) {
 function startPythonVoiceMirror() {
     if (pythonBackend) {
         pythonBackend.start();
+        // Set a 30-second timeout for Python ready event
+        if (pythonReadyTimeout) clearTimeout(pythonReadyTimeout);
+        pythonReadyTimeout = setTimeout(() => {
+            console.error('[Python] Backend failed to start within 30 seconds');
+            mainWindow?.webContents.send('voice-event', {
+                type: 'error',
+                message: 'Python backend failed to start. Run "node cli/index.mjs setup" to fix.'
+            });
+            pythonReadyTimeout = null;
+        }, 30000);
     }
 }
 
@@ -472,6 +483,7 @@ app.whenReady().then(() => {
 
         // Startup greeting when Python backend is ready
         if (event.type === 'ready') {
+            if (pythonReadyTimeout) { clearTimeout(pythonReadyTimeout); pythonReadyTimeout = null; }
             setTimeout(() => doStartupGreeting(), 2000);
         }
 
