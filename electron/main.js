@@ -225,14 +225,27 @@ function startOllamaServer(config) {
         ollamaPath = execSync(cmd, { encoding: 'utf8' }).trim().split('\n')[0];
     } catch {
         // Not on PATH — check common locations
-        const candidates = [
-            path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Ollama', 'ollama.exe'),
-            // Check near the install dir (installer may have put it in parent dir)
-            path.join(path.dirname(path.dirname(__dirname)), 'Ollama', 'ollama.exe'),
-        ];
-        // If OLLAMA_MODELS is set, check its parent dir (installer puts ollama.exe alongside models/)
-        if (process.env.OLLAMA_MODELS) {
-            candidates.push(path.join(path.dirname(process.env.OLLAMA_MODELS), 'ollama.exe'));
+        const candidates = [];
+        if (process.platform === 'win32') {
+            candidates.push(
+                path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Ollama', 'ollama.exe'),
+                path.join(path.dirname(path.dirname(__dirname)), 'Ollama', 'ollama.exe')
+            );
+            if (process.env.OLLAMA_MODELS) {
+                candidates.push(path.join(path.dirname(process.env.OLLAMA_MODELS), 'ollama.exe'));
+            }
+        } else if (process.platform === 'darwin') {
+            candidates.push(
+                '/usr/local/bin/ollama',
+                path.join(os.homedir(), '.ollama', 'ollama'),
+                '/Applications/Ollama.app/Contents/Resources/ollama'
+            );
+        } else {
+            candidates.push(
+                '/usr/local/bin/ollama',
+                '/usr/bin/ollama',
+                path.join(os.homedir(), '.ollama', 'ollama')
+            );
         }
         for (const c of candidates) {
             if (fs.existsSync(c)) { ollamaPath = c; break; }

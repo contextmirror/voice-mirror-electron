@@ -40,7 +40,7 @@ def get_ai_provider() -> dict:
     """
     try:
         if ELECTRON_CONFIG_PATH.exists():
-            with open(ELECTRON_CONFIG_PATH) as f:
+            with open(ELECTRON_CONFIG_PATH, encoding='utf-8') as f:
                 config = json.load(f)
                 ai = config.get("ai", {})
                 provider_id = ai.get("provider", "claude")
@@ -84,7 +84,7 @@ def get_activation_mode() -> str:
     """
     try:
         if ELECTRON_CONFIG_PATH.exists():
-            with open(ELECTRON_CONFIG_PATH) as f:
+            with open(ELECTRON_CONFIG_PATH, encoding='utf-8') as f:
                 config = json.load(f)
                 return config.get("behavior", {}).get("activationMode", ActivationMode.WAKE_WORD)
     except Exception as e:

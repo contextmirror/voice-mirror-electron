@@ -25,7 +25,7 @@ def cleanup_inbox(inbox_path: Path, max_age_hours: float = 2.0) -> int:
         return 0
 
     try:
-        with open(inbox_path) as f:
+        with open(inbox_path, encoding='utf-8') as f:
             data = json.load(f)
 
         messages = data.get("messages", [])
@@ -52,7 +52,7 @@ def cleanup_inbox(inbox_path: Path, max_age_hours: float = 2.0) -> int:
 
         if removed > 0:
             data["messages"] = recent_messages
-            with open(inbox_path, 'w') as f:
+            with open(inbox_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2)
 
         return removed
@@ -106,7 +106,7 @@ class InboxManager:
             # Load existing messages
             if self.inbox_path.exists():
                 try:
-                    with open(self.inbox_path) as f:
+                    with open(self.inbox_path, encoding='utf-8') as f:
                         data = json.load(f)
                     if "messages" not in data:
                         data = {"messages": []}
@@ -127,7 +127,7 @@ class InboxManager:
 
             data["messages"].append(msg)
 
-            with open(self.inbox_path, 'w') as f:
+            with open(self.inbox_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2)
 
             print(f"📬 Sent to inbox: {message[:50]}...")
@@ -158,7 +158,7 @@ class InboxManager:
                     continue
 
                 try:
-                    with open(self.inbox_path) as f:
+                    with open(self.inbox_path, encoding='utf-8') as f:
                         data = json.load(f)
                 except (json.JSONDecodeError, KeyError):
                     continue
@@ -201,7 +201,7 @@ class InboxManager:
         with self._lock:
             if self.inbox_path.exists():
                 try:
-                    with open(self.inbox_path) as f:
+                    with open(self.inbox_path, encoding='utf-8') as f:
                         data = json.load(f)
                 except Exception:
                     data = {"messages": []}
@@ -221,7 +221,7 @@ class InboxManager:
 
             data["messages"].append(msg)
 
-            with open(self.inbox_path, 'w') as f:
+            with open(self.inbox_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2)
 
             print("📬 Response saved to inbox")
@@ -238,7 +238,7 @@ class InboxManager:
                 return None, None
 
             try:
-                with open(self.inbox_path) as f:
+                with open(self.inbox_path, encoding='utf-8') as f:
                     data = json.load(f)
             except (json.JSONDecodeError, KeyError):
                 return None, None
@@ -269,7 +269,7 @@ class InboxManager:
                 return None, None
 
             try:
-                with open(self.inbox_path) as f:
+                with open(self.inbox_path, encoding='utf-8') as f:
                     data = json.load(f)
             except (json.JSONDecodeError, KeyError):
                 return None, None
@@ -298,7 +298,7 @@ class InboxManager:
                 return
 
             try:
-                with open(self.inbox_path) as f:
+                with open(self.inbox_path, encoding='utf-8') as f:
                     data = json.load(f)
 
                 messages = data if isinstance(data, list) else data.get("messages", [])
@@ -308,7 +308,7 @@ class InboxManager:
                         msg["read"] = True
                         break
 
-                with open(self.inbox_path, 'w') as f:
+                with open(self.inbox_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=2)
             except Exception as e:
                 print(f"⚠️ Error marking compaction read: {e}")

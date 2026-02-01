@@ -103,7 +103,7 @@ def init_log_file():
     """Initialize the log file for Python-side logging."""
     global _log_file
     try:
-        log_dir = Path.home() / ".config" / "voice-mirror-electron" / "data"
+        log_dir = get_data_dir()
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / "vmr.log"
         # Append mode so both Electron and Python can write
@@ -390,7 +390,7 @@ async def process_commands(agent):
                 prompt = cmd.get("prompt", "What's in this image?")
 
                 # Save to ~/.context-mirror/images/
-                images_dir = Path.home() / ".config" / "voice-mirror-electron" / "data" / "images"
+                images_dir = get_data_dir() / "images"
                 images_dir.mkdir(parents=True, exist_ok=True)
 
                 image_filename = f"screen_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.png"
@@ -402,11 +402,11 @@ async def process_commands(agent):
                 emit_event("image_received", {"path": str(image_path)})
 
                 # Send to Claude via MCP inbox
-                inbox_path = Path.home() / ".config" / "voice-mirror-electron" / "data" / "inbox.json"
+                inbox_path = get_data_dir() / "inbox.json"
 
                 if inbox_path.exists():
                     try:
-                        with open(inbox_path) as f:
+                        with open(inbox_path, encoding='utf-8') as f:
                             data = json.load(f)
                         if "messages" not in data:
                             data = {"messages": []}
@@ -427,7 +427,7 @@ async def process_commands(agent):
 
                 data["messages"].append(msg)
 
-                with open(inbox_path, 'w') as f:
+                with open(inbox_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=2)
 
                 emit_event("sent_to_inbox", {"message": prompt, "image": str(image_path)})
@@ -441,7 +441,7 @@ async def process_commands(agent):
                 if image:
                     # Handle image query - save to persistent location
                     # Save to ~/.context-mirror/images/ for persistence
-                    images_dir = Path.home() / ".config" / "voice-mirror-electron" / "data" / "images"
+                    images_dir = get_data_dir() / "images"
                     images_dir.mkdir(parents=True, exist_ok=True)
 
                     # Unique filename with timestamp
@@ -454,13 +454,13 @@ async def process_commands(agent):
                     emit_event("image_received", {"path": str(image_path)})
 
                     # Send image to Claude via MCP inbox
-                    inbox_path = Path.home() / ".config" / "voice-mirror-electron" / "data" / "inbox.json"
+                    inbox_path = get_data_dir() / "inbox.json"
                     inbox_path.parent.mkdir(parents=True, exist_ok=True)
 
                     # Load existing messages
                     if inbox_path.exists():
                         try:
-                            with open(inbox_path) as f:
+                            with open(inbox_path, encoding='utf-8') as f:
                                 data = json.load(f)
                             if "messages" not in data:
                                 data = {"messages": []}
@@ -482,7 +482,7 @@ async def process_commands(agent):
 
                     data["messages"].append(msg)
 
-                    with open(inbox_path, 'w') as f:
+                    with open(inbox_path, 'w', encoding='utf-8') as f:
                         json.dump(data, f, indent=2)
 
                     emit_event("sent_to_inbox", {"message": msg["message"], "image": str(image_path)})
@@ -495,9 +495,9 @@ async def process_commands(agent):
             elif command == "set_mode":
                 mode = cmd.get("mode", "auto")
                 # Write to voice_mode.json
-                mode_path = Path.home() / ".config" / "voice-mirror-electron" / "data" / "voice_mode.json"
+                mode_path = get_data_dir() / "voice_mode.json"
                 mode_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(mode_path, 'w') as f:
+                with open(mode_path, 'w', encoding='utf-8') as f:
                     json.dump({"mode": mode}, f)
                 emit_event("mode_change", {"mode": mode})
 
@@ -513,14 +513,14 @@ async def process_commands(agent):
                 existing = {}
                 if config_path.exists():
                     try:
-                        with open(config_path) as f:
+                        with open(config_path, encoding='utf-8') as f:
                             existing = json.load(f)
                     except Exception:
                         pass
 
                 existing.update(cfg)
 
-                with open(config_path, 'w') as f:
+                with open(config_path, 'w', encoding='utf-8') as f:
                     json.dump(existing, f, indent=2)
 
                 emit_event("config_updated", {"config": existing})
@@ -529,8 +529,8 @@ async def process_commands(agent):
                 activation_mode = cfg.get("activationMode")
                 ptt_key = cfg.get("pttKey")
                 if activation_mode:
-                    call_path = Path.home() / ".config" / "voice-mirror-electron" / "data" / "voice_call.json"
-                    with open(call_path, 'w') as f:
+                    call_path = get_data_dir() / "voice_call.json"
+                    with open(call_path, 'w', encoding='utf-8') as f:
                         json.dump({"active": activation_mode == "callMode"}, f)
                     emit_event("mode_change", {"mode": activation_mode})
 
@@ -552,11 +552,11 @@ async def process_commands(agent):
 
                 if tts_adapter or tts_voice or tts_model_size:
                     # Update voice_settings.json (read by voice_agent)
-                    settings_path = Path.home() / ".config" / "voice-mirror-electron" / "data" / "voice_settings.json"
+                    settings_path = get_data_dir() / "voice_settings.json"
                     try:
                         voice_settings = {}
                         if settings_path.exists():
-                            with open(settings_path) as f:
+                            with open(settings_path, encoding='utf-8') as f:
                                 voice_settings = json.load(f)
 
                         # Update only the fields that were provided
@@ -567,7 +567,7 @@ async def process_commands(agent):
                         if tts_model_size:
                             voice_settings["tts_model_size"] = tts_model_size
 
-                        with open(settings_path, 'w') as f:
+                        with open(settings_path, 'w', encoding='utf-8') as f:
                             json.dump(voice_settings, f, indent=2)
 
                         # Tell the agent to refresh TTS settings
@@ -579,16 +579,16 @@ async def process_commands(agent):
             elif command == "start_recording":
                 # Push-to-talk: start recording immediately
                 # Don't emit here - ElectronOutputCapture will emit when voice_agent prints
-                ptt_path = Path.home() / ".config" / "voice-mirror-electron" / "data" / "ptt_trigger.json"
+                ptt_path = get_data_dir() / "ptt_trigger.json"
                 ptt_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(ptt_path, 'w') as f:
+                with open(ptt_path, 'w', encoding='utf-8') as f:
                     json.dump({"action": "start", "timestamp": datetime.now().isoformat()}, f)
 
             elif command == "stop_recording":
                 # Push-to-talk: stop recording
                 # Don't emit here - ElectronOutputCapture will emit when voice_agent prints
-                ptt_path = Path.home() / ".config" / "voice-mirror-electron" / "data" / "ptt_trigger.json"
-                with open(ptt_path, 'w') as f:
+                ptt_path = get_data_dir() / "ptt_trigger.json"
+                with open(ptt_path, 'w', encoding='utf-8') as f:
                     json.dump({"action": "stop", "timestamp": datetime.now().isoformat()}, f)
 
             elif command == "system_speak":
@@ -632,7 +632,7 @@ async def main():
     try:
         config_path = get_config_base() / "voice-mirror-electron" / "config.json"
         if config_path.exists():
-            with open(config_path) as f:
+            with open(config_path, encoding='utf-8') as f:
                 app_config = json.load(f)
             behavior = app_config.get("behavior", {})
             if behavior.get("activationMode") == "pushToTalk":

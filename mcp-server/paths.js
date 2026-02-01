@@ -1,14 +1,14 @@
 /**
  * Shared paths and constants for MCP server handlers.
+ * Uses cross-platform paths (APPDATA on Windows, ~/.config on Linux, ~/Library on macOS).
  */
 
-const path = require('path');
-const os = require('os');
+const { getDataDir } = require('./lib/memory/utils');
 
-const HOME_DATA_DIR = path.join(os.homedir(), '.config', 'voice-mirror-electron', 'data');
-const CLAUDE_MESSAGES_PATH = path.join(HOME_DATA_DIR, 'inbox.json');
-const CLAUDE_STATUS_PATH = path.join(HOME_DATA_DIR, 'status.json');
-const LISTENER_LOCK_PATH = path.join(HOME_DATA_DIR, 'listener_lock.json');
+const HOME_DATA_DIR = getDataDir();
+const CLAUDE_MESSAGES_PATH = require('path').join(HOME_DATA_DIR, 'inbox.json');
+const CLAUDE_STATUS_PATH = require('path').join(HOME_DATA_DIR, 'status.json');
+const LISTENER_LOCK_PATH = require('path').join(HOME_DATA_DIR, 'listener_lock.json');
 
 const STALE_TIMEOUT_MS = 2 * 60 * 1000;  // 2 minutes
 const AUTO_CLEANUP_HOURS = 24;

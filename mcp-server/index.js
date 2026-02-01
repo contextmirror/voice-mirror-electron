@@ -547,8 +547,8 @@ const enabledGroupsArg = (() => {
     if (process.env.ENABLED_GROUPS) return process.env.ENABLED_GROUPS;
     // 3. Read from app config file (fallback when Claude Code strips args/env)
     try {
-        const os = require('os');
-        const configPath = require('path').join(os.homedir(), '.config', 'voice-mirror-electron', 'config.json');
+        const { getConfigPath } = require('./lib/memory/utils');
+        const configPath = getConfigPath();
         const appConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
         const profileName = appConfig?.ai?.toolProfile || 'voice-assistant';
         const profiles = appConfig?.ai?.toolProfiles || {};

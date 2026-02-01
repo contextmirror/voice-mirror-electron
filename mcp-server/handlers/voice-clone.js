@@ -58,8 +58,26 @@ async function handleCloneVoice(args) {
                         downloadedFile = sourceAudioPath;
                     }
                 } else {
-                    // Direct download with curl/wget
-                    execSync(`curl -L -o "${downloadPath}" "${audioUrl}"`, { timeout: 30000 });
+                    // Try curl first (fast, follows redirects), fall back to Node.js https
+                    try {
+                        execSync(`curl -L -o "${downloadPath}" "${audioUrl}"`, { timeout: 30000 });
+                    } catch {
+                        const https = require('https');
+                        const http = require('http');
+                        await new Promise((resolve, reject) => {
+                            const mod = audioUrl.startsWith('https') ? https : http;
+                            const follow = (url) => {
+                                mod.get(url, (res) => {
+                                    if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                                        follow(res.headers.location);
+                                        return;
+                                    }
+                                    res.pipe(fs.createWriteStream(downloadPath)).on('finish', resolve).on('error', reject);
+                                }).on('error', reject);
+                            };
+                            follow(audioUrl);
+                        });
+                    }
                     sourceAudioPath = downloadPath;
                     downloadedFile = downloadPath;
                 }

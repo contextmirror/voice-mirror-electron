@@ -8,9 +8,10 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from shared.paths import get_data_dir
 
 # MCP inbox path for Voice Mirror
-INBOX_PATH = Path.home() / ".config" / "voice-mirror-electron" / "data" / "inbox.json"
+INBOX_PATH = get_data_dir() / "inbox.json"
 
 
 class VoiceToolHandler:
@@ -54,7 +55,7 @@ class VoiceToolHandler:
         # Check inbox for recent voice messages
         if INBOX_PATH.exists():
             try:
-                with open(INBOX_PATH) as f:
+                with open(INBOX_PATH, encoding='utf-8') as f:
                     data = json.load(f)
 
                 messages = data.get("messages", [])
@@ -85,7 +86,7 @@ class VoiceToolHandler:
         # Write to inbox for Voice Mirror to pick up
         try:
             if INBOX_PATH.exists():
-                with open(INBOX_PATH) as f:
+                with open(INBOX_PATH, encoding='utf-8') as f:
                     data = json.load(f)
             else:
                 INBOX_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -104,7 +105,7 @@ class VoiceToolHandler:
 
             data["messages"].append(msg)
 
-            with open(INBOX_PATH, 'w') as f:
+            with open(INBOX_PATH, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2)
 
             return {

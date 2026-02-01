@@ -170,7 +170,16 @@ function spawnClaude(options = {}) {
     }
 
     const shell = process.platform === 'win32' ? 'cmd.exe' : 'bash';
-    const claudeCmd = process.platform === 'win32' ? 'claude.cmd' : 'claude';
+    let claudeCmd = 'claude';
+    if (process.platform === 'win32') {
+        // Check for .cmd first (npm global), then .exe (standalone)
+        try {
+            require('child_process').execFileSync('where', ['claude.cmd'], { stdio: 'ignore' });
+            claudeCmd = 'claude.cmd';
+        } catch {
+            claudeCmd = 'claude';  // Let pty.spawn resolve it
+        }
+    }
 
     // Start Claude interactively - shows full TUI
     // Voice prompt is injected via PTY after TUI loads (see main.js sendInputWhenReady)

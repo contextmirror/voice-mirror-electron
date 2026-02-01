@@ -225,7 +225,7 @@ class VoiceMirror:
 
         try:
             if VOICE_CALL_PATH.exists():
-                with open(VOICE_CALL_PATH) as f:
+                with open(VOICE_CALL_PATH, encoding='utf-8') as f:
                     data = json.load(f)
                     active = data.get("active", False)
                     if active != getattr(self, '_call_active', False):
@@ -255,7 +255,7 @@ class VoiceMirror:
 
         try:
             if PTT_TRIGGER_PATH.exists():
-                with open(PTT_TRIGGER_PATH) as f:
+                with open(PTT_TRIGGER_PATH, encoding='utf-8') as f:
                     data = json.load(f)
                     action = data.get("action")
 
@@ -293,7 +293,7 @@ class VoiceMirror:
             if not VOICE_CLONE_REQUEST_PATH.exists():
                 return
 
-            with open(VOICE_CLONE_REQUEST_PATH) as f:
+            with open(VOICE_CLONE_REQUEST_PATH, encoding='utf-8') as f:
                 request = json.load(f)
 
             # Clear request file immediately to avoid re-processing
@@ -404,7 +404,7 @@ class VoiceMirror:
         if transcript:
             response['transcript'] = transcript
 
-        with open(VOICE_CLONE_RESPONSE_PATH, 'w') as f:
+        with open(VOICE_CLONE_RESPONSE_PATH, 'w', encoding='utf-8') as f:
             json.dump(response, f, indent=2)
 
     async def wait_for_claude_response(self, my_message_id: str, timeout: float = 60.0) -> str:

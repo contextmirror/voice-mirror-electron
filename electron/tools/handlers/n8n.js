@@ -15,7 +15,11 @@ const os = require('os');
 
 // n8n API configuration
 const N8N_API_URL = process.env.N8N_API_URL || 'http://localhost:5678';
-const N8N_API_KEY_FILE = path.join(os.homedir(), '.config', 'n8n', 'api_key');
+const N8N_API_KEY_FILE = process.platform === 'win32'
+    ? path.join(process.env.APPDATA || '', 'n8n', 'api_key')
+    : process.platform === 'darwin'
+        ? path.join(os.homedir(), 'Library', 'Application Support', 'n8n', 'api_key')
+        : path.join(os.homedir(), '.config', 'n8n', 'api_key');
 
 /**
  * Get n8n API key from file or environment.
@@ -40,7 +44,7 @@ function getApiKey() {
 async function apiRequest(endpoint, method = 'GET', data = null) {
     const apiKey = getApiKey();
     if (!apiKey) {
-        throw new Error('n8n API key not configured. Set N8N_API_KEY env var or create ~/.config/n8n/api_key');
+        throw new Error(`n8n API key not configured. Set N8N_API_KEY env var or create ${N8N_API_KEY_FILE}`);
     }
 
     const url = `${N8N_API_URL}/api/v1${endpoint}`;

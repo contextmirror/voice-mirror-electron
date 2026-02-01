@@ -194,7 +194,10 @@ function createPythonBackend(options = {}) {
         // Verify Python executable exists before spawning
         if (!fileExists(venvPython)) {
             console.error('[Python] Executable not found:', venvPython);
-            console.error('[Python] Please run: cd python && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt');
+            const activateCmd = process.platform === 'win32'
+                ? '.venv\\Scripts\\activate'
+                : 'source .venv/bin/activate';
+            console.error(`[Python] Please run: cd python && python -m venv .venv && ${activateCmd} && pip install -r requirements.txt`);
             if (onEventCallback) {
                 onEventCallback({
                     type: 'error',
@@ -517,19 +520,21 @@ function startDockerServices() {
     for (const [containerName, description] of Object.entries(services)) {
         try {
             // Check if container exists
-            const exists = execSync(`docker ps -a --format "{{.Names}}" | grep -q "^${containerName}$" && echo "yes" || echo "no"`, {
+            const allContainers = execSync('docker ps -a --format "{{.Names}}"', {
                 encoding: 'utf-8',
                 timeout: 5000
             }).trim();
+            const exists = allContainers.split('\n').includes(containerName);
 
-            if (exists === 'yes') {
+            if (exists) {
                 // Check if it's running
-                const running = execSync(`docker ps --format "{{.Names}}" | grep -q "^${containerName}$" && echo "yes" || echo "no"`, {
+                const runningContainers = execSync('docker ps --format "{{.Names}}"', {
                     encoding: 'utf-8',
                     timeout: 5000
                 }).trim();
+                const running = runningContainers.split('\n').includes(containerName);
 
-                if (running !== 'yes') {
+                if (!running) {
                     console.log(`[Docker] Starting ${description}...`);
                     execSync(`docker start ${containerName}`, { timeout: 10000 });
                     console.log(`[Docker] ✓ ${description} started`);

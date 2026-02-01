@@ -42,7 +42,7 @@ def load_voice_settings() -> dict[str, Any]:
     # Try to load cached settings first
     if VOICE_SETTINGS_PATH.exists():
         try:
-            settings = json.loads(VOICE_SETTINGS_PATH.read_text())
+            settings = json.loads(VOICE_SETTINGS_PATH.read_text(encoding="utf-8"))
             return {**defaults, **settings}
         except Exception:
             pass
@@ -60,7 +60,7 @@ def save_voice_settings(settings: dict[str, Any]) -> bool:
     """Save user's voice settings to disk."""
     try:
         VOICE_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        VOICE_SETTINGS_PATH.write_text(json.dumps(settings, indent=2))
+        VOICE_SETTINGS_PATH.write_text(json.dumps(settings, indent=2), encoding="utf-8")
         return True
     except Exception:
         return False

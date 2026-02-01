@@ -414,7 +414,7 @@ class GlobalHotkeyListener:
     def _write_trigger(self, action: str):
         """Write PTT trigger JSON for voice_agent to pick up."""
         try:
-            with open(self._ptt_path, "w") as f:
+            with open(self._ptt_path, 'w', encoding='utf-8') as f:
                 json.dump({
                     "action": action,
                     "timestamp": datetime.now().isoformat()

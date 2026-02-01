@@ -41,6 +41,30 @@ function getDataDir() {
 }
 
 /**
+ * Get the config base directory (parent of 'voice-mirror-electron')
+ * @returns {string} Path to config base
+ */
+function getConfigBase() {
+    const platform = process.platform;
+
+    if (platform === 'win32') {
+        return process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+    } else if (platform === 'darwin') {
+        return path.join(os.homedir(), 'Library', 'Application Support');
+    } else {
+        return process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
+    }
+}
+
+/**
+ * Get the config file path for Voice Mirror
+ * @returns {string} Path to config.json
+ */
+function getConfigPath() {
+    return path.join(getConfigBase(), 'voice-mirror-electron', 'config.json');
+}
+
+/**
  * Get the cache directory for models
  * @returns {string} Path to model cache directory
  */
@@ -237,6 +261,8 @@ async function runWithConcurrency(tasks, concurrency = 4) {
 module.exports = {
     getMemoryDir,
     getDataDir,
+    getConfigBase,
+    getConfigPath,
     getModelCacheDir,
     sha256,
     generateId,

@@ -97,7 +97,16 @@ function createCLISpawner(cliType) {
             return ptyProcess;
         }
 
-        const command = process.platform === 'win32' ? `${config.command}.cmd` : config.command;
+        let command = config.command;
+        if (process.platform === 'win32') {
+            // Try .cmd first (npm global scripts), fall back to bare name
+            try {
+                require('child_process').execFileSync('where', [`${config.command}.cmd`], { stdio: 'ignore' });
+                command = `${config.command}.cmd`;
+            } catch {
+                // Leave as bare command — pty.spawn will search PATH
+            }
+        }
 
         if (!isCLIAvailable(command)) {
             onOutput(`[Error] ${config.displayName} CLI not found. Ensure "${config.command}" is installed and on your PATH.\n`);

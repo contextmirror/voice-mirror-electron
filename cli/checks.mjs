@@ -166,7 +166,7 @@ export function detectMCPServerDeps(projectDir) {
  */
 export function detectChromium() {
     try {
-        execFileSync('npx', ['playwright', 'install', '--dry-run', 'chromium'], {
+        execSync('npx playwright install --dry-run chromium', {
             stdio: 'ignore',
             timeout: 10000,
         });

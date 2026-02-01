@@ -17,13 +17,20 @@ from pathlib import Path
 
 # n8n API configuration
 N8N_API_URL = "http://localhost:5678"
-N8N_API_KEY_FILE = Path.home() / ".config" / "n8n" / "api_key"
+import platform as _platform
+if _platform.system() == "Windows":
+    import os as _os
+    N8N_API_KEY_FILE = Path(_os.environ.get("APPDATA", "")) / "n8n" / "api_key"
+elif _platform.system() == "Darwin":
+    N8N_API_KEY_FILE = Path.home() / "Library" / "Application Support" / "n8n" / "api_key"
+else:
+    N8N_API_KEY_FILE = Path.home() / ".config" / "n8n" / "api_key"
 
 
 def _get_api_key() -> str | None:
     """Get n8n API key from file or environment."""
     if N8N_API_KEY_FILE.exists():
-        return N8N_API_KEY_FILE.read_text().strip()
+        return N8N_API_KEY_FILE.read_text(encoding="utf-8").strip()
     return os.environ.get("N8N_API_KEY")
 
 
@@ -48,7 +55,7 @@ class N8nClient:
                           data: dict = None) -> dict:
         """Make authenticated request to n8n API."""
         if not self.api_key:
-            raise Exception("n8n API key not configured. Set in ~/.config/n8n/api_key or N8N_API_KEY env var.")
+            raise Exception("n8n API key not configured. Set in the n8n config directory or N8N_API_KEY env var.")
 
         url = f"{self.base_url}/api/v1{endpoint}"
         headers = {

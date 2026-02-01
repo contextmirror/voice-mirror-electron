@@ -24,7 +24,7 @@ function getClaudeProjectsDir() {
  * @returns {string} Project slug (e.g., '-home-user-project')
  */
 function getProjectSlug(cwd) {
-    return cwd.replace(/\//g, '-');
+    return cwd.replace(/[/\\]/g, '-');
 }
 
 /**
