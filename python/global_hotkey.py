@@ -89,9 +89,8 @@ class GlobalHotkeyListener:
     """Listens for a configurable PTT key globally across all applications."""
 
     def __init__(self, data_dir: str | None = None):
-        self._data_dir = Path(data_dir) if data_dir else (
-            Path.home() / ".config" / "voice-mirror-electron" / "data"
-        )
+        from shared.paths import get_data_dir
+        self._data_dir = Path(data_dir) if data_dir else get_data_dir()
         self._ptt_path = self._data_dir / "ptt_trigger.json"
         self._data_dir.mkdir(parents=True, exist_ok=True)
 

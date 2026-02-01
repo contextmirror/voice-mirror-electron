@@ -1,6 +1,7 @@
 """Qwen3-TTS adapter for voice synthesis with cloning support."""
 
 import asyncio
+import os
 import re
 from collections.abc import Callable
 from pathlib import Path
@@ -223,7 +224,8 @@ class QwenTTSAdapter(TTSAdapter):
                 audio_data, sample_rate = self._synthesize(chunk_text, instruct)
                 if audio_data is None:
                     return None
-                audio_file = f"/tmp/voice_mirror_tts_{idx}.wav"
+                import tempfile
+                audio_file = os.path.join(tempfile.gettempdir(), f"voice_mirror_tts_{idx}.wav")
                 self._soundfile.write(audio_file, audio_data, sample_rate)
                 return audio_file
 

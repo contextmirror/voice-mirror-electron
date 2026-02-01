@@ -44,7 +44,8 @@ function createBrowserWatcher(options = {}) {
             return;
         }
 
-        const contextMirrorDir = dataDir || path.join(process.env.HOME || process.env.USERPROFILE, '.config', 'voice-mirror-electron', 'data');
+        const { getDataDir } = require('./platform-paths');
+        const contextMirrorDir = dataDir || getDataDir();
         const requestPath = path.join(contextMirrorDir, 'browser_request.json');
         const responsePath = path.join(contextMirrorDir, 'browser_response.json');
 

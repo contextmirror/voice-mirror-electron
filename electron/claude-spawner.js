@@ -26,8 +26,16 @@ const MCP_SETTINGS_PATH = path.join(CLAUDE_CONFIG_DIR, 'mcp_settings.json');
 // Voice Mirror working directory
 const VOICE_MIRROR_DIR = path.join(__dirname, '..', 'python');
 
-// Data directory
-const DATA_DIR = path.join(os.homedir(), '.config', 'voice-mirror-electron', 'data');
+// Data directory (cross-platform)
+function _getDataDir() {
+    if (process.platform === 'win32') {
+        return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'voice-mirror-electron', 'data');
+    } else if (process.platform === 'darwin') {
+        return path.join(os.homedir(), 'Library', 'Application Support', 'voice-mirror-electron', 'data');
+    }
+    return path.join(os.homedir(), '.config', 'voice-mirror-electron', 'data');
+}
+const DATA_DIR = _getDataDir();
 const INBOX_PATH = path.join(DATA_DIR, 'inbox.json');
 
 /**
@@ -41,7 +49,7 @@ let readyCallbacks = [];
 let isReady = false;
 
 // Debug logging to file
-const DEBUG_LOG_PATH = path.join(os.homedir(), '.config', 'voice-mirror-electron', 'claude-spawner-debug.log');
+const DEBUG_LOG_PATH = path.join(_getDataDir(), '..', 'claude-spawner-debug.log');
 function debugLog(msg) {
     const timestamp = new Date().toISOString();
     const line = `[${timestamp}] ${msg}\n`;

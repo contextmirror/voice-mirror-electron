@@ -1,6 +1,7 @@
 """Kokoro TTS adapter."""
 
 import asyncio
+import os
 import re
 from collections.abc import Callable
 
@@ -120,7 +121,8 @@ class KokoroAdapter(TTSAdapter):
             def _synthesize(chunk_text, idx):
                 """Synthesize a chunk and write to file. Returns the file path."""
                 audio_data, sample_rate = self.model.create(chunk_text, voice=self.voice)
-                audio_file = f"/tmp/voice_mirror_tts_{idx}.wav"
+                import tempfile
+                audio_file = os.path.join(tempfile.gettempdir(), f"voice_mirror_tts_{idx}.wav")
                 self._soundfile.write(audio_file, audio_data, sample_rate)
                 return audio_file
 

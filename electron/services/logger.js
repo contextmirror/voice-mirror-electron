@@ -62,10 +62,8 @@ function createLogger(options = {}) {
      */
     function init() {
         try {
-            const dataDir = options.dataDir || path.join(
-                process.env.HOME || process.env.USERPROFILE,
-                '.config', 'voice-mirror-electron', 'data'
-            );
+            const { getDataDir } = require('./platform-paths');
+            const dataDir = options.dataDir || getDataDir();
 
             if (!fs.existsSync(dataDir)) {
                 fs.mkdirSync(dataDir, { recursive: true });

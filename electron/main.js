@@ -329,7 +329,7 @@ app.whenReady().then(() => {
     // Initialize Python backend service
     pythonBackend = createPythonBackend({
         pythonDir: path.join(__dirname, '..', 'python'),
-        dataDir: path.join(app.getPath('home'), '.config', 'voice-mirror-electron', 'data'),
+        dataDir: config.getDataDir(),
         isWindows,
         log: (level, msg) => logger.log(level, msg)
     });
@@ -405,13 +405,13 @@ app.whenReady().then(() => {
 
     // Initialize screen capture watcher service
     screenCaptureWatcherService = createScreenCaptureWatcher({
-        dataDir: path.join(app.getPath('home'), '.config', 'voice-mirror-electron', 'data'),
+        dataDir: config.getDataDir(),
         captureScreen: (options) => desktopCapturer.getSources(options)
     });
 
     // Initialize browser watcher service
     browserWatcherService = createBrowserWatcher({
-        dataDir: path.join(app.getPath('home'), '.config', 'voice-mirror-electron', 'data'),
+        dataDir: config.getDataDir(),
         serperApiKey: SERPER_API_KEY
     });
 
@@ -446,7 +446,7 @@ app.whenReady().then(() => {
 
     // Initialize inbox watcher service
     inboxWatcherService = createInboxWatcher({
-        dataDir: path.join(app.getPath('home'), '.config', 'voice-mirror-electron', 'data'),
+        dataDir: config.getDataDir(),
         isClaudeRunning: () => aiManager?.isClaudeRunning() || false,
         getProvider: () => aiManager?.getProvider() || null,
         onClaudeMessage: (msg) => {
@@ -737,7 +737,7 @@ app.whenReady().then(() => {
 
     // Call mode handlers (always listening, no wake word)
     ipcMain.handle('set-call-mode', (event, active) => {
-        const callPath = path.join(app.getPath('home'), '.config', 'voice-mirror-electron', 'data', 'voice_call.json');
+        const callPath = path.join(config.getDataDir(), 'voice_call.json');
 
         // Ensure directory exists
         const dir = path.dirname(callPath);
@@ -757,7 +757,7 @@ app.whenReady().then(() => {
     });
 
     ipcMain.handle('get-call-mode', () => {
-        const callPath = path.join(app.getPath('home'), '.config', 'voice-mirror-electron', 'data', 'voice_call.json');
+        const callPath = path.join(config.getDataDir(), 'voice_call.json');
 
         try {
             if (fs.existsSync(callPath)) {

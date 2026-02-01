@@ -13,7 +13,8 @@ let dataDir = null;
 function start(dir) {
     if (watcher) return;
 
-    dataDir = dir || path.join(process.env.HOME || process.env.USERPROFILE, '.config', 'voice-mirror-electron', 'data');
+    const { getDataDir } = require('./platform-paths');
+    dataDir = dir || getDataDir();
 
     watcher = setInterval(async () => {
         try {

@@ -13,7 +13,8 @@ const { app } = require('electron');
  * Get the memory data directory.
  */
 function getMemoryDir() {
-    return path.join(app.getPath('home'), '.config', 'voice-mirror-electron', 'data');
+    const config = require('../../config');
+    return config.getDataDir();
 }
 
 /**

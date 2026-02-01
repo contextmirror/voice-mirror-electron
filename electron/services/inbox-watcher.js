@@ -49,7 +49,7 @@ function createInboxWatcher(options = {}) {
             return;
         }
 
-        const contextMirrorDir = dataDir || path.join(process.env.HOME || process.env.USERPROFILE, '.config', 'voice-mirror-electron', 'data');
+        const contextMirrorDir = dataDir || require('./platform-paths').getDataDir();
         const inboxPath = path.join(contextMirrorDir, 'inbox.json');
 
         // Ensure data directory exists
@@ -262,7 +262,7 @@ function createInboxWatcher(options = {}) {
         processedUserMessageIds.clear();
 
         // Re-seed from current inbox to mark all existing messages as already processed
-        const contextMirrorDir = dataDir || path.join(process.env.HOME || process.env.USERPROFILE, '.config', 'voice-mirror-electron', 'data');
+        const contextMirrorDir = dataDir || require('./platform-paths').getDataDir();
         const inboxPath = path.join(contextMirrorDir, 'inbox.json');
         try {
             if (fs.existsSync(inboxPath)) {

@@ -38,7 +38,8 @@ async function captureScreen(args = {}) {
         const dataUrl = source.thumbnail.toDataURL();
 
         // Save image to file
-        const dataDir = path.join(app.getPath('home'), '.config', 'voice-mirror-electron', 'data');
+        const config = require('../../config');
+        const dataDir = config.getDataDir();
         const imagesDir = path.join(dataDir, 'images');
 
         if (!fs.existsSync(imagesDir)) {

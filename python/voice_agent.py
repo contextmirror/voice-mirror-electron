@@ -52,8 +52,9 @@ WAKE_WORD_THRESHOLD = 0.98  # Strict but usable
 SILENCE_TIMEOUT = 10.0  # seconds of silence before stopping recording
 CONVERSATION_WINDOW = 5.0  # seconds to wait for follow-up without wake word
 
-# Voice Mirror data directory (standalone - NOT Context Mirror)
-VM_DATA_DIR = Path.home() / ".config" / "voice-mirror-electron" / "data"
+# Voice Mirror data directory (cross-platform)
+from shared.paths import get_data_dir
+VM_DATA_DIR = get_data_dir()
 VM_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # MCP inbox path

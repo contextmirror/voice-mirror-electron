@@ -135,6 +135,25 @@ function getConfigPath(filename = 'config.json') {
 }
 
 /**
+ * Get the data directory path (cross-platform).
+ * Stores runtime data: inbox, voice files, logs, etc.
+ */
+function getDataDir() {
+    return path.join(getConfigDir(), 'data');
+}
+
+/**
+ * Ensure the data directory exists.
+ */
+function ensureDataDir() {
+    const dataDir = getDataDir();
+    if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+    }
+    return dataDir;
+}
+
+/**
  * Ensure the config directory exists.
  */
 function ensureConfigDir() {
@@ -303,7 +322,9 @@ module.exports = {
     // Path helpers
     getConfigDir,
     getConfigPath,
+    getDataDir,
     ensureConfigDir,
+    ensureDataDir,
     getPlatformPaths,
     getAutostartInfo,
 

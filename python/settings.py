@@ -4,7 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-VOICE_SETTINGS_PATH = Path.home() / ".config" / "voice-mirror-electron" / "data" / "voice_settings.json"
+from shared.paths import get_data_dir
+VOICE_SETTINGS_PATH = get_data_dir() / "voice_settings.json"
 
 
 def get_location_from_ip() -> str | None:

@@ -45,6 +45,8 @@ function fileExists(filePath) {
  * This happens when the user was added to the group but hasn't logged out/back in.
  */
 function _needsInputGroupEscalation() {
+    // Input group escalation is Linux-only
+    if (process.platform !== 'linux') return false;
     try {
         // Check if current session already has input group
         const sessionGroups = execSync('id -Gn', { encoding: 'utf8' }).trim().split(/\s+/);
@@ -357,7 +359,8 @@ function createPythonBackend(options = {}) {
             return { sent: true };
         } else {
             // Save image and create proper MCP inbox message
-            const contextMirrorDir = dataDir || path.join(process.env.HOME || process.env.USERPROFILE, '.config', 'voice-mirror-electron', 'data');
+            const { getDataDir } = require('./platform-paths');
+            const contextMirrorDir = dataDir || getDataDir();
             const imagesDir = path.join(contextMirrorDir, 'images');
             const imagePath = path.join(imagesDir, `screenshot-${Date.now()}.png`);
 

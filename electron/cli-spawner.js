@@ -10,8 +10,18 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
+// Cross-platform config dir
+function _getConfigBase() {
+    if (process.platform === 'win32') {
+        return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'voice-mirror-electron');
+    } else if (process.platform === 'darwin') {
+        return path.join(os.homedir(), 'Library', 'Application Support', 'voice-mirror-electron');
+    }
+    return path.join(os.homedir(), '.config', 'voice-mirror-electron');
+}
+
 // Debug logging
-const DEBUG_LOG_PATH = path.join(os.homedir(), '.config', 'voice-mirror-electron', 'cli-spawner-debug.log');
+const DEBUG_LOG_PATH = path.join(_getConfigBase(), 'cli-spawner-debug.log');
 function debugLog(label, msg) {
     const timestamp = new Date().toISOString();
     const line = `[${timestamp}] [${label}] ${msg}\n`;

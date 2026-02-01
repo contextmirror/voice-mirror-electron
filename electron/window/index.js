@@ -136,6 +136,13 @@ function createWindowManager(options = {}) {
      * DOCK type + periodic xdotool raise as a workaround.
      */
     function setupX11Overlay() {
+        if (process.platform !== 'linux') {
+            // X11 overlay only applies to Linux; macOS/Windows use Electron's built-in always-on-top
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.setAlwaysOnTop(true, 'screen-saver');
+            }
+            return;
+        }
         try {
             const title = mainWindow.getTitle() || 'Voice Mirror';
             const windowId = execFileSync('xdotool', ['search', '--name', title], {
@@ -159,7 +166,7 @@ function createWindowManager(options = {}) {
      * Raise the window to the top of the X11 stacking order.
      */
     function raiseWindow() {
-        if (x11WindowId) {
+        if (process.platform === 'linux' && x11WindowId) {
             try {
                 execFileSync('xdotool', ['windowraise', x11WindowId], { timeout: 1000, stdio: 'ignore' });
             } catch (e) {
