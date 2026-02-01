@@ -157,6 +157,53 @@ function Ensure-Python {
     }
 }
 
+# ─── Ensure Build Tools ─────────────────────────────────────────────
+function Ensure-BuildTools {
+    Write-Step "Checking C++ Build Tools..."
+
+    # Check if cl.exe is available (VS Build Tools installed)
+    $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    $hasVS = $false
+    if (Test-Path $vsWhere) {
+        $vsPath = & $vsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>&1
+        if ($vsPath) { $hasVS = $true }
+    }
+
+    if ($hasVS) {
+        Write-Ok "Visual Studio Build Tools found"
+        return
+    }
+
+    Write-Warn "C++ Build Tools not found (needed for native modules like better-sqlite3)"
+    if ($NonInteractive) {
+        Write-Info "Skipping in non-interactive mode"
+        return
+    }
+
+    $reply = Read-Host "  Install Visual Studio Build Tools? (Highly recommended) [Y/n]"
+    if ($reply -match '^[Nn]') {
+        Write-Warn "Skipping — MCP server memory features may not work"
+        return
+    }
+
+    Write-Info "Installing Visual Studio Build Tools (this may take a few minutes)..."
+    if (Test-Command "winget") {
+        $btOut = winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended" --accept-source-agreements --accept-package-agreements 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Ok "Visual Studio Build Tools installed"
+            # Refresh PATH
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+        } else {
+            Write-Warn "Build Tools install may have failed. You can install manually from:"
+            Write-Info "https://visualstudio.microsoft.com/visual-cpp-build-tools/"
+        }
+    } else {
+        Write-Warn "winget not available. Install manually from:"
+        Write-Info "https://visualstudio.microsoft.com/visual-cpp-build-tools/"
+        Write-Info "Select 'Desktop development with C++' workload"
+    }
+}
+
 # ─── Ask Install Location ───────────────────────────────────────────
 function Ask-InstallDir {
     if ($NonInteractive -or $env:VM_DIR) { return }
@@ -292,6 +339,7 @@ Write-Info "Platform: Windows/$([System.Runtime.InteropServices.RuntimeInformati
 Ensure-Git
 Ensure-Node
 Ensure-Python
+Ensure-BuildTools
 Ask-InstallDir
 Install-Repo
 Install-Deps
