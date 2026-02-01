@@ -242,6 +242,37 @@ ensure_git() {
     fi
 }
 
+# ─── Ensure ffmpeg (needed for TTS audio playback) ───────────────────
+ensure_ffmpeg() {
+    step "Checking FFmpeg..."
+
+    if command -v ffplay &>/dev/null; then
+        ok "ffmpeg/ffplay found"
+        return
+    fi
+
+    warn "FFmpeg not found (needed for TTS audio playback)"
+    info "Installing ffmpeg..."
+
+    if [[ "$OSTYPE" == darwin* ]]; then
+        if command -v brew &>/dev/null; then
+            brew install ffmpeg
+        fi
+    elif command -v apt-get &>/dev/null; then
+        sudo apt-get install -y ffmpeg
+    elif command -v dnf &>/dev/null; then
+        sudo dnf install -y ffmpeg
+    elif command -v pacman &>/dev/null; then
+        sudo pacman -S --noconfirm ffmpeg
+    fi
+
+    if command -v ffplay &>/dev/null; then
+        ok "ffmpeg installed"
+    else
+        warn "Could not install ffmpeg. Install manually for TTS audio playback."
+    fi
+}
+
 # ─── Clone / update repo ──────────────────────────────────────────────
 install_repo() {
     step "Installing Voice Mirror..."
@@ -343,6 +374,7 @@ main() {
     ensure_git
     ensure_node
     ensure_python
+    ensure_ffmpeg
     install_repo
     install_deps
     link_cli

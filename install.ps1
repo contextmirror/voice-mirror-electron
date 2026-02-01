@@ -346,6 +346,80 @@ function Ensure-BuildTools {
     }
 }
 
+function Ensure-FFmpeg {
+    Write-Step "Checking FFmpeg..."
+
+    # Check PATH
+    if (Get-Command ffplay -ErrorAction SilentlyContinue) {
+        Write-Ok "FFmpeg/ffplay found"
+        return
+    }
+
+    # Check if we already installed it to the standard location
+    $ffmpegBin = Join-Path $env:LOCALAPPDATA "Programs\ffmpeg\bin"
+    if (Test-Path (Join-Path $ffmpegBin "ffplay.exe")) {
+        $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+        if ($userPath -notlike "*$ffmpegBin*") {
+            [System.Environment]::SetEnvironmentVariable("Path", "$userPath;$ffmpegBin", "User")
+        }
+        $env:Path += ";$ffmpegBin"
+        Write-Ok "FFmpeg found at $ffmpegBin"
+        return
+    }
+
+    Write-Warn "FFmpeg not found (needed for TTS audio playback and voice cloning)"
+
+    # Try winget first
+    $winget = Find-Winget
+    if ($winget) {
+        Write-Info "Installing FFmpeg via winget..."
+        & $winget install Gyan.FFmpeg --accept-source-agreements --accept-package-agreements 2>&1 | Out-Null
+        Refresh-Path
+        if (Get-Command ffplay -ErrorAction SilentlyContinue) {
+            Write-Ok "FFmpeg installed via winget"
+            return
+        }
+    }
+
+    # Direct download fallback
+    Write-Info "Downloading FFmpeg essentials (~90 MB)..."
+    $zipUrl = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+    $zipPath = Join-Path $env:TEMP "ffmpeg.zip"
+    $extractDir = Join-Path $env:TEMP "ffmpeg-extract"
+
+    if (Download-File $zipUrl $zipPath) {
+        try {
+            if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
+            Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+
+            # Find the bin folder inside the extracted archive
+            $binDir = Get-ChildItem -Path $extractDir -Recurse -Directory -Filter "bin" | Select-Object -First 1
+            if ($binDir -and (Test-Path (Join-Path $binDir.FullName "ffplay.exe"))) {
+                New-Item -ItemType Directory -Path $ffmpegBin -Force | Out-Null
+                Copy-Item (Join-Path $binDir.FullName "*") $ffmpegBin -Force
+
+                # Add to user PATH persistently
+                $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+                if ($userPath -notlike "*$ffmpegBin*") {
+                    [System.Environment]::SetEnvironmentVariable("Path", "$userPath;$ffmpegBin", "User")
+                }
+                $env:Path += ";$ffmpegBin"
+                Write-Ok "FFmpeg installed to $ffmpegBin"
+            } else {
+                Write-Warn "FFmpeg extraction failed"
+            }
+        } catch {
+            Write-Warn "FFmpeg extraction failed: $_"
+        }
+        Remove-Item $zipPath -ErrorAction SilentlyContinue
+        Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+    } else {
+        Write-Warn "Could not download FFmpeg. Install manually:"
+        Write-Info "  winget install Gyan.FFmpeg"
+        Write-Info "  or download from https://ffmpeg.org/download.html"
+    }
+}
+
 # ─── Ask Install Location ───────────────────────────────────────────
 function Ask-InstallDir {
     if ($NonInteractive -or $env:VM_DIR) { return }
@@ -504,6 +578,7 @@ Ensure-Git
 Ensure-Node
 Ensure-Python
 Ensure-BuildTools
+Ensure-FFmpeg
 Ask-InstallDir
 Install-Repo
 Install-Deps
