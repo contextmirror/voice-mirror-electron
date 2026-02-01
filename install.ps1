@@ -184,9 +184,19 @@ function Install-Repo {
         Pop-Location
         Write-Ok "Updated to latest"
     } elseif (Test-Path $InstallDir) {
-        Write-Fail "Directory already exists and is not a git repo: $InstallDir"
-        Write-Info "Choose a different path or delete the existing directory."
-        exit 1
+        # Existing directory — clone inside it as a subfolder
+        $script:InstallDir = Join-Path $InstallDir "voice-mirror-electron"
+        if (Test-Path $InstallDir) {
+            Write-Fail "Directory already exists: $InstallDir"
+            exit 1
+        }
+        Write-Info "Installing into $InstallDir"
+        $cloneOut = git clone --branch $Branch --depth 1 $RepoUrl $InstallDir 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Fail "Clone failed: $cloneOut"
+            exit 1
+        }
+        Write-Ok "Cloned to $InstallDir"
     } else {
         Write-Info "Cloning repository..."
         $cloneOut = git clone --branch $Branch --depth 1 $RepoUrl $InstallDir 2>&1
