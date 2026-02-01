@@ -406,8 +406,9 @@ function Install-Deps {
         $npmOut = npm install 2>&1
         if ($LASTEXITCODE -ne 0) {
             Pop-Location
-            Write-Warn "MCP server native modules failed (build tools may need a reboot to take effect)"
-            Write-Info "After reboot, run: cd $mcpDir && npm install"
+            Write-Warn "MCP server native modules failed"
+            Write-Info "Try: cd `"$mcpDir`" && npm install"
+            Write-Info "If it persists, check Node.js and build tools compatibility"
         } else {
             Pop-Location
             Write-Ok "MCP server dependencies installed"

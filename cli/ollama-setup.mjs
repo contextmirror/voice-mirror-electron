@@ -3,8 +3,46 @@
  */
 
 import { execSync, spawn } from 'child_process';
-import { platform } from 'os';
+import { platform, homedir } from 'os';
+import { join } from 'path';
+import { existsSync, createWriteStream, unlinkSync } from 'fs';
+import { get as httpsGet } from 'https';
 import { detectOllama, commandExists } from './checks.mjs';
+
+/**
+ * Find winget on Windows — it may not be on PATH in child processes.
+ */
+function findWinget() {
+    if (commandExists('winget')) return 'winget';
+    const wingetPath = join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WindowsApps', 'winget.exe');
+    if (existsSync(wingetPath)) return wingetPath;
+    return null;
+}
+
+/**
+ * Download a file from URL to dest path. Returns a promise.
+ */
+function downloadFile(url, dest) {
+    return new Promise((resolve, reject) => {
+        const follow = (url) => {
+            httpsGet(url, (res) => {
+                if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                    follow(res.headers.location);
+                    return;
+                }
+                if (res.statusCode !== 200) {
+                    reject(new Error(`Download failed: HTTP ${res.statusCode}`));
+                    return;
+                }
+                const file = createWriteStream(dest);
+                res.pipe(file);
+                file.on('finish', () => { file.close(); resolve(); });
+                file.on('error', reject);
+            }).on('error', reject);
+        };
+        follow(url);
+    });
+}
 
 const RECOMMENDED_MODELS = [
     { value: 'llama3.1:8b', label: 'llama3.1:8b (Recommended)', hint: '4.9GB — best speed/accuracy (98% browser benchmark)' },
@@ -47,17 +85,39 @@ export async function installOllama(spinner) {
     }
 
     if (os === 'win32') {
-        if (commandExists('winget')) {
+        // Try winget first (with full path detection)
+        const winget = findWinget();
+        if (winget) {
             spinner.update('Installing Ollama via winget...');
             try {
-                execSync('winget install --id Ollama.Ollama --accept-source-agreements --accept-package-agreements', {
+                execSync(`"${winget}" install --id Ollama.Ollama --accept-source-agreements --accept-package-agreements`, {
                     stdio: 'pipe',
-                    timeout: 120000,
+                    timeout: 180000,
                 });
                 return true;
-            } catch {
-                return false;
+            } catch { /* fall through to direct download */ }
+        }
+
+        // Direct download fallback
+        spinner.update('Downloading Ollama installer...');
+        const installerPath = join(process.env.TEMP || homedir(), 'OllamaSetup.exe');
+        try {
+            await downloadFile('https://ollama.com/download/OllamaSetup.exe', installerPath);
+            spinner.update('Running Ollama installer...');
+            execSync(`"${installerPath}" /VERYSILENT /NORESTART`, {
+                stdio: 'pipe',
+                timeout: 180000,
+            });
+            try { unlinkSync(installerPath); } catch {}
+            // Refresh PATH for this process
+            const newPath = process.env.LOCALAPPDATA + '\\Programs\\Ollama';
+            if (!process.env.PATH.includes(newPath)) {
+                process.env.PATH = newPath + ';' + process.env.PATH;
             }
+            return commandExists('ollama');
+        } catch {
+            try { unlinkSync(installerPath); } catch {}
+            return false;
         }
     }
 

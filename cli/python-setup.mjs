@@ -131,6 +131,34 @@ export function installChromium(projectDir, spinner) {
 }
 
 /**
+ * Download TTS models (kokoro) via Python.
+ * The kokoro-onnx package auto-downloads on first import.
+ */
+export function downloadTTSModels(venvPython, projectDir, spinner) {
+    spinner.update('Downloading TTS models (kokoro)...');
+    try {
+        // Trigger kokoro model download by importing it in the project dir
+        execFileSync(venvPython, ['-c', `
+import os
+os.chdir(${JSON.stringify(join(projectDir, 'python'))})
+try:
+    from kokoro_onnx import Kokoro
+    k = Kokoro("kokoro-v1.0.onnx", "voices-v1.0.bin")
+    print("ok")
+except Exception as e:
+    print(f"skip: {e}")
+`], {
+            stdio: 'pipe',
+            timeout: 300000, // 5 min for large download
+            cwd: join(projectDir, 'python'),
+        });
+        return { ok: true };
+    } catch (err) {
+        return { ok: false, error: err.message };
+    }
+}
+
+/**
  * Check if ffmpeg is installed (needed for voice cloning).
  */
 export function detectFfmpeg() {

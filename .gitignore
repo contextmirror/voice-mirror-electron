@@ -68,6 +68,8 @@ python/.venv
 python/.context-mirror/
 *.onnx
 *.bin
+# Allow small wake word models (~4MB total)
+!python/models/*.onnx
 python/*_keys.json
 python/devices.json
 python/legacy/

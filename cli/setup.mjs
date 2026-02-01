@@ -38,6 +38,7 @@ import {
     installChromium,
     installMCPDeps,
     detectFfmpeg,
+    downloadTTSModels,
 } from './python-setup.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -362,6 +363,14 @@ export async function runSetup(opts = {}) {
         const pipResult = installRequirements(venvResult.binary, PROJECT_DIR, { update: (m) => spin9.message(m) });
         if (pipResult.ok) {
             spin9.stop('Python backend ready');
+
+            // Download TTS models if missing
+            if (!detectTTSModel(PROJECT_DIR)) {
+                const spin9b = p.spinner();
+                spin9b.start('Downloading TTS models...');
+                const ttsResult = downloadTTSModels(venvResult.binary, PROJECT_DIR, { update: (m) => spin9b.message(m) });
+                spin9b.stop(ttsResult.ok ? 'TTS models ready' : chalk.yellow('TTS models download skipped (will auto-download on first run)'));
+            }
         } else {
             spin9.stop(chalk.yellow('Python deps partially installed'));
             p.log.warn(pipResult.error);
