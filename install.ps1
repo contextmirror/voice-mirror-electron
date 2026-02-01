@@ -157,6 +157,19 @@ function Ensure-Python {
     }
 }
 
+# ─── Ask Install Location ───────────────────────────────────────────
+function Ask-InstallDir {
+    if ($NonInteractive -or $env:VM_DIR) { return }
+
+    Write-Host ""
+    Write-Host "  Install location: " -NoNewline -ForegroundColor Cyan
+    Write-Host $InstallDir -ForegroundColor DarkGray
+    $reply = Read-Host "  Press Enter to accept, or type a new path"
+    if ($reply.Trim()) {
+        $script:InstallDir = $reply.Trim()
+    }
+}
+
 # ─── Clone / Update Repo ────────────────────────────────────────────
 function Install-Repo {
     Write-Step "Installing Voice Mirror..."
@@ -182,13 +195,15 @@ function Install-Deps {
     Write-Step "Installing dependencies..."
 
     Push-Location $InstallDir
-    npm install 2>&1 | Select-Object -Last 1
+    $npmOut = npm install 2>&1
+    if ($LASTEXITCODE -ne 0) { Write-Fail "npm install failed"; Pop-Location; exit 1 }
     Write-Ok "npm dependencies installed"
 
     $mcpDir = Join-Path $InstallDir "mcp-server"
     if (Test-Path $mcpDir) {
         Push-Location $mcpDir
-        npm install 2>&1 | Select-Object -Last 1
+        $npmOut = npm install 2>&1
+        if ($LASTEXITCODE -ne 0) { Write-Fail "MCP npm install failed"; Pop-Location; Pop-Location; exit 1 }
         Pop-Location
         Write-Ok "MCP server dependencies installed"
     }
@@ -259,6 +274,7 @@ Write-Info "Platform: Windows/$([System.Runtime.InteropServices.RuntimeInformati
 Ensure-Git
 Ensure-Node
 Ensure-Python
+Ask-InstallDir
 Install-Repo
 Install-Deps
 Link-CLI
