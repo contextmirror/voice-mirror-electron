@@ -185,6 +185,72 @@ function sendToPython(command) {
     }
 }
 
+/**
+ * Ensure a local LLM server (Ollama) is running before the AI provider starts.
+ * On Windows, Ollama may not auto-start if installed to a custom directory.
+ */
+function ensureLocalLLMRunning(providerName, config) {
+    if (providerName !== 'ollama') return;
+
+    const { execSync, spawn: spawnDetached } = require('child_process');
+    const fs = require('fs');
+    const path = require('path');
+
+    // Check if Ollama is already responding
+    try {
+        const endpoint = config?.ai?.endpoints?.ollama || 'http://127.0.0.1:11434';
+        // Quick sync check — just see if the port is open
+        require('net').createConnection({ port: new URL(endpoint).port || 11434, host: '127.0.0.1' })
+            .on('connect', function() { this.destroy(); })
+            .on('error', () => {
+                // Not running — try to start it
+                console.log('[Ollama] Not running, attempting to start...');
+                startOllamaServer(config);
+            });
+    } catch {
+        startOllamaServer(config);
+    }
+}
+
+function startOllamaServer(config) {
+    const { spawn: spawnDetached } = require('child_process');
+    const { execSync } = require('child_process');
+    const path = require('path');
+    const fs = require('fs');
+
+    // Find ollama executable
+    let ollamaPath = null;
+    try {
+        const cmd = process.platform === 'win32' ? 'where ollama' : 'which ollama';
+        ollamaPath = execSync(cmd, { encoding: 'utf8' }).trim().split('\n')[0];
+    } catch {
+        // Not on PATH — check common locations
+        const candidates = [
+            path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Ollama', 'ollama.exe'),
+            // Check near the install dir (installer may have put it in parent dir)
+            path.join(path.dirname(path.dirname(__dirname)), 'Ollama', 'ollama.exe'),
+        ];
+        for (const c of candidates) {
+            if (fs.existsSync(c)) { ollamaPath = c; break; }
+        }
+    }
+
+    if (!ollamaPath) {
+        console.log('[Ollama] Could not find ollama executable');
+        return;
+    }
+
+    console.log(`[Ollama] Starting server: ${ollamaPath}`);
+    const env = { ...process.env };
+    // Preserve OLLAMA_MODELS if set (custom model directory)
+    const proc = spawnDetached(ollamaPath, ['serve'], {
+        detached: true,
+        stdio: 'ignore',
+        env
+    });
+    proc.unref();
+}
+
 function startPythonVoiceMirror() {
     if (pythonBackend) {
         pythonBackend.start();
@@ -1015,6 +1081,12 @@ app.whenReady().then(() => {
     try {
         const providerName = appConfig?.ai?.provider || 'claude';
         console.log(`[Voice Mirror] Auto-starting Python and AI provider (${providerName})...`);
+
+        // Ensure Ollama is running if it's the selected provider
+        if (['ollama', 'lmstudio', 'jan'].includes(providerName) || providerName === 'ollama') {
+            ensureLocalLLMRunning(providerName, appConfig);
+        }
+
         startPythonVoiceMirror();
 
         // Small delay to let Python initialize before starting AI provider
