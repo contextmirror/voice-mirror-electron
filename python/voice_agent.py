@@ -583,6 +583,10 @@ class VoiceMirror:
             self.audio_state.is_processing = False
             return
 
+        duration_ms_total = int(len(audio_data) / 16000 * 1000)
+        peak = np.abs(audio_data).max()
+        print(f"🎙️ Recording: {duration_ms_total}ms, peak={peak:.4f}")
+
         print("⏳ Transcribing...")
 
         text = await self.transcribe(audio_data)
@@ -613,6 +617,16 @@ class VoiceMirror:
     async def run(self):
         """Main loop."""
         self.load_models()
+
+        # Load voice config for device selection
+        self._voice_config = {}
+        try:
+            from providers.config import ELECTRON_CONFIG_PATH
+            if ELECTRON_CONFIG_PATH.exists():
+                with open(ELECTRON_CONFIG_PATH, encoding='utf-8') as f:
+                    self._voice_config = json.load(f).get("voice", {})
+        except Exception:
+            pass
 
         print("\n" + "=" * 50)
         print("Voice Mirror - Ready")
@@ -658,17 +672,42 @@ class VoiceMirror:
             if d['max_input_channels'] > 0:
                 print(f"   {i}: {d['name']} ({d['max_input_channels']} ch)")
 
-        # Try to find a good input device (prefer USB microphones)
+        # Select input device: config override > known mic brands > generic USB > default
         input_device = None
-        for i, d in enumerate(sd.query_devices()):
-            name = d['name'].lower()
-            if d['max_input_channels'] > 0:
-                if 'seiren' in name or ('usb' in name and 'audio' in name):
-                    input_device = i
-                    print(f"   ✅ Selected: {i} - {d['name']}")
-                    break
+
+        # Check config for explicit device override
+        config_device = self._voice_config.get("inputDevice")
+        if config_device is not None:
+            if isinstance(config_device, int):
+                input_device = config_device
+                print(f"   ✅ Selected (config): {input_device} - {sd.query_devices(input_device)['name']}")
+            elif isinstance(config_device, str):
+                for i, d in enumerate(sd.query_devices()):
+                    if d['max_input_channels'] > 0 and config_device.lower() in d['name'].lower():
+                        input_device = i
+                        print(f"   ✅ Selected (config match): {i} - {d['name']}")
+                        break
+
+        # Two-pass auto-detection: known mic brands first, then generic USB
         if input_device is None:
-            # Fall back to default
+            known_mics = ['seiren', 'yeti', 'snowball', 'at2020', 'elgato', 'hyperx',
+                          'blue', 'rode', 'fifine', 'tonor', 'samson']
+            for i, d in enumerate(sd.query_devices()):
+                name = d['name'].lower()
+                if d['max_input_channels'] > 0:
+                    if any(mic in name for mic in known_mics):
+                        input_device = i
+                        print(f"   ✅ Selected: {i} - {d['name']}")
+                        break
+        if input_device is None:
+            for i, d in enumerate(sd.query_devices()):
+                name = d['name'].lower()
+                if d['max_input_channels'] > 0:
+                    if 'usb' in name and 'audio' in name:
+                        input_device = i
+                        print(f"   ✅ Selected: {i} - {d['name']}")
+                        break
+        if input_device is None:
             print("   Using default input device")
 
         # Start audio stream
