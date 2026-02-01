@@ -50,7 +50,7 @@ function findWinget() {
 function downloadFile(url, dest) {
     return new Promise((resolve, reject) => {
         const follow = (url) => {
-            httpsGet(url, (res) => {
+            const req = httpsGet(url, (res) => {
                 if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
                     follow(res.headers.location);
                     return;
@@ -60,10 +60,12 @@ function downloadFile(url, dest) {
                     return;
                 }
                 const file = createWriteStream(dest);
+                res.setTimeout(30000, () => { res.destroy(); file.close(); reject(new Error('Download stalled')); });
                 res.pipe(file);
                 file.on('finish', () => { file.close(); resolve(); });
                 file.on('error', reject);
-            }).on('error', reject);
+            });
+            req.on('error', reject);
         };
         follow(url);
     });
@@ -97,7 +99,7 @@ const HF_MODEL_MAP = {
 function downloadFileWithProgress(url, dest, onProgress) {
     return new Promise((resolve, reject) => {
         const follow = (url) => {
-            httpsGet(url, (res) => {
+            const req = httpsGet(url, (res) => {
                 if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
                     follow(res.headers.location);
                     return;
@@ -109,16 +111,29 @@ function downloadFileWithProgress(url, dest, onProgress) {
                 const totalBytes = parseInt(res.headers['content-length'] || '0', 10);
                 let downloadedBytes = 0;
                 const file = createWriteStream(dest);
+                // Idle timeout: abort if no data received for 30s
+                let idleTimer = null;
+                const resetIdle = () => {
+                    if (idleTimer) clearTimeout(idleTimer);
+                    idleTimer = setTimeout(() => {
+                        res.destroy();
+                        file.close();
+                        reject(new Error('Download stalled — no data received for 30s'));
+                    }, 30000);
+                };
+                resetIdle();
                 res.on('data', (chunk) => {
+                    resetIdle();
                     downloadedBytes += chunk.length;
                     if (totalBytes > 0 && onProgress) {
                         onProgress(Math.round((downloadedBytes / totalBytes) * 100), downloadedBytes, totalBytes);
                     }
                 });
                 res.pipe(file);
-                file.on('finish', () => { file.close(); resolve(); });
-                file.on('error', reject);
-            }).on('error', reject);
+                file.on('finish', () => { if (idleTimer) clearTimeout(idleTimer); file.close(); resolve(); });
+                file.on('error', (err) => { if (idleTimer) clearTimeout(idleTimer); reject(err); });
+            });
+            req.on('error', reject);
         };
         follow(url);
     });
@@ -276,15 +291,28 @@ export async function pullModel(modelName, spinner, installDir) {
         const ggufPath = join(tmpDir, hfInfo.filename);
 
         try {
-            let lastPct = -1;
-            await downloadFileWithProgress(hfInfo.url, ggufPath, (pct, downloaded, total) => {
-                if (pct !== lastPct) {
-                    const dlMB = (downloaded / 1024 / 1024).toFixed(0);
-                    const totalMB = (total / 1024 / 1024).toFixed(0);
-                    spinner.update(`Downloading ${modelName}... ${pct}% (${dlMB}/${totalMB} MB)`);
-                    lastPct = pct;
+            // Retry up to 3 times if download stalls
+            const MAX_RETRIES = 3;
+            for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+                try {
+                    let lastPct = -1;
+                    await downloadFileWithProgress(hfInfo.url, ggufPath, (pct, downloaded, total) => {
+                        if (pct !== lastPct) {
+                            const dlMB = (downloaded / 1024 / 1024).toFixed(0);
+                            const totalMB = (total / 1024 / 1024).toFixed(0);
+                            const retryStr = attempt > 1 ? ` (retry ${attempt}/${MAX_RETRIES})` : '';
+                            spinner.update(`Downloading ${modelName}... ${pct}% (${dlMB}/${totalMB} MB)${retryStr}`);
+                            lastPct = pct;
+                        }
+                    });
+                    break; // success
+                } catch (dlErr) {
+                    if (attempt === MAX_RETRIES) throw dlErr;
+                    spinner.update(`Download stalled, retrying (${attempt + 1}/${MAX_RETRIES})...`);
+                    try { unlinkSync(ggufPath); } catch {}
+                    await new Promise(r => setTimeout(r, 2000));
                 }
-            });
+            }
 
             // Create Modelfile and import into Ollama
             spinner.update(`Importing ${modelName} into Ollama (this may take a few minutes)...`);
