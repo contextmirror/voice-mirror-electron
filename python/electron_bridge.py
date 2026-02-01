@@ -133,7 +133,10 @@ def emit_event(event: str, data: dict = None):
     """Send a JSON event to Electron via stdout."""
     payload = {"event": event, "data": data or {}}
     _original_stdout.write(json.dumps(payload) + "\n")
-    _original_stdout.flush()
+    try:
+        _original_stdout.flush()
+    except OSError:
+        pass  # Flush can fail on Windows unbuffered pipes
 
     # Log to file (skip noisy events)
     if event in SKIP_EVENTS:
@@ -232,7 +235,10 @@ class ElectronOutputCapture:
             self.original.write(colored_text + "\n")
         except UnicodeEncodeError:
             self.original.write(colored_text.encode('ascii', 'replace').decode('ascii') + "\n")
-        self.original.flush()
+        try:
+            self.original.flush()
+        except OSError:
+            pass  # Flush can fail on Windows unbuffered pipes
 
         # Parse known patterns and emit events
         text = stripped
