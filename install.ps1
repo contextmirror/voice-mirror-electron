@@ -186,21 +186,49 @@ function Ensure-BuildTools {
         return
     }
 
-    Write-Info "Installing Visual Studio Build Tools (this may take a few minutes)..."
+    Write-Info "Installing Visual Studio Build Tools..."
+
+    # Find winget — it may not be on PATH but exists in WindowsApps
+    $winget = $null
     if (Test-Command "winget") {
-        $btOut = winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended" --accept-source-agreements --accept-package-agreements 2>&1
+        $winget = "winget"
+    } else {
+        $wingetPath = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WindowsApps\winget.exe" -ErrorAction SilentlyContinue |
+                      Select-Object -First 1 -ExpandProperty FullName
+        if ($wingetPath) { $winget = $wingetPath }
+    }
+
+    if ($winget) {
+        Write-Info "Using winget..."
+        $btOut = & $winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended" --accept-source-agreements --accept-package-agreements 2>&1
         if ($LASTEXITCODE -eq 0) {
             Write-Ok "Visual Studio Build Tools installed"
-            # Refresh PATH
             $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
         } else {
             Write-Warn "Build Tools install may have failed. You can install manually from:"
             Write-Info "https://visualstudio.microsoft.com/visual-cpp-build-tools/"
         }
     } else {
-        Write-Warn "winget not available. Install manually from:"
-        Write-Info "https://visualstudio.microsoft.com/visual-cpp-build-tools/"
-        Write-Info "Select 'Desktop development with C++' workload"
+        # Download installer directly
+        Write-Info "Downloading Build Tools installer..."
+        $installerUrl = "https://aka.ms/vs/17/release/vs_BuildTools.exe"
+        $installerPath = Join-Path $env:TEMP "vs_BuildTools.exe"
+        try {
+            Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath -UseBasicParsing
+            Write-Info "Running installer (this may take several minutes)..."
+            $proc = Start-Process -FilePath $installerPath -ArgumentList "--quiet --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --wait" -Wait -PassThru
+            if ($proc.ExitCode -eq 0 -or $proc.ExitCode -eq 3010) {
+                Write-Ok "Visual Studio Build Tools installed"
+                $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+            } else {
+                Write-Warn "Installer exited with code $($proc.ExitCode)"
+                Write-Info "Install manually from: https://visualstudio.microsoft.com/visual-cpp-build-tools/"
+            }
+            Remove-Item $installerPath -ErrorAction SilentlyContinue
+        } catch {
+            Write-Warn "Download failed. Install manually from:"
+            Write-Info "https://visualstudio.microsoft.com/visual-cpp-build-tools/"
+        }
     }
 }
 
