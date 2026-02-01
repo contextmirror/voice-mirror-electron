@@ -146,7 +146,15 @@ export async function runSetup(opts = {}) {
 
     // Provider-specific setup
     if (providerChoice === 'claude' && !claudeCli) {
-        p.log.warn('Claude CLI is not installed. Install it from https://docs.anthropic.com/claude-code');
+        const s = p.spinner();
+        s.start('Installing Claude Code CLI...');
+        try {
+            execSync('npm install -g @anthropic-ai/claude-code', { stdio: 'pipe', timeout: 120000 });
+            s.stop('Claude Code CLI installed');
+        } catch {
+            s.stop('Claude Code CLI install failed');
+            p.log.warn('Install manually: npm install -g @anthropic-ai/claude-code');
+        }
     }
 
     if (providerChoice === 'openai') {
