@@ -136,35 +136,44 @@ export function installChromium(projectDir, spinner) {
  */
 export async function downloadTTSModels(venvPython, projectDir, spinner) {
     const pythonDir = join(projectDir, 'python');
+    const modelPath = join(pythonDir, 'kokoro-v1.0.onnx');
     const voicesPath = join(pythonDir, 'voices-v1.0.bin');
-    const voicesUrl = 'https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin';
+    const baseUrl = 'https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0';
 
-    // Step 1: Download voices file directly if missing (kokoro-onnx doesn't always auto-download it)
-    if (!existsSync(voicesPath)) {
-        spinner.update('Downloading TTS voices file (27 MB)...');
+    const { downloadFile } = await import('./ollama-setup.mjs');
+
+    // Step 1: Download ONNX model file if missing (~370 MB)
+    if (!existsSync(modelPath)) {
+        spinner.update('Downloading TTS model (kokoro-v1.0.onnx, ~370 MB)...');
         try {
-            const { downloadFile } = await import('./ollama-setup.mjs');
-            await downloadFile(voicesUrl, voicesPath);
+            await downloadFile(`${baseUrl}/kokoro-v1.0.onnx`, modelPath);
         } catch (err) {
-            spinner.update(`Voices download failed: ${err.message}, trying via Python...`);
+            return { ok: false, error: `Model download failed: ${err.message}` };
         }
     }
 
-    // Step 2: Trigger kokoro ONNX model download by importing it
-    spinner.update('Downloading TTS model (kokoro)...');
+    // Step 2: Download voices file if missing (~27 MB)
+    if (!existsSync(voicesPath)) {
+        spinner.update('Downloading TTS voices file (27 MB)...');
+        try {
+            await downloadFile(`${baseUrl}/voices-v1.0.bin`, voicesPath);
+        } catch (err) {
+            return { ok: false, error: `Voices download failed: ${err.message}` };
+        }
+    }
+
+    // Step 3: Verify both files load correctly
+    spinner.update('Verifying TTS model...');
     try {
         execFileSync(venvPython, ['-c', `
 import os
 os.chdir(${JSON.stringify(pythonDir)})
-try:
-    from kokoro_onnx import Kokoro
-    k = Kokoro("kokoro-v1.0.onnx", "voices-v1.0.bin")
-    print("ok")
-except Exception as e:
-    print(f"skip: {e}")
+from kokoro_onnx import Kokoro
+k = Kokoro("kokoro-v1.0.onnx", "voices-v1.0.bin")
+print("ok")
 `], {
             stdio: 'pipe',
-            timeout: 300000, // 5 min for large download
+            timeout: 60000,
             cwd: pythonDir,
         });
         return { ok: true };
