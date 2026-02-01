@@ -28,6 +28,7 @@ Commands from Electron (stdin):
 import asyncio
 import base64
 import json
+import os
 import queue
 import sys
 import threading
@@ -35,6 +36,14 @@ import uuid
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
+
+# Force UTF-8 output on Windows (cp1252 can't encode emoji used in log output)
+if sys.platform == 'win32':
+    os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 from global_hotkey import GlobalHotkeyListener
 
@@ -218,7 +227,10 @@ class ElectronOutputCapture:
 
         # Color-code the output for terminal viewing
         colored_text = self._colorize(stripped)
-        self.original.write(colored_text + "\n")
+        try:
+            self.original.write(colored_text + "\n")
+        except UnicodeEncodeError:
+            self.original.write(colored_text.encode('ascii', 'replace').decode('ascii') + "\n")
         self.original.flush()
 
         # Parse known patterns and emit events
