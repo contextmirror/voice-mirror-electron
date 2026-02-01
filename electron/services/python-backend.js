@@ -234,6 +234,7 @@ function createPythonBackend(options = {}) {
             }
         } else {
             // On Windows with shell: true, paths with spaces must be quoted for cmd.exe
+            if (log) log('PYTHON', `Spawn: "${venvPython}" "${scriptToRun}" (cwd: ${spawnOptions.cwd})`);
             pythonProcess = spawn(`"${venvPython}"`, [`"${scriptToRun}"`], spawnOptions);
         }
 
@@ -278,11 +279,19 @@ function createPythonBackend(options = {}) {
         });
 
         pythonProcess.stderr.on('data', (data) => {
-            console.error('[Python Error]', data.toString());
+            const msg = data.toString().trim();
+            console.error('[Python Error]', msg);
+            if (log) log('PYTHON', `stderr: ${msg}`);
+        });
+
+        pythonProcess.on('error', (err) => {
+            console.error(`[Python] Spawn error:`, err);
+            if (log) log('PYTHON', `Spawn error: ${err.message}`);
         });
 
         pythonProcess.on('close', (code) => {
             console.log(`[Python] Process exited with code ${code}`);
+            if (log) log('PYTHON', `Process exited with code ${code}`);
             pythonProcess = null;
             if (onEventCallback) {
                 onEventCallback({ type: 'disconnected' });
