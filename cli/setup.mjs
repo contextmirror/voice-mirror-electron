@@ -195,7 +195,7 @@ export async function runSetup(opts = {}) {
     }
 
     // Ollama model selection if Ollama is primary
-    let ollamaDir; // custom install dir — used for OLLAMA_MODELS env
+    let ollamaDir = opts.ollamaDir || undefined; // custom install dir — used for OLLAMA_MODELS env
     if (providerChoice === 'ollama') {
         if (!ollama.installed) {
             const installIt = nonInteractive || guard(await p.confirm({

@@ -473,7 +473,9 @@ function Run-Setup {
 
     Push-Location $InstallDir
     if ($NonInteractive) {
-        node cli/index.mjs setup --non-interactive
+        $setupCmd = @("cli/index.mjs", "setup", "--non-interactive")
+        if ($env:VM_OLLAMA_DIR) { $setupCmd += "--ollama-dir"; $setupCmd += $env:VM_OLLAMA_DIR }
+        & node $setupCmd
     } else {
         node cli/index.mjs setup
     }

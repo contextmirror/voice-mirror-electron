@@ -33,6 +33,7 @@ program
     .option('--model <model>', 'Model name for Ollama')
     .option('--api-key <key>', 'API key for cloud providers')
     .option('--skip-ollama', 'Skip local LLM setup')
+    .option('--ollama-dir <dir>', 'Custom Ollama install directory')
     .action(async (opts) => {
         const { runSetup } = await import('./setup.mjs');
         await runSetup({
@@ -41,6 +42,7 @@ program
             model: opts.model,
             apiKey: opts.apiKey,
             skipOllama: opts.skipOllama,
+            ollamaDir: opts.ollamaDir,
         });
     });
 
