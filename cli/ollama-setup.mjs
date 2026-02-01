@@ -84,6 +84,11 @@ const HF_MODEL_MAP = {
         filename: 'qwen3-8b-q4_k_m.gguf',
         modelfile: 'FROM {path}',
     },
+    'nomic-embed-text': {
+        url: 'https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.f16.gguf',
+        filename: 'nomic-embed-text-v1.5.f16.gguf',
+        modelfile: 'FROM {path}',
+    },
 };
 
 /**
