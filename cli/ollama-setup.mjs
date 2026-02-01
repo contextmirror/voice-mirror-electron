@@ -10,6 +10,16 @@ import { get as httpsGet } from 'https';
 import { detectOllama, commandExists } from './checks.mjs';
 
 /**
+ * Build env object with OLLAMA_MODELS set if a custom installDir was provided.
+ * Ollama stores models in OLLAMA_MODELS (defaults to ~/.ollama/models).
+ */
+function ollamaEnv(installDir) {
+    if (!installDir) return process.env;
+    const modelsDir = join(installDir, 'models');
+    return { ...process.env, OLLAMA_MODELS: modelsDir };
+}
+
+/**
  * Find winget on Windows — it may not be on PATH in child processes.
  */
 function findWinget() {
@@ -167,6 +177,12 @@ export async function installOllama(spinner, installDir) {
             if (!process.env.PATH.includes(newPath)) {
                 process.env.PATH = newPath + ';' + process.env.PATH;
             }
+            // Persist OLLAMA_MODELS so models go to the chosen drive
+            if (installDir) {
+                const modelsDir = join(installDir, 'models');
+                process.env.OLLAMA_MODELS = modelsDir;
+                try { execSync(`setx OLLAMA_MODELS "${modelsDir}"`, { stdio: 'pipe' }); } catch {}
+            }
             return commandExists('ollama');
         } catch {
             try { unlinkSync(installerPath); } catch {}
@@ -180,7 +196,7 @@ export async function installOllama(spinner, installDir) {
 /**
  * Start Ollama server if not running.
  */
-export async function ensureOllamaRunning(spinner) {
+export async function ensureOllamaRunning(spinner, installDir) {
     const status = await detectOllama();
     if (status.running) return true;
 
@@ -191,6 +207,7 @@ export async function ensureOllamaRunning(spinner) {
     const proc = spawn('ollama', ['serve'], {
         detached: true,
         stdio: 'ignore',
+        env: ollamaEnv(installDir),
     });
     proc.unref();
 
@@ -209,7 +226,7 @@ export async function ensureOllamaRunning(spinner) {
  * Pull a model — tries HuggingFace CDN first (faster), falls back to ollama pull.
  * Returns true if successful.
  */
-export async function pullModel(modelName, spinner) {
+export async function pullModel(modelName, spinner, installDir) {
     // Try HuggingFace download first for known models
     const hfInfo = HF_MODEL_MAP[modelName];
     if (hfInfo) {
@@ -238,6 +255,7 @@ export async function pullModel(modelName, spinner) {
             execSync(`ollama create ${modelName} -f "${modelfilePath}"`, {
                 stdio: 'pipe',
                 timeout: 120000,
+                env: ollamaEnv(installDir),
             });
 
             // Cleanup
@@ -258,6 +276,7 @@ export async function pullModel(modelName, spinner) {
     return new Promise((resolve) => {
         const proc = spawn('ollama', ['pull', modelName], {
             stdio: ['ignore', 'pipe', 'pipe'],
+            env: ollamaEnv(installDir),
         });
 
         let lastUpdate = 0;
@@ -289,8 +308,8 @@ export async function pullModel(modelName, spinner) {
 /**
  * Pull the embedding model for memory system.
  */
-export async function pullEmbeddingModel(spinner) {
-    return pullModel(EMBEDDING_MODEL, spinner);
+export async function pullEmbeddingModel(spinner, installDir) {
+    return pullModel(EMBEDDING_MODEL, spinner, installDir);
 }
 
 /**

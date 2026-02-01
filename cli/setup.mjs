@@ -186,6 +186,7 @@ export async function runSetup(opts = {}) {
     }
 
     // Ollama model selection if Ollama is primary
+    let ollamaDir; // custom install dir — used for OLLAMA_MODELS env
     if (providerChoice === 'ollama') {
         if (!ollama.installed) {
             const installIt = nonInteractive || guard(await p.confirm({
@@ -194,7 +195,6 @@ export async function runSetup(opts = {}) {
             }));
 
             if (installIt) {
-                let ollamaDir;
                 if (!nonInteractive && platform() === 'win32') {
                     ollamaDir = guard(await p.text({
                         message: 'Where should Ollama be installed?',
@@ -217,7 +217,7 @@ export async function runSetup(opts = {}) {
         // Ensure running
         const spin3 = p.spinner();
         spin3.start('Checking Ollama...');
-        await ensureOllamaRunning({ update: (m) => spin3.message(m) });
+        await ensureOllamaRunning({ update: (m) => spin3.message(m) }, ollamaDir);
         spin3.stop('Ollama ready');
 
         // Model selection
@@ -253,7 +253,7 @@ export async function runSetup(opts = {}) {
         if (!alreadyHas) {
             const spin4 = p.spinner();
             spin4.start(`Pulling ${modelName}...`);
-            const ok = await pullModel(modelName, { update: (m) => spin4.message(m) });
+            const ok = await pullModel(modelName, { update: (m) => spin4.message(m) }, ollamaDir);
             if (ok) {
                 spin4.stop(`${modelName} ready`);
             } else {
@@ -289,8 +289,7 @@ export async function runSetup(opts = {}) {
                 }));
 
                 if (doInstall) {
-                    let ollamaDir;
-                    if (!nonInteractive && platform() === 'win32') {
+                    if (!ollamaDir && !nonInteractive && platform() === 'win32') {
                         ollamaDir = guard(await p.text({
                             message: 'Where should Ollama be installed?',
                             placeholder: process.env.LOCALAPPDATA + '\\Programs\\Ollama',
@@ -308,7 +307,7 @@ export async function runSetup(opts = {}) {
             if (!ollamaReady && ollama.installed) {
                 const spin6 = p.spinner();
                 spin6.start('Starting Ollama...');
-                ollamaReady = await ensureOllamaRunning({ update: (m) => spin6.message(m) });
+                ollamaReady = await ensureOllamaRunning({ update: (m) => spin6.message(m) }, ollamaDir);
                 spin6.stop(ollamaReady ? 'Ollama running' : chalk.red('Could not start Ollama'));
             }
 
@@ -336,7 +335,7 @@ export async function runSetup(opts = {}) {
                 if (!alreadyHas) {
                     const spin7 = p.spinner();
                     spin7.start(`Pulling ${modelName}...`);
-                    const ok = await pullModel(modelName, { update: (m) => spin7.message(m) });
+                    const ok = await pullModel(modelName, { update: (m) => spin7.message(m) }, ollamaDir);
                     spin7.stop(ok ? `${modelName} ready` : chalk.red(`Failed to pull ${modelName}`));
                 } else {
                     p.log.success(`${modelName} already installed`);
@@ -347,7 +346,7 @@ export async function runSetup(opts = {}) {
                 if (!hasEmbed) {
                     const spin8 = p.spinner();
                     spin8.start(`Pulling embedding model (${EMBEDDING_MODEL})...`);
-                    const ok = await pullEmbeddingModel({ update: (m) => spin8.message(m) });
+                    const ok = await pullEmbeddingModel({ update: (m) => spin8.message(m) }, ollamaDir);
                     spin8.stop(ok ? 'Embedding model ready' : chalk.red('Failed to pull embedding model'));
                 }
             }
@@ -368,8 +367,9 @@ export async function runSetup(opts = {}) {
         }));
 
     // --- Step 5: Python backend setup ---
+    p.log.info('Setting up Python backend (this may take a moment)...');
     const spin9 = p.spinner();
-    spin9.start('Setting up Python backend...');
+    spin9.start('Creating Python virtual environment...');
 
     const venvResult = createVenv(PROJECT_DIR, { update: (m) => spin9.message(m) });
     if (!venvResult.ok) {
