@@ -417,4 +417,4 @@ export async function hasModel(modelName) {
     return status.models.some(m => m === modelName || m.startsWith(modelName.split(':')[0]));
 }
 
-export { RECOMMENDED_MODELS, EMBEDDING_MODEL, downloadFile };
+export { RECOMMENDED_MODELS, EMBEDDING_MODEL };

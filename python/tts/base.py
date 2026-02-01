@@ -6,10 +6,6 @@ import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
-import numpy as np
-import sounddevice as sd
-import soundfile as sf
-
 
 class TTSAdapter(ABC):
     """
@@ -87,12 +83,6 @@ class TTSAdapter(ABC):
         if not self._is_speaking:
             return False
         self._interrupted = True
-        # Stop sounddevice playback
-        try:
-            sd.stop()
-        except Exception:
-            pass
-        # Also stop ffplay fallback if running
         proc = self._playback_process
         if proc and proc.poll() is None:
             proc.kill()
@@ -100,33 +90,24 @@ class TTSAdapter(ABC):
         return True
 
     def _play_audio(self, audio_file: str) -> None:
-        """Play audio via sounddevice, interruptible via _interrupted flag."""
-        try:
-            data, samplerate = sf.read(audio_file, dtype='float32')
-            sd.play(data, samplerate)
-            # Poll instead of blocking sd.wait() so stop_speaking() can interrupt
-            deadline = time.monotonic() + 60
-            while time.monotonic() < deadline:
-                if not sd.get_stream().active:
-                    break  # Playback finished naturally
-                if self._interrupted:
-                    sd.stop()
-                    break
-                time.sleep(0.05)  # 50ms poll interval
-            else:
-                sd.stop()  # Timed out after 60s
-        except Exception as e:
-            print(f"⚠️ Audio playback error: {e}")
-            # Fallback to ffplay if available
-            try:
-                self._playback_process = subprocess.Popen(
-                    ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", audio_file]
-                )
-                self._playback_process.wait(timeout=60)
-            except FileNotFoundError:
-                print("⚠️ No audio playback available (install ffplay or check sounddevice)")
-            except Exception:
-                pass
+        """Play audio via ffplay, interruptible via _interrupted flag."""
+        self._playback_process = subprocess.Popen(
+            ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", audio_file]
+        )
+        # Poll instead of blocking .wait() so stop_speaking() can interrupt
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            if self._playback_process.poll() is not None:
+                break  # Process finished naturally
+            if self._interrupted:
+                self._playback_process.kill()
+                self._playback_process.wait(timeout=2)
+                break
+            time.sleep(0.05)  # 50ms poll interval
+        else:
+            # Timed out after 60s
+            self._playback_process.kill()
+            self._playback_process.wait(timeout=2)
 
     def unload(self) -> None:
         """Unload the model to free memory."""
