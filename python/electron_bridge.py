@@ -36,6 +36,7 @@ import uuid
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
+from shared.paths import get_config_base, get_data_dir
 
 # Force UTF-8 output on Windows (cp1252 can't encode emoji used in log output)
 if sys.platform == 'win32':
@@ -499,7 +500,7 @@ async def process_commands(agent):
                 cfg = cmd.get("config", {})
 
                 # Write config to file for voice_agent to read
-                config_path = Path.home() / ".config" / "voice-mirror-electron" / "data" / "voice_config.json"
+                config_path = get_data_dir() / "voice_config.json"
                 config_path.parent.mkdir(parents=True, exist_ok=True)
 
                 # Merge with existing config
@@ -623,7 +624,7 @@ async def main():
 
     # Start global hotkey listener if PTT mode is configured
     try:
-        config_path = Path.home() / ".config" / "voice-mirror-electron" / "config.json"
+        config_path = get_config_base() / "voice-mirror-electron" / "config.json"
         if config_path.exists():
             with open(config_path) as f:
                 app_config = json.load(f)

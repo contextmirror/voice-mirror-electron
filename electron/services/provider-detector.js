@@ -8,7 +8,7 @@
  */
 
 // Detection timeout in milliseconds
-const DETECTION_TIMEOUT = 2000;
+const DETECTION_TIMEOUT = 5000;
 
 // Cache TTL in milliseconds (30 seconds)
 const CACHE_TTL = 30000;

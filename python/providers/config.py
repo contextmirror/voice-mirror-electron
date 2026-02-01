@@ -4,8 +4,10 @@ import json
 import re
 from pathlib import Path
 
-# Electron config file path
-ELECTRON_CONFIG_PATH = Path.home() / ".config" / "voice-mirror-electron" / "config.json"
+from shared.paths import get_config_base
+
+# Electron config file path (cross-platform: APPDATA on Windows, ~/.config on Linux, ~/Library on macOS)
+ELECTRON_CONFIG_PATH = get_config_base() / "voice-mirror-electron" / "config.json"
 
 
 class ActivationMode:
@@ -42,7 +44,7 @@ def get_ai_provider() -> dict:
                 config = json.load(f)
                 ai = config.get("ai", {})
                 provider_id = ai.get("provider", "claude")
-                model = ai.get("model")
+                model = ai.get("model") or ai.get("localModel")
 
                 # Get display name
                 name = PROVIDER_DISPLAY_NAMES.get(provider_id, provider_id.title())
