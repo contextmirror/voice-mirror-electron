@@ -124,10 +124,10 @@ function configureMCPServer(appConfig) {
  * Check if Claude CLI is available
  */
 function isClaudeAvailable() {
-    const claudePath = process.platform === 'win32' ? 'claude.cmd' : 'claude';
     try {
         const { execSync } = require('child_process');
-        execSync(`which ${claudePath}`, { stdio: 'ignore' });
+        const cmd = process.platform === 'win32' ? 'where claude' : 'which claude';
+        execSync(cmd, { stdio: 'ignore' });
         return true;
     } catch {
         return false;

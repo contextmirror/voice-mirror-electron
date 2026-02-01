@@ -97,7 +97,7 @@ def init_log_file():
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / "vmr.log"
         # Append mode so both Electron and Python can write
-        _log_file = open(log_path, 'a')
+        _log_file = open(log_path, 'a', encoding='utf-8')
         write_log('INFO', 'Voice Mirror started')
     except Exception as e:
         print(f"Failed to init log file: {e}", file=sys.stderr)
