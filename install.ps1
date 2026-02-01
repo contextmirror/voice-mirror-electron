@@ -193,9 +193,8 @@ function Ensure-BuildTools {
     if (Test-Command "winget") {
         $winget = "winget"
     } else {
-        $wingetPath = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WindowsApps\winget.exe" -ErrorAction SilentlyContinue |
-                      Select-Object -First 1 -ExpandProperty FullName
-        if ($wingetPath) { $winget = $wingetPath }
+        $wingetPath = "$env:LOCALAPPDATA\Microsoft\WindowsApps\winget.exe"
+        if (Test-Path $wingetPath) { $winget = $wingetPath }
     }
 
     if ($winget) {
