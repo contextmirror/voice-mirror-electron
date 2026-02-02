@@ -23,7 +23,7 @@
   <img src="https://img.shields.io/badge/python-%3E%3D3.9-3776ab" alt="Python">
   <img src="https://img.shields.io/badge/MCP_tools-55-blueviolet" alt="MCP Tools">
   <img src="https://img.shields.io/badge/AI_providers-11-orange" alt="AI Providers">
-  <img src="https://img.shields.io/badge/tests-138_passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-222_passing-brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
 </p>
 
@@ -45,6 +45,16 @@ Combined = Full AI agent for your entire computer
 | ChatGPT Desktop | Just a chat window |
 
 Voice Mirror is an always-on overlay that listens, sees your screen, executes commands, and speaks back — across any AI provider.
+
+---
+
+## What Makes This Different
+
+- **Claude Code as a PTY-backed brain** — runs Claude Code inside Electron as a real terminal. Full MCP tool access, zero extra API cost beyond the CLI itself.
+- **MCP as the agent backbone** — 55 tools across 8 dynamically-loaded groups. Not a plugin system — a structured tool protocol with schema validation, gating, and hot-loading.
+- **Real browser automation** — not "search and summarize." Actual CDP-level click, type, navigate, screenshot, and DOM snapshot. Verified by a [102-test benchmark](docs/BROWSER-BENCHMARK.md).
+- **Wayland-native overlay** — Rust layer-shell binary for proper always-on-top on Linux/Wayland, where Electron can't do it alone.
+- **Unified agent loop** — wake word + screen capture + terminal execution + browser control + persistent memory, all wired together. Most tools pick one; this closes the full Hear → See → Think → Act → Speak → Persist loop.
 
 ---
 
@@ -191,7 +201,7 @@ voice-mirror-electron/
 ├── mcp-server/            # MCP server (55 tools, 8 groups)
 ├── wayland-orb/           # Rust native overlay (Linux/Wayland)
 ├── chrome-extension/      # Browser relay extension (MV3)
-├── test/                  # 14 test suites, 138 cases
+├── test/                  # Test suites, 222 cases
 ├── cli/                   # Setup wizard + CLI
 ├── docs/                  # Documentation
 └── assets/                # Icons
@@ -246,6 +256,17 @@ voice-mirror-electron/
 
 ---
 
+## Security & Trust
+
+**Voice Mirror runs its own isolated browser environment. It does not attach to or control your existing browser.**
+
+- **Embedded Chromium** — browser automation operates in a controlled instance launched by the app, not your system browser. No access to your existing sessions, cookies, or logged-in accounts unless you explicitly log in inside Voice Mirror.
+- **Tool-mediated actions** — every browser action flows through `LLM → tool schema → browser controller → Chromium`. Actions are enumerable, reviewable, and loggable. No arbitrary JS injection.
+- **Explicit screen capture** — screenshots are triggered by tool calls or user request, not captured passively. The orb visually indicates capture state.
+- **MCP tool gating** — tool groups load on demand. The LLM can only access tools that have been explicitly loaded for the session.
+
+---
+
 ## Environment Variables
 
 All cloud provider API keys are auto-detected from environment variables on startup:
@@ -270,7 +291,7 @@ All cloud provider API keys are auto-detected from environment variables on star
 npm test
 ```
 
-14 test suites covering config safety, API key detection, provider detection, settings, startup behavior, and more.
+222 tests covering config safety, API key detection, provider detection, settings, startup behavior, cross-platform paths, and more.
 
 ---
 
