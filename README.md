@@ -1,10 +1,33 @@
 # Voice Mirror Electron
 
-**Voice-controlled AI agent overlay for your entire computer.**
+<p align="center">
+  <img src="assets/icon-128.png" alt="Voice Mirror" width="128">
+</p>
 
 <p align="center">
-  <img src="assets/voice-mirror-logo.png" alt="Voice Mirror Logo" width="128">
+  <strong>Voice-controlled AI agent overlay for your entire computer.</strong>
 </p>
+
+<p align="center">
+  <a href="#features">Features</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#ai-providers">Providers</a> •
+  <a href="#documentation">Docs</a> •
+  <a href="#license">License</a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-blue" alt="Platform">
+  <img src="https://img.shields.io/badge/electron-28.3.3-47848f" alt="Electron">
+  <img src="https://img.shields.io/badge/node-%3E%3D18-339933" alt="Node.js">
+  <img src="https://img.shields.io/badge/python-%3E%3D3.9-3776ab" alt="Python">
+  <img src="https://img.shields.io/badge/MCP_tools-55-blueviolet" alt="MCP Tools">
+  <img src="https://img.shields.io/badge/AI_providers-11-orange" alt="AI Providers">
+  <img src="https://img.shields.io/badge/tests-138_passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+</p>
+
+---
 
 ```
 Claude Code = Terminal + MCP Tools
@@ -12,193 +35,251 @@ Voice Mirror = Eyes + Ears + Voice
 Combined = Full AI agent for your entire computer
 ```
 
-## What is Voice Mirror?
+## Why Voice Mirror?
 
-Voice Mirror Electron is a floating AI assistant overlay that combines:
-- **Voice input** - Wake word ("Hey Claude"), call mode, or push-to-talk
-- **Voice output** - Natural TTS with voice cloning support
-- **Screen awareness** - Capture and analyze what's on your screen
-- **Terminal power** - Execute commands through Claude Code
-- **Multi-AI support** - Claude, Ollama, OpenAI, and 8+ more providers
-- **Memory system** - Persistent semantic memory across conversations
-- **Web access** - Search and fetch content from the web
+| Existing Product | What's Missing |
+|------------------|----------------|
+| Siri / Cortana / Alexa | No real capabilities, can't "see" your screen |
+| GitHub Copilot | Code only, no voice, IDE-locked |
+| Claude Desktop | Not an overlay, no wake word, limited platform |
+| ChatGPT Desktop | Just a chat window |
 
-## Quick Start
+Voice Mirror is an always-on overlay that listens, sees your screen, executes commands, and speaks back — across any AI provider.
 
-```bash
-# Install dependencies
-npm install
-
-# Set up Python backend
-cd python
-python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-pip install -r requirements.txt
-cd ..
-
-# Start Voice Mirror
-npm start
-
-# Or use the launch script (recommended for Linux):
-./launch.sh
-```
-
-## Screenshots
-
-### Floating Orb (Collapsed)
-```
-                                    ◉ ← 64px draggable orb
-                                      (pulses when listening)
-```
-
-### Expanded Panel
-```
-┌──────────────────────────────────────────────────┐
-│ ◉ Voice Mirror  │                                │
-├─────────────────┤  Chat Page                     │
-│ 💬 Chat         │  ┌────────────────────────┐    │
-│ >_ Claude Code  │  │ You: What's this error?│    │
-│ ⚙️ Settings     │  │ Claude: That's a null  │    │
-│                 │  │ pointer in line 42...  │    │
-│                 │  └────────────────────────┘    │
-│ [« Collapse]    │  ● Listening...    [📷]       │
-└─────────────────┴────────────────────────────────┘
-```
+---
 
 ## Features
 
 ### Voice Interaction
+
 | Mode | Trigger | Use Case |
 |------|---------|----------|
-| Wake Word | "Hey Claude" | Hands-free, on-demand |
-| Call Mode | Always listening | Continuous conversation |
-| Push to Talk | Mouse/keyboard | Manual control |
+| **Wake Word** | "Hey Claude" | Hands-free, on-demand |
+| **Call Mode** | Always listening | Continuous conversation |
+| **Push to Talk** | Mouse button / keyboard | Manual control |
 
-### AI Providers
-| Provider | Type | Features |
-|----------|------|----------|
-| Claude Code | PTY | MCP tools, vision, terminal |
-| Ollama | Local | Auto-detect, vision |
-| LM Studio | Local | Auto-detect |
-| Jan | Local | Auto-detect |
-| OpenAI | Cloud | GPT-4o, vision |
-| Gemini | Cloud | Vision |
-| Groq | Cloud | Fast inference |
-| + 4 more | Cloud | Mistral, OpenRouter, DeepSeek, Grok |
+### Screen Awareness
+Capture your screen at any time — the AI sees what you see and can analyze errors, UI, or anything on screen.
+
+### Terminal Power
+Claude Code runs inside Voice Mirror with full MCP tool access. Execute commands, manage files, and automate workflows — all by voice.
+
+### 55 MCP Tools (8 groups, dynamically loaded)
+
+| Group | Tools | Capabilities |
+|-------|-------|-------------|
+| **core** | 4 | Voice I/O, presence tracking |
+| **memory** | 6 | Semantic search, 3-tier persistent memory |
+| **browser** | 14 | Full CDP automation — navigate, click, type, screenshot |
+| **n8n** | 22 | Workflow CRUD, executions, credentials, tags |
+| **voice-clone** | 3 | Clone any voice from a 3-second audio sample |
+| **screen** | 1 | Desktop screenshot capture |
+| **diagnostic** | 1 | Pipeline message tracing |
+| **meta** | 3 | Dynamic tool loading/unloading |
 
 ### Voice Synthesis
-| Adapter | Features |
-|---------|----------|
-| Kokoro (default) | 10 voices, fast, CPU |
-| Qwen3-TTS | Voice cloning, 9 presets, GPU |
 
-### MCP Tools (14 total)
-- **Voice/Chat**: send, inbox, listen, status
-- **Memory**: search, get, remember, forget, stats
-- **Screen**: capture_screen
-- **Browser**: browser_search, browser_fetch
-- **Voice Clone**: clone_voice, list/clear clones
+| Engine | Speed | Voice Cloning | Voices |
+|--------|-------|---------------|--------|
+| **Kokoro** (default) | Fast, CPU | No | 10 built-in |
+| **Qwen3-TTS** | GPU recommended | Yes | 9 presets + custom |
+
+---
+
+## AI Providers
+
+11 providers with automatic detection of local servers and environment API keys.
+
+| Provider | Type | Key Features |
+|----------|------|-------------|
+| **Claude Code** | PTY terminal | MCP tools, vision, full terminal |
+| **Ollama** | Local | Auto-detect, vision (llava) |
+| **LM Studio** | Local | Auto-detect |
+| **Jan** | Local | Auto-detect |
+| **OpenAI** | Cloud | GPT-4o, vision |
+| **Google Gemini** | Cloud | Vision |
+| **Grok (xAI)** | Cloud | Vision |
+| **Groq** | Cloud | Fast inference |
+| **Mistral** | Cloud | — |
+| **OpenRouter** | Cloud | Multi-model access |
+| **DeepSeek** | Cloud | — |
+
+API keys are **auto-detected** from environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.) on startup.
+
+---
+
+## Quick Start
+
+### One-Line Install
+
+**Linux / macOS:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/nayballs/voice-mirror-electron/main/install.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/nayballs/voice-mirror-electron/main/install.ps1 | iex
+```
+
+### Manual Setup
+
+```bash
+git clone https://github.com/nayballs/voice-mirror-electron.git
+cd voice-mirror-electron
+npm install
+
+# Python backend
+cd python
+python -m venv .venv
+source .venv/bin/activate   # Linux/macOS
+# .venv\Scripts\activate    # Windows
+pip install -r requirements.txt
+cd ..
+
+# Launch
+npm start
+```
+
+### Requirements
+
+- **Node.js** 18+
+- **Python** 3.9+
+- **Claude Code CLI** (for Claude provider)
+- **ffmpeg** (for voice cloning)
+- **CUDA** (optional — GPU acceleration for Qwen3-TTS)
+
+---
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Shift+V` | Toggle panel expand/collapse |
+| `Ctrl+Shift+M` | Toggle performance monitor |
+| Drag orb | Move orb position |
+
+---
+
+## Configuration
+
+Config is stored per-platform:
+
+| Platform | Path |
+|----------|------|
+| Linux | `~/.config/voice-mirror-electron/config.json` |
+| macOS | `~/Library/Application Support/voice-mirror-electron/config.json` |
+| Windows | `%APPDATA%\voice-mirror-electron\config.json` |
+
+Settings are accessible from the in-app Settings page — AI provider, voice, activation mode, audio devices, appearance, and more.
+
+---
 
 ## Project Structure
 
 ```
-Voice Mirror Electron/
-├── electron/           # Electron app (main + renderer)
-│   ├── services/       # Service modules (8 services)
-│   ├── providers/      # Multi-AI provider system
-│   ├── browser/        # Playwright web integration
-│   ├── tools/          # Tool system for local LLMs
-│   ├── js/             # Renderer JavaScript
-│   └── styles/         # CSS modules
-├── python/             # Voice backend
-│   ├── stt/            # Speech-to-text adapters
-│   ├── tts/            # Text-to-speech adapters
-│   └── audio/          # Wake word, VAD
-├── mcp-server/         # MCP server (51 tools across 7 dynamic groups)
-│   └── lib/memory/     # Memory system
-├── docs/               # Documentation
-└── assets/             # Icons
+voice-mirror-electron/
+├── electron/              # Electron app
+│   ├── main.js            # Window, tray, IPC orchestration
+│   ├── services/          # 15 service modules
+│   ├── providers/         # Multi-AI provider system
+│   ├── browser/           # CDP browser automation (11 modules)
+│   ├── tools/             # Tool system for local LLMs
+│   ├── js/                # Renderer modules (11 files)
+│   └── styles/            # CSS modules (10 files)
+├── python/                # Voice backend (STT, TTS, wake word)
+├── mcp-server/            # MCP server (55 tools, 8 groups)
+├── wayland-orb/           # Rust native overlay (Linux/Wayland)
+├── chrome-extension/      # Browser relay extension (MV3)
+├── test/                  # 14 test suites, 138 cases
+├── cli/                   # Setup wizard + CLI
+├── docs/                  # Documentation
+└── assets/                # Icons
 ```
+
+---
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, data flow, MCP tools |
-| [PYTHON-BACKEND.md](docs/PYTHON-BACKEND.md) | Voice processing, STT/TTS, voice cloning |
-| [CONFIGURATION.md](docs/CONFIGURATION.md) | Config schema, settings, voices |
-| [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Setup, debugging, troubleshooting |
-| [ROADMAP.md](docs/ROADMAP.md) | Progress and future plans |
+| [PYTHON-BACKEND.md](docs/PYTHON-BACKEND.md) | Voice processing, STT/TTS, protocols |
+| [CONFIGURATION.md](docs/CONFIGURATION.md) | Config schema, settings, providers |
+| [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Setup, building, debugging |
+| [ROADMAP.md](docs/ROADMAP.md) | Progress, known issues, future plans |
+| [BROWSER-BENCHMARK.md](docs/BROWSER-BENCHMARK.md) | Browser tool benchmark (102 tests) |
+| [LOCAL-LLM-TOOLS.md](docs/LOCAL-LLM-TOOLS.md) | Tool system for local LLMs |
+
+---
 
 ## Use Cases
 
 **Developer:**
-```
-"Hey Claude, what's this error on my screen?"
-  → captures screen, analyzes code, suggests fix
-
-"Fix it"
-  → executes commands in terminal
-```
+> "Hey Claude, what's this error on my screen?"
+> → *captures screen, analyzes code, suggests fix*
+>
+> "Fix it"
+> → *executes commands in terminal*
 
 **Desktop:**
-```
-"What app is using all my memory?"
-  → checks htop, reports findings
-
-"Search for flights to Paris next week"
-  → web search, summarizes results
-```
+> "What app is using all my memory?"
+> → *checks processes, reports findings via voice*
 
 **Voice Cloning:**
-```
-"Clone David Attenborough's voice from this clip"
-  → downloads audio, creates voice clone
-  → all responses now in that voice
-```
+> "Clone David Attenborough's voice from this clip"
+> → *downloads audio, creates clone — all responses now in that voice*
 
-## Requirements
+**Automation:**
+> "Create an n8n workflow that emails me when my server goes down"
+> → *builds workflow via MCP tools*
 
-- **Node.js** 18+
-- **Python** 3.9+
-- **Claude Code CLI** (for Claude provider)
-- **ffmpeg** (for voice cloning)
-- **CUDA** (optional, for Qwen3-TTS GPU acceleration)
-
-## Configuration
-
-Config stored at:
-- Linux: `~/.config/voice-mirror-electron/config.json`
-- macOS: `~/Library/Application Support/voice-mirror-electron/config.json`
-- Windows: `%APPDATA%\voice-mirror-electron\config.json`
-
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+Shift+V` | Toggle expand/collapse |
-| Drag orb | Move position |
-
-## Environment Variables
-
-| Variable | Purpose |
-|----------|---------|
-| `SERPER_API_KEY` | Fast web search (optional) |
-| `OPENAI_API_KEY` | OpenAI embeddings/provider |
-| `GOOGLE_API_KEY` | Gemini embeddings/provider |
+---
 
 ## Cross-Platform
 
-| Platform | Status |
-|----------|--------|
-| Linux | Primary development |
-| Windows | Supported |
-| macOS | Supported |
+| Platform | Status | Notes |
+|----------|--------|-------|
+| Linux | Primary | X11/Wayland, AppImage target, native Wayland orb |
+| Windows | Supported | NSIS installer, hidden-window desktop shortcut |
+| macOS | Supported | DMG target |
+
+---
+
+## Environment Variables
+
+All cloud provider API keys are auto-detected from environment variables on startup:
+
+| Variable | Provider |
+|----------|----------|
+| `ANTHROPIC_API_KEY` | Claude (API) |
+| `OPENAI_API_KEY` | OpenAI |
+| `GOOGLE_API_KEY` | Google Gemini |
+| `GROQ_API_KEY` | Groq |
+| `MISTRAL_API_KEY` | Mistral |
+| `XAI_API_KEY` | Grok (xAI) |
+| `OPENROUTER_API_KEY` | OpenRouter |
+| `DEEPSEEK_API_KEY` | DeepSeek |
+| `SERPER_API_KEY` | Web search (Serper.dev) |
+
+---
+
+## Testing
+
+```bash
+npm test
+```
+
+14 test suites covering config safety, API key detection, provider detection, settings, startup behavior, and more.
+
+---
 
 ## License
 
-Private repository.
+[MIT](LICENSE)
 
-## About
+---
 
-Created January 2026
+<p align="center">
+  <sub>Built with Electron, Python, and a lot of voice commands.</sub>
+</p>

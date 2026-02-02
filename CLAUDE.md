@@ -18,6 +18,8 @@ Combined = Full AI agent for your entire computer
 | [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Setup, building, debugging |
 | [ROADMAP.md](docs/ROADMAP.md) | Progress, known issues, future plans |
 | [BROWSER-BENCHMARK.md](docs/BROWSER-BENCHMARK.md) | Browser tool benchmark (102 tests, model comparison) |
+| [LOCAL-LLM-TOOLS.md](docs/LOCAL-LLM-TOOLS.md) | Tool system for local LLMs |
+| [BROWSER-CONTROL-REFERENCE.md](docs/BROWSER-CONTROL-REFERENCE.md) | Browser automation reference |
 
 ---
 
@@ -102,16 +104,16 @@ Voice Mirror Electron/
 │   ├── overlay.html         # Main HTML with 3 pages
 │   ├── window/              # Window manager + system tray
 │   ├── providers/           # Multi-AI provider system (claude, openai-compat)
-│   ├── services/            # 9 service modules (ai-manager, python-backend, etc.)
-│   ├── browser/             # Chrome/Chromium automation (16 modules, CDP + Playwright)
+│   ├── services/            # 15 service modules (ai-manager, perf-monitor, hotkey-manager, etc.)
+│   ├── browser/             # Chrome/Chromium automation (11 modules, CDP + Playwright)
 │   ├── tools/               # Tool system for local LLMs
-│   ├── js/                  # Renderer modules (9 files)
-│   └── styles/              # CSS modules (9 files)
+│   ├── js/                  # Renderer modules (11 files)
+│   └── styles/              # CSS modules (10 files)
 ├── python/                  # Voice backend (STT, TTS, wake word)
-├── mcp-server/              # MCP server (51 tools across 7 dynamic groups)
+├── mcp-server/              # MCP server (55 tools across 8 dynamic groups)
 ├── wayland-orb/             # Rust native layer-shell overlay (Linux/Wayland)
 ├── chrome-extension/        # Browser relay extension (MV3, CDP relay)
-├── test/                    # Browser benchmark (102 tests, fixture replay)
+├── test/                    # Unit tests (14 suites, 138 cases) + browser benchmark (102 tests)
 ├── docs/                    # Documentation
 ├── assets/                  # Icons (16-256px)
 ├── launch.sh                # Linux/macOS launcher
@@ -154,17 +156,18 @@ See [CONFIGURATION.md](docs/CONFIGURATION.md) for full provider list (11 total).
 
 ---
 
-## MCP Tool Groups (51 tools, dynamically loaded)
+## MCP Tool Groups (55 tools, dynamically loaded)
 
 | Group | Tools | Key Capabilities |
 |-------|-------|-----------------|
 | **core** (4) | claude_send, claude_inbox, claude_listen, claude_status | Voice I/O, presence |
 | **meta** (3) | load_tools, unload_tools, list_tool_groups | Dynamic tool loading |
 | **screen** (1) | capture_screen | Desktop screenshots |
-| **memory** (5) | search, get, remember, forget, stats | Hybrid vector+keyword search, 3 tiers |
+| **memory** (6) | search, get, remember, forget, stats, flush | Hybrid vector+keyword search, 3 tiers |
 | **voice-clone** (3) | clone_voice, clear_voice_clone, list_voice_clones | Voice cloning from audio |
 | **browser** (14) | start/stop, navigate, screenshot, snapshot, act, search, fetch... | Full browser automation via CDP |
 | **n8n** (22) | workflows CRUD, executions, credentials, nodes, tags, variables | n8n workflow automation |
+| **diagnostic** (1) | pipeline_trace | Trace message flow through live pipeline |
 
 ---
 
@@ -180,6 +183,11 @@ See [CONFIGURATION.md](docs/CONFIGURATION.md) for full provider list (11 total).
 - **n8n Integration:** 22 tools for workflow automation
 - **Voice Cloning:** Clone any voice from 3s audio sample (Qwen3-TTS)
 - **Browser Benchmark:** 102-test suite evaluating LLM browser tool usage (llama3.1:8b recommended — 98% pass, 9.6/10 avg)
+- **API Key Auto-Detection:** Scans environment variables and credential files on startup, auto-populates config
+- **Performance Monitor:** Real-time CPU/memory stats bar (Ctrl+Shift+M toggle)
+- **Tool Profiles:** Preset and custom MCP tool group configurations (voice-assistant, full-toolbox, etc.)
+- **Audio Device Selection:** Input/output device enumeration and selection in Settings
+- **Hidden Window Launch:** Windows desktop shortcut uses VBS wrapper — no console window for end users
 
 ---
 
