@@ -34,7 +34,6 @@ function createAIManager(options = {}) {
 
     let activeProvider = null;  // Current OpenAI-compatible provider instance
     let hasStartedOnce = false; // Track initial startup vs provider switch
-    let _switching = false; // Prevent concurrent start/stop
 
     /**
      * Send output to the terminal UI.
@@ -138,10 +137,6 @@ function createAIManager(options = {}) {
      * @returns {boolean} True if started
      */
     function start() {
-        if (_switching) {
-            console.log('[AIManager] Provider switch in progress, skipping');
-            return false;
-        }
         const config = getConfig();
         const providerType = config?.ai?.provider || 'claude';
         const model = config?.ai?.model || config?.ai?.localModel || null;
@@ -149,6 +144,23 @@ function createAIManager(options = {}) {
         console.log(`[AIManager] Starting AI provider: ${providerType}${model ? ' (' + model + ')' : ''}`);
         const isSwitch = hasStartedOnce;
         hasStartedOnce = true;
+
+        // Defensive: stop any stale provider from a different type before starting
+        // This handles the case where stop() wasn't called or didn't fully clean up
+        if (CLI_PROVIDERS.includes(providerType)) {
+            // About to start CLI — kill any leftover API provider
+            if (activeProvider) {
+                console.log('[AIManager] Cleaning up stale API provider before CLI start');
+                try { if (activeProvider.isRunning()) activeProvider.stop(); } catch (e) { /* ignore */ }
+                activeProvider = null;
+            }
+        } else {
+            // About to start API — kill any leftover CLI provider
+            if (isClaudeRunning()) {
+                console.log('[AIManager] Cleaning up stale Claude PTY before API start');
+                stopClaudeCode();
+            }
+        }
 
         // Check if already running
         if (CLI_PROVIDERS.includes(providerType)) {
@@ -270,7 +282,6 @@ function createAIManager(options = {}) {
      * @returns {boolean} True if something was stopped
      */
     function stop() {
-        _switching = true;
         let stopped = false;
 
         // Always try to stop Claude PTY if it's running
@@ -281,9 +292,15 @@ function createAIManager(options = {}) {
         }
 
         // Also stop OpenAI-compatible provider if running
-        if (activeProvider && activeProvider.isRunning()) {
+        if (activeProvider) {
             const name = activeProvider.getDisplayName();
-            activeProvider.stop();
+            try {
+                if (activeProvider.isRunning()) {
+                    activeProvider.stop();
+                }
+            } catch (err) {
+                console.error(`[AIManager] Error stopping ${name}:`, err.message);
+            }
             activeProvider = null;
             console.log(`[AIManager] Stopped ${name}`);
             stopped = true;
@@ -299,7 +316,6 @@ function createAIManager(options = {}) {
             sendVoiceEvent({ type: 'claude_disconnected' });
         }
 
-        _switching = false;
         return stopped;
     }
 

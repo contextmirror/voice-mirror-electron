@@ -224,19 +224,31 @@ function registerIpcHandlers(ctx) {
         const newConfig = ctx.config.updateConfig(updates);
         ctx.setAppConfig(newConfig);
 
-        // Auto-restart AI provider if provider or model changed
+        // Auto-restart AI provider if provider, model, or context length changed
         if (updates.ai) {
             const newProvider = newConfig.ai?.provider;
             const newModel = newConfig.ai?.model;
+            const newContextLength = newConfig.ai?.contextLength;
+            const oldContextLength = appConfig?.ai?.contextLength;
             const providerChanged = oldProvider !== newProvider;
             const modelChanged = oldModel !== newModel;
+            const contextLengthChanged = oldContextLength !== newContextLength;
 
-            if ((providerChanged || modelChanged) && ctx.isAIProviderRunning()) {
-                console.log(`[Config] Provider/model changed, restarting AI: ${oldProvider}/${oldModel} -> ${newProvider}/${newModel}`);
-                ctx.stopAIProvider();
-                // Wait for clean shutdown before starting new provider
-                await new Promise(resolve => setTimeout(resolve, 1000));
+            if (providerChanged || modelChanged || contextLengthChanged) {
+                const wasRunning = ctx.isAIProviderRunning();
+                console.log(`[Config] Provider/model changed: ${oldProvider}/${oldModel} -> ${newProvider}/${newModel} (was running: ${wasRunning})`);
+
+                if (wasRunning) {
+                    // Stop whatever is currently running
+                    ctx.stopAIProvider();
+                    // Wait for clean shutdown — PTY needs more time than API providers
+                    const isCLI = CLI_PROVIDERS.includes(oldProvider);
+                    await new Promise(resolve => setTimeout(resolve, isCLI ? 1500 : 500));
+                }
+
+                // Always start the new provider (even if old one wasn't running, user expects switch to activate)
                 ctx.startAIProvider();
+                console.log(`[Config] New provider started: ${newProvider}`);
             }
         }
 

@@ -452,7 +452,8 @@ export async function saveSettings() {
         }
         updateProviderDisplay(displayName, aiProvider, aiModel);
 
-        // If AI provider, model, or context length changed, clear terminal and restart if running
+        // If AI provider, model, or context length changed, clear terminal
+        // NOTE: Main process set-config handler handles the actual stop/start restart
         const oldProvider = state.currentProvider;
         const oldModel = state.currentModel;
         const oldContextLength = state.currentContextLength;
@@ -460,23 +461,15 @@ export async function saveSettings() {
         const modelChanged = oldModel !== aiModel;
         const contextLengthChanged = oldContextLength !== aiContextLength;
         if (providerChanged || modelChanged || contextLengthChanged) {
-            // Clear terminal when provider or model changes
-            clearTerminal();
             console.log(`[Settings] Provider/model changed: ${oldProvider}/${oldModel} -> ${aiProvider}/${aiModel}`);
 
-            const status = await window.voiceMirror.claude.getStatus();
-            if (status.running) {
-                console.log('[Settings] Stopping old provider and starting new one...');
-                await window.voiceMirror.claude.stop();
-                // Small delay to ensure clean stop
-                await new Promise(resolve => setTimeout(resolve, 500));
-                await window.voiceMirror.claude.start();
-            }
-
-            // Update state so next save can detect changes correctly
+            // Update state first so terminal banner shows the NEW provider name
             state.currentProvider = aiProvider;
             state.currentModel = aiModel;
             state.currentContextLength = aiContextLength;
+
+            // Clear terminal with new provider name
+            clearTerminal();
         }
 
         // Show save confirmation
