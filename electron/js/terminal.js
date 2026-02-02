@@ -114,6 +114,18 @@ export async function initXterm() {
         window.voiceMirror.claude.sendInput(data);
     });
 
+    // Handle Ctrl+V paste via Electron clipboard (xterm.js browser paste is blocked on Windows)
+    term.attachCustomKeyEventHandler((event) => {
+        if (event.type === 'keydown' && event.ctrlKey && event.key === 'v') {
+            const text = window.voiceMirror.readClipboard();
+            if (text) {
+                window.voiceMirror.claude.sendInput(text);
+            }
+            return false; // Prevent default handling
+        }
+        return true;
+    });
+
     // Handle resize - create observer for current container
     resizeObserver = new ResizeObserver(() => {
         if (fitAddon && !state.terminalMinimized) {

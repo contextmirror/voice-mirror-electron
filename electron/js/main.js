@@ -11,6 +11,7 @@ import { initSettings, toggleSettings } from './settings.js';
 import { initNavigation, navigateTo, toggleSidebarCollapse } from './navigation.js';
 import { initBrowserPanel, navigateToBrowserPage } from './browser-panel.js';
 import { blobToBase64, formatSize } from './utils.js';
+import { initOrbCanvas, setOrbState, destroyOrbCanvas } from './orb-canvas.js';
 
 // DOM elements
 const orb = document.getElementById('orb');
@@ -337,32 +338,32 @@ function handleVoiceEvent(data) {
             });
             break;
         case 'wake':
-            orb.className = 'listening';
+            setOrbState('idle');
             statusText.textContent = 'Wake word detected!';
             statusIndicator.className = 'wake';
             break;
         case 'recording':
-            orb.className = 'recording';
+            setOrbState('recording');
             statusIndicator.className = 'recording';
             statusText.textContent = 'Recording...';
             break;
         case 'processing':
-            orb.className = 'thinking';
+            setOrbState('thinking');
             statusIndicator.className = 'thinking';
             statusText.textContent = 'Processing...';
             break;
         case 'thinking':
-            orb.className = 'thinking';
+            setOrbState('thinking');
             statusIndicator.className = 'thinking';
             statusText.textContent = data.source ? `Asking ${data.source}...` : 'Thinking...';
             break;
         case 'speaking':
-            orb.className = 'speaking';
+            setOrbState('speaking');
             statusIndicator.className = 'speaking';
             statusText.textContent = 'Speaking...';
             break;
         case 'idle':
-            orb.className = 'listening';
+            setOrbState('idle');
             statusIndicator.className = '';
             statusText.textContent = 'Listening...';
             break;
@@ -405,6 +406,12 @@ function handleVoiceEvent(data) {
 async function init() {
     // Initialize markdown renderer
     initMarkdown();
+
+    // Initialize canvas orb renderer
+    const orbCanvas = document.getElementById('orb-canvas');
+    if (orbCanvas) {
+        initOrbCanvas(orbCanvas);
+    }
 
     // Load provider display from config FIRST (before terminal init)
     try {
@@ -453,6 +460,45 @@ async function init() {
 
     // Initialize settings
     initSettings();
+
+    // Manual drag for Windows (CSS -webkit-app-region: drag is unreliable on small transparent windows)
+    if (navigator.platform.startsWith('Win')) {
+        let dragging = false;
+        let dragStartCursor = null;
+        let dragStartWin = null;
+
+        orb.addEventListener('mousedown', async (e) => {
+            if (e.button !== 0 || state.isExpanded) return;
+            dragging = true;
+            dragStartCursor = await window.voiceMirror.getCursorPosition();
+            dragStartWin = await window.voiceMirror.getWindowPosition();
+            await window.voiceMirror.startDragCapture();
+        });
+
+        document.addEventListener('mousemove', async (e) => {
+            if (!dragging || !dragStartCursor || !dragStartWin) return;
+            const cursor = await window.voiceMirror.getCursorPosition();
+            const dx = cursor.x - dragStartCursor.x;
+            const dy = cursor.y - dragStartCursor.y;
+            await window.voiceMirror.setWindowPosition(dragStartWin.x + dx, dragStartWin.y + dy);
+        });
+
+        document.addEventListener('mouseup', async () => {
+            if (!dragging) return;
+            dragging = false;
+            const cursor = await window.voiceMirror.getCursorPosition();
+            const dx = cursor.x - dragStartCursor.x;
+            const dy = cursor.y - dragStartCursor.y;
+            const newX = dragStartWin.x + dx;
+            const newY = dragStartWin.y + dy;
+            await window.voiceMirror.stopDragCapture(newX, newY);
+            dragStartCursor = null;
+            dragStartWin = null;
+        });
+
+        // Disable CSS drag on Windows (handled by manual drag above)
+        orb.style.webkitAppRegion = 'no-drag';
+    }
 
     // Right-click on orb to expand
     orb.addEventListener('contextmenu', async (e) => {

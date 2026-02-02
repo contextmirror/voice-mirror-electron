@@ -1,7 +1,7 @@
 /* ========== Orb Styles ========== */
-/* Floating orb — matches wayland-orb/src/renderer.rs procedural rendering */
+/* Floating orb — Canvas renderer handles all visuals (port of wayland-orb/src/renderer.rs) */
 
-/* Orb State - fixed size, centered in window */
+/* Orb container - layout/positioning only, no visual styles */
 #orb {
     width: 64px;
     height: 64px;
@@ -10,7 +10,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    /* NATIVE DRAG - works on Wayland! */
     -webkit-app-region: drag;
     user-select: none;
     /* Center in window */
@@ -18,21 +17,21 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    /* Base orb: purple gradient matching renderer.rs rgb(45,27,78) -> rgb(13,13,26) */
-    background: radial-gradient(circle, rgb(45, 27, 78) 0%, rgb(20, 20, 40) 60%, rgb(13, 13, 26) 100%);
-    /* Glow border: rgb(102,126,234) at 50% opacity */
-    border: 2px solid rgba(102, 126, 234, 0.5);
-    box-shadow: 0 0 12px rgba(102, 126, 234, 0.3), 0 0 24px rgba(102, 126, 234, 0.15);
-    transition: background 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
-}
-
-#orb:hover {
-    transform: translate(-50%, -50%) scale(1.08);
-    box-shadow: 0 0 16px rgba(102, 126, 234, 0.5), 0 0 32px rgba(102, 126, 234, 0.25);
 }
 
 #orb:active {
     cursor: grabbing;
+}
+
+/* Canvas fills the orb container */
+#orb-canvas {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    pointer-events: none;
+    position: absolute;
+    top: 0;
+    left: 0;
 }
 
 /* Inner clickable button - excludes from drag region */
@@ -48,74 +47,8 @@
     background: transparent;
     border: none;
     padding: 0;
-    transition: transform 0.15s ease;
-}
-
-#orb-button:hover {
-    transform: scale(1.05);
-}
-
-#orb-button:active {
-    transform: scale(0.95);
-}
-
-#orb-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    pointer-events: none;
-}
-
-/* ========== Orb State Classes ========== */
-/* Idle/Listening: gentle purple pulse ±5% scale, 1500ms */
-#orb.listening {
-    animation: orb-pulse 1.5s ease-in-out infinite;
-}
-
-/* Recording: pink/red shift, fast pulse ±12%, 500ms */
-#orb.recording {
-    background: radial-gradient(circle, rgb(58, 19, 55) 0%, rgb(26, 13, 20) 60%, rgb(17, 9, 13) 100%);
-    border-color: rgba(234, 102, 126, 0.6);
-    box-shadow: 0 0 16px rgba(234, 102, 126, 0.4), 0 0 32px rgba(234, 102, 126, 0.2);
-    animation: orb-recording 0.5s ease-in-out infinite;
-}
-
-/* Speaking: blue/cyan shift, dual-wave, 1000ms */
-#orb.speaking {
-    background: radial-gradient(circle, rgb(36, 30, 94) 0%, rgb(16, 22, 44) 60%, rgb(10, 16, 31) 100%);
-    border-color: rgba(102, 180, 234, 0.6);
-    box-shadow: 0 0 16px rgba(102, 180, 234, 0.4), 0 0 32px rgba(102, 180, 234, 0.2);
-    animation: orb-speaking 1s ease-in-out infinite;
-}
-
-/* Thinking: teal shift, gradient rotation, 2000ms */
-#orb.thinking {
-    background: conic-gradient(from 0deg, rgb(27, 45, 42) 0%, rgb(13, 26, 24) 50%, rgb(27, 45, 42) 100%);
-    border-color: rgba(102, 234, 200, 0.6);
-    box-shadow: 0 0 16px rgba(102, 234, 200, 0.4), 0 0 32px rgba(102, 234, 200, 0.2);
-    animation: orb-thinking 2s linear infinite;
-}
-
-/* ========== Orb Animations ========== */
-@keyframes orb-pulse {
-    0%, 100% { transform: translate(-50%, -50%) scale(1); }
-    50% { transform: translate(-50%, -50%) scale(1.05); }
-}
-
-@keyframes orb-recording {
-    0%, 100% { transform: translate(-50%, -50%) scale(1); }
-    50% { transform: translate(-50%, -50%) scale(1.12); }
-}
-
-@keyframes orb-speaking {
-    0%, 100% { transform: translate(-50%, -50%) scale(1); }
-    25% { transform: translate(-50%, -50%) scale(1.08); }
-    75% { transform: translate(-50%, -50%) scale(0.95); }
-}
-
-@keyframes orb-thinking {
-    0% { transform: translate(-50%, -50%) rotate(0deg); }
-    100% { transform: translate(-50%, -50%) rotate(360deg); }
+    position: relative;
+    z-index: 1;
 }
 
 /* ========== Status Indicator States ========== */

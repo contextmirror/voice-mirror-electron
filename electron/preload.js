@@ -4,7 +4,7 @@
  * Exposes safe IPC methods to the renderer process.
  */
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, clipboard } = require('electron');
 
 contextBridge.exposeInMainWorld('voiceMirror', {
     // Toggle between orb and expanded panel
@@ -114,6 +114,9 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         // Resize Claude PTY (when xterm.js resizes)
         resize: (cols, rows) => ipcRenderer.invoke('claude-pty-resize', cols, rows)
     },
+
+    // Clipboard access (for terminal paste on Windows)
+    readClipboard: () => clipboard.readText(),
 
     // Browser panel control
     browser: {
