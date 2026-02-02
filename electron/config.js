@@ -10,6 +10,7 @@
 const { app } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const fsPromises = fs.promises;
 
 // Platform detection
 const isWindows = process.platform === 'win32';

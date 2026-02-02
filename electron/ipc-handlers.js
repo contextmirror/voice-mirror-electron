@@ -225,6 +225,7 @@ function registerIpcHandlers(ctx) {
         ctx.setAppConfig(newConfig);
 
         // Auto-restart AI provider if provider, model, or context length changed
+        // Fire-and-forget so the IPC response returns immediately (no mouse lag)
         if (updates.ai) {
             const newProvider = newConfig.ai?.provider;
             const newModel = newConfig.ai?.model;
@@ -238,17 +239,20 @@ function registerIpcHandlers(ctx) {
                 const wasRunning = ctx.isAIProviderRunning();
                 console.log(`[Config] Provider/model changed: ${oldProvider}/${oldModel} -> ${newProvider}/${newModel} (was running: ${wasRunning})`);
 
-                if (wasRunning) {
-                    // Stop whatever is currently running
-                    ctx.stopAIProvider();
-                    // Wait for clean shutdown — PTY needs more time than API providers
-                    const isCLI = CLI_PROVIDERS.includes(oldProvider);
-                    await new Promise(resolve => setTimeout(resolve, isCLI ? 1500 : 500));
-                }
-
-                // Always start the new provider (even if old one wasn't running, user expects switch to activate)
-                ctx.startAIProvider();
-                console.log(`[Config] New provider started: ${newProvider}`);
+                // Schedule provider switch asynchronously — don't block IPC response
+                setImmediate(async () => {
+                    try {
+                        if (wasRunning) {
+                            ctx.stopAIProvider();
+                            const isCLI = CLI_PROVIDERS.includes(oldProvider);
+                            await new Promise(resolve => setTimeout(resolve, isCLI ? 1500 : 500));
+                        }
+                        ctx.startAIProvider();
+                        console.log(`[Config] New provider started: ${newProvider}`);
+                    } catch (err) {
+                        console.error(`[Config] Provider switch error:`, err.message);
+                    }
+                });
             }
         }
 
