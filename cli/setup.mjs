@@ -498,11 +498,10 @@ function createDesktopShortcut(projectDir) {
     try {
         if (os === 'win32') {
             const lnkPath = join(desktop, 'Voice Mirror.lnk');
-            // Find the global voice-mirror.cmd installed by npm link
-            const npmGlobal = join(process.env.APPDATA || '', 'npm');
-            const vmCmd = join(npmGlobal, 'voice-mirror.cmd');
-            const target = existsSync(vmCmd) ? vmCmd : 'cmd.exe';
-            const args = existsSync(vmCmd) ? 'start' : '/c voice-mirror start';
+            // Use wscript.exe + launch-hidden.vbs to avoid console window
+            const vbsPath = join(projectDir, 'scripts', 'launch-hidden.vbs');
+            const target = 'wscript.exe';
+            const args = `"${vbsPath}"`;
             // Write a temp .ps1 script to avoid quote-escaping issues
             const tmpPs1 = join(process.env.TEMP || homedir(), 'vm-shortcut.ps1');
             const icoPath = join(projectDir, 'assets', 'icon-256.ico');
