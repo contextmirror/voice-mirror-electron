@@ -121,15 +121,40 @@ function configureMCPServer(appConfig) {
 }
 
 /**
- * Check if Claude CLI is available
+ * Check if Claude CLI is available.
+ * Returns the resolved path on success, or null if not found.
  */
+let _resolvedClaudePath = null;
+
 function isClaudeAvailable() {
     try {
         const { execSync } = require('child_process');
-        const cmd = process.platform === 'win32' ? 'where claude' : 'which claude';
-        execSync(cmd, { stdio: 'ignore' });
-        return true;
+        if (process.platform === 'win32') {
+            // Try claude.cmd first (npm global), then claude.exe, then claude
+            for (const name of ['claude.cmd', 'claude.exe', 'claude']) {
+                try {
+                    const result = execSync(`where ${name}`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+                    // `where` can return multiple lines; take the first
+                    const firstLine = result.split(/\r?\n/)[0].trim();
+                    if (firstLine && fs.existsSync(firstLine)) {
+                        _resolvedClaudePath = firstLine;
+                        debugLog(`Resolved Claude CLI path: ${_resolvedClaudePath}`);
+                        return true;
+                    }
+                } catch { /* try next */ }
+            }
+            _resolvedClaudePath = null;
+            return false;
+        } else {
+            const result = execSync('which claude', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+            if (result) {
+                _resolvedClaudePath = result;
+                return true;
+            }
+            return false;
+        }
     } catch {
+        _resolvedClaudePath = null;
         return false;
     }
 }
@@ -169,17 +194,9 @@ function spawnClaude(options = {}) {
         return null;
     }
 
-    const shell = process.platform === 'win32' ? 'cmd.exe' : 'bash';
-    let claudeCmd = 'claude';
-    if (process.platform === 'win32') {
-        // Check for .cmd first (npm global), then .exe (standalone)
-        try {
-            require('child_process').execFileSync('where', ['claude.cmd'], { stdio: 'ignore' });
-            claudeCmd = 'claude.cmd';
-        } catch {
-            claudeCmd = 'claude';  // Let pty.spawn resolve it
-        }
-    }
+    // Use the resolved full path from isClaudeAvailable()
+    const claudeCmd = _resolvedClaudePath || 'claude';
+    debugLog(`Using Claude command: ${claudeCmd}`);
 
     // Start Claude interactively - shows full TUI
     // Voice prompt is injected via PTY after TUI loads (see main.js sendInputWhenReady)

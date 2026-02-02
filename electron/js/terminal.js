@@ -444,8 +444,8 @@ export function handleAIOutput(data) {
 export function clearTerminal() {
     if (!term) return;
 
-    // Clear the terminal
-    term.clear();
+    // Full reset: clear screen, scrollback, and cursor position
+    term.reset();
 
     // Show welcome banner again
     const providerName = state.currentProviderName || 'AI Provider';
