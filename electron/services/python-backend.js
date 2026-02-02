@@ -234,7 +234,10 @@ function createPythonBackend(options = {}) {
                 if (log) log('PYTHON', 'Using sg input for /dev/input access (session missing input group)');
                 // Spawn via: sg input -c "'path/to/python' 'script.py'"
                 // Paths must be quoted because they may contain spaces
-                const cmd = `'${venvPython}' '${scriptToRun}'`;
+                // Escape single quotes for shell: replace ' with '\''
+                const escPython = venvPython.replace(/'/g, "'\\''");
+                const escScript = scriptToRun.replace(/'/g, "'\\''");
+                const cmd = `'${escPython}' '${escScript}'`;
                 pythonProcess = spawn('sg', ['input', '-c', cmd], spawnOptions);
             } else {
                 pythonProcess = spawn(venvPython, [scriptToRun], spawnOptions);
@@ -253,6 +256,12 @@ function createPythonBackend(options = {}) {
 
         pythonProcess.stdout.on('data', (data) => {
             stdoutBuffer += data.toString();
+
+            // Prevent unbounded buffer growth (cap at 1MB)
+            if (stdoutBuffer.length > 1024 * 1024) {
+                console.warn('[Python] stdout buffer exceeded 1MB, truncating');
+                stdoutBuffer = stdoutBuffer.slice(-1024 * 512); // Keep last 512KB
+            }
 
             // Process complete lines
             const lines = stdoutBuffer.split('\n');
@@ -322,6 +331,14 @@ function createPythonBackend(options = {}) {
     function stop() {
         if (pythonProcess) {
             send({ command: 'stop' });
+            // Give Python 3 seconds to exit gracefully, then force kill
+            const proc = pythonProcess;
+            const killTimer = setTimeout(() => {
+                try {
+                    proc.kill(process.platform === 'win32' ? undefined : 'SIGKILL');
+                } catch { /* already exited */ }
+            }, 3000);
+            proc.on('close', () => clearTimeout(killTimer));
             pythonProcess.kill();
             pythonProcess = null;
             return true;
@@ -334,7 +351,12 @@ function createPythonBackend(options = {}) {
      */
     function kill() {
         if (pythonProcess) {
-            pythonProcess.kill('SIGKILL');
+            try {
+                // SIGKILL not available on Windows; process.kill() uses TerminateProcess
+                pythonProcess.kill(process.platform === 'win32' ? undefined : 'SIGKILL');
+            } catch (err) {
+                console.error('[Python] Kill error:', err.message);
+            }
             pythonProcess = null;
         }
     }

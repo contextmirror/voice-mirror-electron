@@ -214,7 +214,11 @@ function createInboxWatcher(options = {}) {
                 }
 
             } catch (err) {
-                // Silently ignore parse errors
+                if (err instanceof SyntaxError) {
+                    // JSON parse error — inbox file may be corrupted, skip this tick
+                } else {
+                    console.error('[InboxWatcher] Poll error:', err.message);
+                }
             }
         }, 500);
 

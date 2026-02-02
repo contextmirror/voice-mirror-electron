@@ -72,23 +72,28 @@ class ParakeetAdapter(STTAdapter):
             wav_data = wav_header + audio_bytes
 
             # Save temp WAV file for onnx-asr
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-                f.write(wav_data)
-                temp_path = f.name
+            temp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                    f.write(wav_data)
+                    temp_path = f.name
 
-            # Run in thread pool to not block async loop
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None,
-                lambda: self.model.recognize(temp_path)
-            )
+                # Run in thread pool to not block async loop
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: self.model.recognize(temp_path)
+                )
 
-            # Clean up temp file
-            os.unlink(temp_path)
-
-            if result and result.strip():
-                return result.strip()
-            return ""
+                if result and result.strip():
+                    return result.strip()
+                return ""
+            finally:
+                if temp_path and os.path.exists(temp_path):
+                    try:
+                        os.unlink(temp_path)
+                    except OSError:
+                        pass
 
         except Exception as e:
             print(f"❌ Parakeet STT error: {e}")

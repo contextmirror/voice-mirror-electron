@@ -170,18 +170,24 @@ function ensureConfigDir() {
  */
 function loadConfig() {
     const configPath = getConfigPath();
+    const backupPath = configPath + '.bak';
 
-    try {
-        if (fs.existsSync(configPath)) {
-            const saved = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-            // Deep merge with defaults (saved values override defaults)
-            return deepMerge(DEFAULT_CONFIG, saved);
+    // Try main config first, fall back to backup
+    for (const tryPath of [configPath, backupPath]) {
+        try {
+            if (fs.existsSync(tryPath)) {
+                const saved = JSON.parse(fs.readFileSync(tryPath, 'utf8'));
+                if (tryPath === backupPath) {
+                    console.warn('[Config] Main config corrupt, loaded from backup');
+                }
+                return deepMerge(DEFAULT_CONFIG, saved);
+            }
+        } catch (error) {
+            console.error(`[Config] Error loading ${path.basename(tryPath)}:`, error.message);
         }
-    } catch (error) {
-        console.error('[Config] Error loading config:', error.message);
     }
 
-    // Return defaults if no config exists or on error
+    // Return defaults if no config exists or both are corrupt
     return { ...DEFAULT_CONFIG };
 }
 
@@ -191,13 +197,28 @@ function loadConfig() {
 function saveConfig(config) {
     ensureConfigDir();
     const configPath = getConfigPath();
+    const tempPath = configPath + '.tmp';
+    const backupPath = configPath + '.bak';
 
     try {
-        fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
-        console.log('[Config] Saved to:', configPath);
+        // Atomic write: write to temp file, then rename
+        const json = JSON.stringify(config, null, 2);
+        fs.writeFileSync(tempPath, json, 'utf8');
+
+        // Backup existing config before overwriting
+        if (fs.existsSync(configPath)) {
+            try {
+                fs.copyFileSync(configPath, backupPath);
+            } catch { /* backup is best-effort */ }
+        }
+
+        // Rename temp to config (atomic on all platforms)
+        fs.renameSync(tempPath, configPath);
         return true;
     } catch (error) {
         console.error('[Config] Error saving config:', error.message);
+        // Clean up temp file if it exists
+        try { fs.unlinkSync(tempPath); } catch { /* ignore */ }
         return false;
     }
 }

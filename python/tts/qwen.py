@@ -204,6 +204,7 @@ class QwenTTSAdapter(TTSAdapter):
         if on_start:
             on_start()
 
+        temp_files = []
         try:
             if self.model is None:
                 print("❌ Qwen3-TTS not loaded")
@@ -242,6 +243,9 @@ class QwenTTSAdapter(TTSAdapter):
                         None, _synthesize_chunk, chunk, i
                     )
 
+                if audio_file:
+                    temp_files.append(audio_file)
+
                 if self._interrupted or audio_file is None:
                     break
 
@@ -254,9 +258,25 @@ class QwenTTSAdapter(TTSAdapter):
                 # Play this chunk (non-blocking to event loop, interruptible via _play_audio)
                 await loop.run_in_executor(None, self._play_audio, audio_file)
 
+            # Collect any remaining pre-synthesized file
+            if next_future is not None:
+                try:
+                    remaining = await next_future
+                    if remaining:
+                        temp_files.append(remaining)
+                except Exception:
+                    pass
+
         except Exception as e:
             print(f"❌ Qwen3-TTS error: {e}")
         finally:
+            # Clean up all temp audio files
+            for f in temp_files:
+                try:
+                    if os.path.exists(f):
+                        os.unlink(f)
+                except OSError:
+                    pass
             self._playback_process = None
             self._is_speaking = False
             was_interrupted = self._interrupted

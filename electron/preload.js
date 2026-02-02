@@ -167,7 +167,13 @@ contextBridge.exposeInMainWorld('voiceMirror', {
     devlog: (category, action, data) => ipcRenderer.send('devlog', category, action, data),
 
     // Open external URLs in default browser
-    openExternal: (url) => ipcRenderer.invoke('open-external', url),
+    openExternal: (url) => {
+        // Block dangerous URL schemes at the preload boundary
+        if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+            return Promise.resolve({ success: false, error: 'Only http/https URLs allowed' });
+        }
+        return ipcRenderer.invoke('open-external', url);
+    },
 
     // Listen for open-settings command from tray menu
     onOpenSettings: (callback) => {

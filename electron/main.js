@@ -18,6 +18,7 @@ const fs = require('fs');
 // panel; the collapsed orb is rendered by wayland-orb (native layer-shell)
 // when available, falling back to the Electron window on X11/non-Wayland.
 const config = require('./config');
+const { registerIpcHandlers } = require('./ipc-handlers');
 // CLI agent providers that use PTY mode (terminal-based)
 const CLI_PROVIDERS = ['claude', 'codex', 'gemini-cli'];
 // Note: claude-spawner and providers are now used via ai-manager service
@@ -84,6 +85,8 @@ let mainWindow = null;  // Reference to windowManager's window (for backward com
 let appConfig = null;
 let pythonReadyTimeout = null;
 let startupPinger = null;
+let aiStartupTimeout = null;
+let aiReadyCheckInterval = null;
 
 /** Send IPC to mainWindow only if it still exists and isn't destroyed. */
 function safeSend(channel, data) {
@@ -326,7 +329,12 @@ function startPythonVoiceMirror() {
         if (pythonReadyTimeout) clearTimeout(pythonReadyTimeout);
         pythonReadyTimeout = setTimeout(() => {
             clearInterval(startupPinger);
-            console.error('[Python] Backend failed to start within 30 seconds');
+            startupPinger = null;
+            console.error('[Python] Backend failed to start within 30 seconds, killing process');
+            // Kill the stuck Python process
+            if (pythonBackend?.isRunning()) {
+                pythonBackend.kill();
+            }
             safeSend('voice-event', {
                 type: 'error',
                 message: 'Python backend failed to start. Run "node cli/index.mjs setup" to fix.'
@@ -536,7 +544,10 @@ app.whenReady().then(() => {
         if (event.type === 'loading' && pythonReadyTimeout) {
             clearTimeout(pythonReadyTimeout);
             pythonReadyTimeout = setTimeout(() => {
-                console.error('[Python] Backend failed to start within 30 seconds');
+                console.error('[Python] Backend failed to start within 30 seconds, killing process');
+                if (pythonBackend?.isRunning()) {
+                    pythonBackend.kill();
+                }
                 safeSend('voice-event', {
                     type: 'error',
                     message: 'Python backend failed to start. Run "node cli/index.mjs setup" to fix.'
@@ -634,439 +645,29 @@ app.whenReady().then(() => {
         log: logger
     });
 
-    // Dev logging from renderer → vmr.log
-    ipcMain.on('devlog', (_event, category, action, data) => {
-        logger.devlog(category, action, data || {});
-    });
-
-    // Register IPC handlers
-    ipcMain.handle('toggle-expand', () => {
-        if (isExpanded) {
-            collapseToOrb();
-        } else {
-            expandPanel();
-        }
-        return isExpanded;
-    });
-
-    // Hotkey fallback from renderer — only honored when primary layers both failed
-    ipcMain.on('hotkey-fallback', (event, id) => {
-        if (!hotkeyManager) return;
-        const binding = hotkeyManager.getBinding(id);
-        if (binding && !binding.uiohookActive && !binding.globalShortcutActive) {
-            logger.log('HOTKEY', `Fallback triggered for "${id}" from renderer`);
-            binding.callback();
-        }
-    });
-
-    ipcMain.handle('capture-screen', async () => {
-        const sources = await desktopCapturer.getSources({
-            types: ['screen'],
-            thumbnailSize: { width: 1920, height: 1080 }
-        });
-
-        if (sources.length > 0) {
-            return sources[0].thumbnail.toDataURL();
-        }
-        return null;
-    });
-
-    ipcMain.handle('get-state', () => {
-        return { expanded: isExpanded };
-    });
-
-    // Window control handlers
-    ipcMain.handle('minimize-window', () => {
-        mainWindow?.minimize();
-    });
-
-    ipcMain.handle('hide-to-tray', () => {
-        mainWindow?.hide();
-    });
-
-    // Window dragging handlers (for custom orb drag without -webkit-app-region)
-    ipcMain.handle('get-window-position', () => {
-        if (mainWindow) {
-            const [x, y] = mainWindow.getPosition();
-            return { x, y };
-        }
-        return { x: 0, y: 0 };
-    });
-
-    ipcMain.handle('set-window-position', (event, x, y) => {
-        if (mainWindow) {
-            mainWindow.setPosition(Math.round(x), Math.round(y));
-            return { success: true };
-        }
-        return { success: false };
-    });
-
-    // Get cursor position (for drag - mouse leaves small window)
-    ipcMain.handle('get-cursor-position', () => {
-        const point = screen.getCursorScreenPoint();
-        return { x: point.x, y: point.y };
-    });
-
-    // Drag capture: temporarily expand window to catch mouse events
-    // When orb is 64x64, mouse leaves immediately - this fixes that
-    let preDragBounds = null;
-
-    ipcMain.handle('start-drag-capture', () => {
-        if (!mainWindow || isExpanded) return { success: false };
-
-        // Save current bounds
-        preDragBounds = mainWindow.getBounds();
-
-        // Expand to large capture area centered on orb
-        const captureSize = 800;
-        const offsetX = (captureSize - preDragBounds.width) / 2;
-        const offsetY = (captureSize - preDragBounds.height) / 2;
-
-        mainWindow.setBounds({
-            x: Math.round(preDragBounds.x - offsetX),
-            y: Math.round(preDragBounds.y - offsetY),
-            width: captureSize,
-            height: captureSize
-        });
-
-        console.log('[Voice Mirror] Drag capture started');
-        return { success: true, originalBounds: preDragBounds };
-    });
-
-    ipcMain.handle('stop-drag-capture', (event, newX, newY) => {
-        if (!mainWindow || isExpanded) return { success: false };
-
-        // Restore to orb size at new position
-        const orbSize = getOrbSize();
-        mainWindow.setBounds({
-            x: Math.round(newX),
-            y: Math.round(newY),
-            width: orbSize,
-            height: orbSize
-        });
-
-        // Save new position
-        config.updateConfig({ window: { orbX: Math.round(newX), orbY: Math.round(newY) } });
-
-        preDragBounds = null;
-        console.log('[Voice Mirror] Drag capture ended at', newX, newY);
-        return { success: true };
-    });
-
-    // Open external URLs in default browser
-    ipcMain.handle('open-external', async (event, url) => {
-        try {
-            await shell.openExternal(url);
-            return { success: true };
-        } catch (err) {
-            console.error('[Voice Mirror] Failed to open external URL:', err);
-            return { success: false, error: err.message };
-        }
-    });
-
-    // Config IPC handlers (for settings UI)
-    ipcMain.handle('get-config', () => {
-        return config.loadConfig();
-    });
-
-    ipcMain.handle('set-config', async (event, updates) => {
-        const oldProvider = appConfig?.ai?.provider;
-        const oldModel = appConfig?.ai?.model;
-        if (updates.ai) {
-            console.log(`[Config] AI update: provider=${oldProvider}->${updates.ai.provider}, model=${oldModel}->${updates.ai.model}`);
-        }
-        const oldHotkey = appConfig?.behavior?.hotkey;
-        const oldActivationMode = appConfig?.behavior?.activationMode;
-        const oldPttKey = appConfig?.behavior?.pttKey;
-        const oldOutputName = appConfig?.overlay?.outputName || null;
-        const oldVoice = appConfig?.voice;
-        const oldWakeWord = appConfig?.wakeWord;
-
-        appConfig = config.updateConfig(updates);
-
-        // Auto-restart AI provider if provider or model changed
-        if (updates.ai) {
-            const newProvider = appConfig.ai?.provider;
-            const newModel = appConfig.ai?.model;
-            const providerChanged = oldProvider !== newProvider;
-            const modelChanged = oldModel !== newModel;
-
-            if ((providerChanged || modelChanged) && isAIProviderRunning()) {
-                console.log(`[Config] Provider/model changed, restarting AI: ${oldProvider}/${oldModel} -> ${newProvider}/${newModel}`);
-                stopAIProvider();
-                // Small delay for clean shutdown
-                await new Promise(resolve => setTimeout(resolve, 500));
-                startAIProvider();
-            }
-        }
-
-        // Re-register global shortcut if hotkey changed (with rollback on failure)
-        if (updates.behavior?.hotkey && updates.behavior.hotkey !== oldHotkey && hotkeyManager) {
-            const toggleCallback = () => {
-                if (isExpanded) collapseToOrb();
-                else expandPanel();
-            };
-            const ok = hotkeyManager.updateBinding('toggle-panel', updates.behavior.hotkey, toggleCallback);
-            if (!ok) {
-                // Rollback already happened in updateBinding; revert config too
-                logger.log('HOTKEY', `Reverted config hotkey to "${oldHotkey}"`);
-                appConfig.behavior.hotkey = oldHotkey;
-                config.updateConfig({ behavior: { hotkey: oldHotkey } });
-            }
-        }
-
-        // PTT key registration is handled by Python's GlobalHotkeyListener.
-        // Config changes are forwarded to Python via stdin (config_update command),
-        // which updates the evdev/pynput listener directly.
-
-        // Forward overlay output change to wayland orb (only if actually changed)
-        if (updates.overlay?.outputName !== undefined && waylandOrb?.isReady()) {
-            const newOutput = updates.overlay.outputName || null;
-            const oldOutput = oldOutputName;
-            if (newOutput !== oldOutput) {
-                waylandOrb.setOutput(newOutput);
-            }
-        }
-
-        // Notify Python backend of config changes (only if voice-related settings changed)
-        const activationModeChanged = updates.behavior?.activationMode !== undefined && updates.behavior.activationMode !== oldActivationMode;
-        const pttKeyChanged = updates.behavior?.pttKey !== undefined && updates.behavior.pttKey !== oldPttKey;
-        const voiceSettingsChanged = activationModeChanged || pttKeyChanged ||
-            (updates.wakeWord && JSON.stringify(updates.wakeWord) !== JSON.stringify(oldWakeWord)) ||
-            (updates.voice && JSON.stringify(updates.voice) !== JSON.stringify(oldVoice));
-        if (voiceSettingsChanged && pythonBackend?.isRunning()) {
-            sendToPython({
-                command: 'config_update',
-                config: {
-                    activationMode: appConfig.behavior?.activationMode,
-                    pttKey: appConfig.behavior?.pttKey,
-                    wakeWord: appConfig.wakeWord,
-                    voice: appConfig.voice
-                }
-            });
-        }
-
-        return appConfig;
-    });
-
-    // Overlay output list
-    ipcMain.handle('list-overlay-outputs', async () => {
-        if (waylandOrb?.isReady()) {
-            return await waylandOrb.listOutputs();
-        }
-        return [];
-    });
-
-    ipcMain.handle('reset-config', () => {
-        appConfig = config.resetConfig();
-        return appConfig;
-    });
-
-    ipcMain.handle('get-platform-info', () => {
-        return config.getPlatformPaths();
-    });
-
-    // Image handling - send to Python backend
-    ipcMain.handle('send-image', async (event, imageData) => {
-        return sendImageToPython(imageData);
-    });
-
-    // Python backend communication
-    ipcMain.handle('send-query', (event, query) => {
-        sendToPython({ command: 'query', text: query.text, image: query.image });
-        return { sent: true };
-    });
-
-    ipcMain.handle('set-voice-mode', (event, mode) => {
-        sendToPython({ command: 'set_mode', mode: mode });
-        return { sent: true };
-    });
-
-    ipcMain.handle('get-python-status', () => {
-        return {
-            running: pythonBackend?.isRunning() || false,
-            pid: pythonBackend?.getProcess()?.pid
-        };
-    });
-
-    ipcMain.handle('start-python', () => {
-        if (!pythonBackend?.isRunning()) {
-            startPythonVoiceMirror();
-            return { started: true };
-        }
-        return { started: false, reason: 'already running' };
-    });
-
-    ipcMain.handle('stop-python', () => {
-        if (pythonBackend?.isRunning()) {
-            pythonBackend.stop();
-            return { stopped: true };
-        }
-        return { stopped: false, reason: 'not running' };
-    });
-
-    // Call mode handlers (always listening, no wake word)
-    ipcMain.handle('set-call-mode', (event, active) => {
-        const callPath = path.join(config.getDataDir(), 'voice_call.json');
-
-        // Ensure directory exists
-        const dir = path.dirname(callPath);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-
-        fs.writeFileSync(callPath, JSON.stringify({ active: active }, null, 2));
-        console.log(`[Voice Mirror] Call mode: ${active ? 'ON' : 'OFF'}`);
-
-        safeSend('voice-event', {
-            type: active ? 'call_active' : 'idle',
-            callMode: active
-        });
-
-        return { callMode: active };
-    });
-
-    ipcMain.handle('get-call-mode', () => {
-        const callPath = path.join(config.getDataDir(), 'voice_call.json');
-
-        try {
-            if (fs.existsSync(callPath)) {
-                const data = JSON.parse(fs.readFileSync(callPath, 'utf-8'));
-                return { active: data.active || false };
-            }
-        } catch {}
-
-        return { active: false };
-    });
-
-    // AI Provider backend IPC handlers (routes to Claude PTY or OpenAI-compatible API)
-    ipcMain.handle('start-claude', () => {
-        if (!isAIProviderRunning()) {
-            const started = startAIProvider();
-            return { started };
-        }
-        return { started: false, reason: 'already running' };
-    });
-
-    ipcMain.handle('stop-claude', () => {
-        if (isAIProviderRunning()) {
-            stopAIProvider();
-            return { stopped: true };
-        }
-        return { stopped: false, reason: 'not running' };
-    });
-
-    ipcMain.handle('get-claude-status', () => {
-        const providerType = appConfig?.ai?.provider || 'claude';
-        return {
-            running: isAIProviderRunning(),
-            mode: CLI_PROVIDERS.includes(providerType) ? 'pty' : 'api',
-            provider: providerType
-        };
-    });
-
-    // PTY input/resize handlers for xterm.js
-    // Routes to Claude PTY or OpenAI-compatible provider based on config
-    ipcMain.handle('claude-pty-input', (event, data) => {
-        const providerType = appConfig?.ai?.provider || 'claude';
-
-        if (CLI_PROVIDERS.includes(providerType)) {
-            // CLI providers use PTY - send raw input via aiManager
-            if (aiManager && aiManager.sendRawInputData(data)) {
-                return { sent: true };
-            }
-        } else {
-            // OpenAI-compatible providers - accumulate input and send on Enter
-            const provider = aiManager?.getProvider();
-            if (provider && provider.isRunning()) {
-                // Check if Enter key was pressed (CR or LF)
-                if (data === '\r' || data === '\n') {
-                    // Send accumulated input
-                    if (provider._inputBuffer && provider._inputBuffer.trim()) {
-                        provider.sendInput(provider._inputBuffer.trim());
-                        provider._inputBuffer = '';
-                    }
-                } else if (data === '\x7f' || data === '\b') {
-                    // Backspace - remove last character
-                    if (provider._inputBuffer) {
-                        provider._inputBuffer = provider._inputBuffer.slice(0, -1);
-                        // Echo backspace to terminal
-                        safeSend('claude-terminal', {
-                            type: 'stdout',
-                            text: '\b \b'
-                        });
-                    }
-                } else if (data.charCodeAt(0) >= 32 || data === '\t') {
-                    // Printable characters - accumulate and echo
-                    provider._inputBuffer = (provider._inputBuffer || '') + data;
-                    // Echo to terminal
-                    safeSend('claude-terminal', {
-                        type: 'stdout',
-                        text: data
-                    });
-                }
-                return { sent: true };
-            }
-        }
-        return { sent: false, reason: 'not running' };
-    });
-
-    ipcMain.handle('claude-pty-resize', (event, cols, rows) => {
-        const providerType = appConfig?.ai?.provider || 'claude';
-
-        if (CLI_PROVIDERS.includes(providerType) && aiManager) {
-            aiManager.resize(cols, rows);
-            return { resized: true };
-        }
-        // Non-PTY providers don't need resize handling
-        return { resized: false, reason: CLI_PROVIDERS.includes(providerType) ? 'not running' : 'not PTY' };
-    });
-
-    // AI Provider IPC handlers
-    ipcMain.handle('ai-scan-providers', async () => {
-        const { providerDetector } = require('./services/provider-detector');
-        const results = await providerDetector.scanAll();
-        return results;
-    });
-
-    ipcMain.handle('ai-get-providers', async () => {
-        const { providerDetector } = require('./services/provider-detector');
-        return providerDetector.getCachedStatus();
-    });
-
-    ipcMain.handle('ai-set-provider', (event, providerId, model) => {
-        // Update config with new provider
-        appConfig = config.updateConfig({
-            ai: {
-                provider: providerId,
-                model: model || null
-            }
-        });
-        console.log(`[Voice Mirror] AI provider set to: ${providerId}${model ? ' (' + model + ')' : ''}`);
-        return { success: true, provider: providerId, model };
-    });
-
-    ipcMain.handle('ai-get-provider', () => {
-        return {
-            provider: appConfig?.ai?.provider || 'claude',
-            model: appConfig?.ai?.model || null,
-            autoDetect: appConfig?.ai?.autoDetect !== false
-        };
-    });
-
-    // Start both Voice + AI provider together
-    ipcMain.handle('start-all', () => {
-        if (!pythonBackend?.isRunning()) startPythonVoiceMirror();
-        if (!isAIProviderRunning()) startAIProvider();
-        return { started: true };
-    });
-
-    ipcMain.handle('stop-all', () => {
-        if (pythonBackend?.isRunning()) {
-            pythonBackend.stop();
-        }
-        stopAIProvider();
-        return { stopped: true };
+    // Register all IPC handlers
+    registerIpcHandlers({
+        getMainWindow: () => mainWindow,
+        getAppConfig: () => appConfig,
+        setAppConfig: (cfg) => { appConfig = cfg; },
+        config,
+        safeSend,
+        expandPanel,
+        collapseToOrb,
+        getIsExpanded: () => isExpanded,
+        getOrbSize,
+        sendToPython,
+        sendImageToPython,
+        startPythonVoiceMirror,
+        startAIProvider,
+        stopAIProvider,
+        isAIProviderRunning,
+        getAIManager: () => aiManager,
+        getPythonBackend: () => pythonBackend,
+        getWaylandOrb: () => waylandOrb,
+        getHotkeyManager: () => hotkeyManager,
+        getInboxWatcherService: () => inboxWatcherService,
+        logger
     });
 
     // Initialize native Wayland overlay orb before creating window
@@ -1187,7 +788,7 @@ app.whenReady().then(() => {
         console.log(`[Voice Mirror] Auto-starting Python and AI provider (${providerName})...`);
 
         // Ensure Ollama is running if it's the selected provider
-        if (['ollama', 'lmstudio', 'jan'].includes(providerName) || providerName === 'ollama') {
+        if (['ollama', 'lmstudio', 'jan'].includes(providerName)) {
             ensureLocalLLMRunning(providerName, appConfig);
         }
 
@@ -1196,36 +797,37 @@ app.whenReady().then(() => {
 
         startPythonVoiceMirror();
 
-        // Small delay to let Python initialize before starting AI provider
-        setTimeout(() => {
+        // Start AI provider after Python is ready, or after 5s fallback
+        // (Python ready event fires in ~2-4s; this gives graceful degradation)
+        let aiStarted = false;
+        const doStartAI = () => {
+            if (aiStarted) return;
+            aiStarted = true;
             try {
                 startAIProvider();
             } catch (err) {
                 console.error('[Voice Mirror] Failed to start AI provider:', err.message);
             }
-        }, 2000);
+        };
+
+        // Fallback: start AI after 5 seconds regardless
+        aiStartupTimeout = setTimeout(doStartAI, 5000);
+
+        // Watch for Python ready to start AI sooner
+        aiReadyCheckInterval = setInterval(() => {
+            // pythonReadyTimeout is set to null when Python sends 'ready'
+            if (pythonReadyTimeout === null || !pythonBackend?.isRunning()) {
+                clearInterval(aiReadyCheckInterval); aiReadyCheckInterval = null;
+                clearTimeout(aiStartupTimeout); aiStartupTimeout = null;
+                doStartAI();
+            }
+        }, 300);
     } catch (err) {
         console.error('[Voice Mirror] Auto-start failed:', err.message);
     }
 });
 
 app.on('window-all-closed', () => {
-    // Clean up Python process
-    if (pythonBackend) {
-        pythonBackend.kill();
-    }
-
-    // Stop AI provider (Claude PTY or OpenAI-compatible)
-    stopAIProvider();
-
-    // Stop all watchers
-    stopScreenCaptureWatcher();
-    stopInboxWatcher();
-    stopBrowserRequestWatcher();
-
-    // Close browser
-    closeBrowser();
-
     if (process.platform !== 'darwin') {
         app.quit();
     }
@@ -1237,9 +839,15 @@ app.on('activate', () => {
     }
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', async () => {
     app.isQuitting = true;
     logger.log('APP', 'Shutting down...');
+
+    // Clean up startup timers
+    if (aiStartupTimeout) { clearTimeout(aiStartupTimeout); aiStartupTimeout = null; }
+    if (aiReadyCheckInterval) { clearInterval(aiReadyCheckInterval); aiReadyCheckInterval = null; }
+    if (startupPinger) { clearInterval(startupPinger); startupPinger = null; }
+    if (pythonReadyTimeout) { clearTimeout(pythonReadyTimeout); pythonReadyTimeout = null; }
 
     // Destroy hotkey manager (unregisters all shortcuts)
     if (hotkeyManager) {
@@ -1266,15 +874,20 @@ app.on('before-quit', () => {
     stopInboxWatcher();
     stopBrowserRequestWatcher();
 
-    // Close browser
-    closeBrowser();
+    // Close browser (async)
+    try { await closeBrowser(); } catch { /* ignore */ }
 
-    if (pythonBackend) {
-        pythonBackend.kill();
-    }
-
-    // Stop AI provider (Claude PTY or OpenAI-compatible)
+    // Stop AI provider
     stopAIProvider();
+
+    // Stop Python gracefully (stop() sends command + waits 3s before kill)
+    if (pythonBackend) {
+        if (pythonBackend.isRunning()) {
+            pythonBackend.stop();
+        } else {
+            pythonBackend.kill();
+        }
+    }
 
     // Close log file
     logger.close();

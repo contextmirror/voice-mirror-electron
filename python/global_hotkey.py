@@ -412,13 +412,19 @@ class GlobalHotkeyListener:
     # ── Trigger file ────────────────────────────────────────────
 
     def _write_trigger(self, action: str):
-        """Write PTT trigger JSON for voice_agent to pick up."""
+        """Write PTT trigger JSON for voice_agent to pick up.
+
+        Uses atomic write (write to temp, then os.replace) to prevent
+        voice_agent from reading a partially-written JSON file.
+        """
         try:
-            with open(self._ptt_path, 'w', encoding='utf-8') as f:
+            temp_path = str(self._ptt_path) + '.tmp'
+            with open(temp_path, 'w', encoding='utf-8') as f:
                 json.dump({
                     "action": action,
                     "timestamp": datetime.now().isoformat()
                 }, f)
+            os.replace(temp_path, self._ptt_path)  # Atomic on all platforms
             print(f"[GlobalHotkey] PTT {action}")
         except Exception as e:
             print(f"[GlobalHotkey] Failed to write trigger: {e}")

@@ -34,6 +34,7 @@ function createAIManager(options = {}) {
 
     let activeProvider = null;  // Current OpenAI-compatible provider instance
     let hasStartedOnce = false; // Track initial startup vs provider switch
+    let _switching = false; // Prevent concurrent start/stop
 
     /**
      * Send output to the terminal UI.
@@ -137,6 +138,10 @@ function createAIManager(options = {}) {
      * @returns {boolean} True if started
      */
     function start() {
+        if (_switching) {
+            console.log('[AIManager] Provider switch in progress, skipping');
+            return false;
+        }
         const config = getConfig();
         const providerType = config?.ai?.provider || 'claude';
         const model = config?.ai?.model || config?.ai?.localModel || null;
@@ -250,6 +255,7 @@ function createAIManager(options = {}) {
         }).catch((err) => {
             console.error(`[AIManager] Failed to start ${providerType}:`, err);
             sendOutput('stderr', `[Error] Failed to start ${providerType}: ${err.message}\n`);
+            activeProvider = null; // Clear broken provider
             if (isSwitch && onSystemSpeak) {
                 onSystemSpeak(`System check failed. ${providerType} is not responding.`);
             }
@@ -264,6 +270,7 @@ function createAIManager(options = {}) {
      * @returns {boolean} True if something was stopped
      */
     function stop() {
+        _switching = true;
         let stopped = false;
 
         // Always try to stop Claude PTY if it's running
@@ -292,6 +299,7 @@ function createAIManager(options = {}) {
             sendVoiceEvent({ type: 'claude_disconnected' });
         }
 
+        _switching = false;
         return stopped;
     }
 

@@ -103,6 +103,7 @@ class KokoroAdapter(TTSAdapter):
         if on_start:
             on_start()
 
+        temp_files = []
         try:
             if self.model is None:
                 print("❌ Kokoro TTS not loaded")
@@ -139,6 +140,9 @@ class KokoroAdapter(TTSAdapter):
                         None, _synthesize, chunk, i
                     )
 
+                if audio_file:
+                    temp_files.append(audio_file)
+
                 if self._interrupted:
                     break
 
@@ -151,9 +155,25 @@ class KokoroAdapter(TTSAdapter):
                 # Play this chunk (non-blocking to event loop)
                 await loop.run_in_executor(None, self._play_audio, audio_file)
 
+            # Collect any remaining pre-synthesized file
+            if next_future is not None:
+                try:
+                    remaining = await next_future
+                    if remaining:
+                        temp_files.append(remaining)
+                except Exception:
+                    pass
+
         except Exception as e:
             print(f"❌ Kokoro TTS error: {e}")
         finally:
+            # Clean up all temp audio files
+            for f in temp_files:
+                try:
+                    if os.path.exists(f):
+                        os.unlink(f)
+                except OSError:
+                    pass
             self._playback_process = None
             self._is_speaking = False
             was_interrupted = self._interrupted

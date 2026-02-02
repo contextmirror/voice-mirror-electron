@@ -13,10 +13,10 @@
     "download-model": "node scripts/download-model.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "better-sqlite3": "^12.6.2",
-    "chokidar": "^3.6.0",
-    "sqlite-vec": "^0.1.7-alpha.2"
+    "@modelcontextprotocol/sdk": "~1.0.0",
+    "better-sqlite3": "~12.6.2",
+    "chokidar": "~3.6.0",
+    "sqlite-vec": "~0.1.7-alpha.2"
   },
   "optionalDependencies": {
     "@google/generative-ai": "^0.1.0",

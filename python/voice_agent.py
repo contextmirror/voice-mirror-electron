@@ -492,7 +492,14 @@ class VoiceMirror:
         return detected
 
     def audio_callback(self, indata, frames, time_info, status):
-        """Callback for audio stream."""
+        """Callback for audio stream.
+
+        Thread safety note: This runs in the audio I/O thread. Shared state
+        mutations (is_recording, is_processing, ptt_active, etc.) are simple
+        boolean/integer attribute assignments, which are atomic under CPython's
+        GIL. No additional locking is needed for these. The audio buffer is
+        protected by AudioState's internal lock.
+        """
         if status:
             print(f"Audio status: {status}")
 
