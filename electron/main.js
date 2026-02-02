@@ -539,12 +539,11 @@ app.whenReady().then(() => {
         // Startup greeting when Python backend is ready
         if (event.type === 'ready') {
             if (pythonReadyTimeout) { clearTimeout(pythonReadyTimeout); pythonReadyTimeout = null; }
-            // Send initial config so Python has correct TTS/voice settings on startup
+            // Sync voice settings (TTS adapter/voice) but NOT activation mode
+            // to avoid restarting the hotkey listener that's already running
             sendToPython({
                 command: 'config_update',
                 config: {
-                    activationMode: appConfig.behavior?.activationMode,
-                    pttKey: appConfig.behavior?.pttKey,
                     wakeWord: appConfig.wakeWord,
                     voice: appConfig.voice
                 }
