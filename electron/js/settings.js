@@ -161,6 +161,14 @@ export async function loadSettingsUI() {
             document.getElementById('ai-endpoint').value = endpoints[provider];
         }
 
+        // Load detected API keys from environment
+        try {
+            state._detectedKeyProviders = await window.voiceMirror.python.getDetectedKeys() || [];
+        } catch { state._detectedKeyProviders = []; }
+
+        // Populate API key field for current provider
+        populateApiKeyField(selectedProvider);
+
         // If auto-detect is enabled, scan for providers
         if (aiConfig.autoDetect !== false) {
             scanProviders();
@@ -214,6 +222,11 @@ export function updateAIProviderUI(provider) {
     // Show/hide API key row for cloud providers and CLI agents that need keys (codex, gemini-cli)
     const needsApiKey = CLOUD_PROVIDERS_WITH_APIKEY.includes(provider) || (isCLI && provider !== 'claude');
     apikeyRow.style.display = needsApiKey ? 'flex' : 'none';
+
+    // Populate API key field with masked value + detected hint
+    if (needsApiKey) {
+        populateApiKeyField(provider);
+    }
 
     // Model row: hide for CLI providers (they use their own CLI), show for others
     modelRow.style.display = isCLI ? 'none' : 'flex';
@@ -536,6 +549,41 @@ async function loadAudioDevices() {
         }
     } catch (err) {
         console.log('[Settings] Could not load audio devices:', err);
+    }
+}
+
+/**
+ * Populate API key field for a provider with masked value + detected hint
+ */
+function populateApiKeyField(provider) {
+    const apiKeyInput = document.getElementById('ai-apikey');
+    const apikeyRow = document.getElementById('ai-apikey-row');
+    if (!apiKeyInput || !apikeyRow) return;
+
+    // Remove existing hint if any
+    const existingHint = apikeyRow.querySelector('.apikey-hint');
+    if (existingHint) existingHint.remove();
+
+    const savedKey = state.currentConfig?.ai?.apiKeys?.[provider];
+    if (savedKey) {
+        // Show masked key
+        const masked = savedKey.slice(0, 4) + '...' + savedKey.slice(-4);
+        apiKeyInput.value = '';
+        apiKeyInput.placeholder = masked;
+    } else {
+        apiKeyInput.value = '';
+        apiKeyInput.placeholder = 'Enter API key...';
+    }
+
+    // Show "detected from env" hint
+    const detected = state._detectedKeyProviders || [];
+    if (detected.includes(provider)) {
+        const hint = document.createElement('span');
+        hint.className = 'apikey-hint';
+        hint.textContent = 'ENV';
+        hint.title = 'Auto-detected from environment variable';
+        hint.style.cssText = 'font-size:9px;background:rgba(74,222,128,0.2);color:#4ade80;padding:2px 6px;border-radius:4px;margin-left:8px;font-weight:600;';
+        apikeyRow.querySelector('label')?.appendChild(hint);
     }
 }
 

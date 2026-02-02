@@ -94,7 +94,10 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         getCallMode: () => ipcRenderer.invoke('get-call-mode'),
 
         // List available audio input/output devices
-        listAudioDevices: () => ipcRenderer.invoke('list-audio-devices')
+        listAudioDevices: () => ipcRenderer.invoke('list-audio-devices'),
+
+        // Get provider names with auto-detected API keys (names only, not values)
+        getDetectedKeys: () => ipcRenderer.invoke('get-detected-keys')
     },
 
     // Claude Code backend control

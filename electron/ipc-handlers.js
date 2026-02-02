@@ -344,6 +344,14 @@ function registerIpcHandlers(ctx) {
         return ctx.listAudioDevices ? ctx.listAudioDevices() : null;
     });
 
+    // Detect API keys from environment (returns provider names only, not keys)
+    ipcMain.handle('get-detected-keys', () => {
+        const { detectApiKeys } = require('./services/provider-detector');
+        const detected = detectApiKeys();
+        // Return only provider names that have keys — never send actual keys to renderer
+        return Object.keys(detected).filter(k => !k.startsWith('_'));
+    });
+
     // Image handling - send to Python backend
     ipcMain.handle('send-image', async (event, imageData) => {
         const v = validators['send-image'](imageData);

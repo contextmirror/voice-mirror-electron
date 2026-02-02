@@ -379,11 +379,46 @@ class ProviderDetectorService {
     }
 }
 
+/**
+ * Detect API keys from environment variables and credential files.
+ * Returns { providerId: keyValue, ... } for found keys.
+ * Special flags prefixed with _ (e.g. _claudeCliAuth) are metadata, not keys.
+ */
+function detectApiKeys() {
+    const detected = {};
+    const os = require('os');
+    const path = require('path');
+    const fs = require('fs');
+
+    // Check environment variables for each cloud provider
+    for (const [id, provider] of Object.entries(CLOUD_PROVIDERS)) {
+        if (!provider.apiKeyEnv) continue;
+        const envVal = process.env[provider.apiKeyEnv];
+        if (envVal && envVal.length > 8) {
+            detected[id] = envVal;
+        }
+    }
+
+    // Check Claude CLI credentials file
+    try {
+        const credPath = path.join(os.homedir(), '.claude', '.credentials.json');
+        if (fs.existsSync(credPath)) {
+            const creds = JSON.parse(fs.readFileSync(credPath, 'utf8'));
+            if (creds.claudeAiOauth?.accessToken) {
+                detected._claudeCliAuth = true;
+            }
+        }
+    } catch { /* ignore missing/corrupt credentials */ }
+
+    return detected;
+}
+
 // Export singleton instance
 const providerDetector = new ProviderDetectorService();
 
 module.exports = {
     providerDetector,
+    detectApiKeys,
     LOCAL_PROVIDERS,
     CLOUD_PROVIDERS,
     DETECTION_TIMEOUT,

@@ -465,6 +465,25 @@ app.whenReady().then(() => {
         logger.log('CONFIG', `Debug mode enabled`);
     }
 
+    // Auto-detect API keys from environment variables
+    const { detectApiKeys } = require('./services/provider-detector');
+    const detectedKeys = detectApiKeys();
+    const realKeys = Object.entries(detectedKeys).filter(([k]) => !k.startsWith('_'));
+    if (realKeys.length > 0) {
+        const currentKeys = appConfig.ai?.apiKeys || {};
+        let updated = false;
+        for (const [provider, key] of realKeys) {
+            if (!currentKeys[provider]) {
+                currentKeys[provider] = key;
+                updated = true;
+            }
+        }
+        if (updated) {
+            appConfig = config.updateConfig({ ai: { apiKeys: currentKeys } });
+            console.log('[Config] Auto-detected API keys:', realKeys.map(([k]) => k).join(', '));
+        }
+    }
+
     // Initialize window manager
     windowManager = createWindowManager({
         getConfig: () => appConfig,
