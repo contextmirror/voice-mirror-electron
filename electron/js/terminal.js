@@ -415,6 +415,11 @@ export function handleAIOutput(data) {
 
     switch (data.type) {
         case 'start':
+            // Clear terminal on provider switch BEFORE writing new output
+            if (state.pendingProviderClear) {
+                state.pendingProviderClear = false;
+                clearTerminal();
+            }
             term.writeln(`\x1b[34m${data.text}\x1b[0m`);
             updateAIStatus(true);
             // Fit terminal after provider starts

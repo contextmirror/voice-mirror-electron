@@ -64,7 +64,9 @@ function debugLog(msg) {
  * Reads the active tool profile from config and passes ENABLED_GROUPS
  * to the MCP server so it only registers the selected tool groups.
  */
-function configureMCPServer(appConfig) {
+const fsPromises = fs.promises;
+
+async function configureMCPServer(appConfig) {
     // Resolve enabled groups from active tool profile
     const profileName = appConfig?.ai?.toolProfile || 'voice-assistant';
     const profiles = appConfig?.ai?.toolProfiles || {};
@@ -82,42 +84,48 @@ function configureMCPServer(appConfig) {
         disabled: false
     };
 
-    // Write to all config directories for cross-version compatibility
-    for (const configDir of CLAUDE_CONFIG_DIRS) {
-        if (!fs.existsSync(configDir)) {
-            fs.mkdirSync(configDir, { recursive: true });
+    // Helper: read existing MCP settings or return default
+    async function readMcpSettings(filePath) {
+        try {
+            const content = await fsPromises.readFile(filePath, 'utf-8');
+            return JSON.parse(content);
+        } catch {
+            return { mcpServers: {} };
         }
+    }
 
-        // Write both mcp_settings.json (legacy) and .mcp.json (current Claude Code format)
+    // Write to all config directories in parallel for cross-version compatibility
+    const writePromises = [];
+
+    for (const configDir of CLAUDE_CONFIG_DIRS) {
+        await fsPromises.mkdir(configDir, { recursive: true });
+
         for (const filename of ['mcp_settings.json', '.mcp.json']) {
             const settingsPath = path.join(configDir, filename);
-            let settings = { mcpServers: {} };
-            if (fs.existsSync(settingsPath)) {
-                try {
-                    settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-                } catch {}
-            }
-
-            settings.mcpServers = settings.mcpServers || {};
-            settings.mcpServers['voice-mirror-electron'] = serverEntry;
-
-            fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
-            console.log(`[Claude Spawner] MCP settings written to: ${settingsPath}`);
+            writePromises.push(
+                readMcpSettings(settingsPath).then(settings => {
+                    settings.mcpServers = settings.mcpServers || {};
+                    settings.mcpServers['voice-mirror-electron'] = serverEntry;
+                    return fsPromises.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8')
+                        .then(() => console.log(`[Claude Spawner] MCP settings written to: ${settingsPath}`));
+                })
+            );
         }
     }
 
     // Also write .mcp.json to the project root (Voice Mirror working directory)
     const projectMcpPath = path.join(VOICE_MIRROR_DIR, '.mcp.json');
-    const projectSettings = { mcpServers: { 'voice-mirror-electron': serverEntry } };
-    // Preserve existing entries in project .mcp.json
-    if (fs.existsSync(projectMcpPath)) {
-        try {
-            const existing = JSON.parse(fs.readFileSync(projectMcpPath, 'utf-8'));
-            projectSettings.mcpServers = { ...existing.mcpServers, 'voice-mirror-electron': serverEntry };
-        } catch {}
-    }
-    fs.writeFileSync(projectMcpPath, JSON.stringify(projectSettings, null, 2), 'utf-8');
-    console.log(`[Claude Spawner] MCP settings written to: ${projectMcpPath}`);
+    writePromises.push(
+        readMcpSettings(projectMcpPath).then(existing => {
+            const projectSettings = {
+                mcpServers: { ...existing.mcpServers, 'voice-mirror-electron': serverEntry }
+            };
+            return fsPromises.writeFile(projectMcpPath, JSON.stringify(projectSettings, null, 2), 'utf-8')
+                .then(() => console.log(`[Claude Spawner] MCP settings written to: ${projectMcpPath}`));
+        })
+    );
+
+    await Promise.all(writePromises);
 }
 
 /**
@@ -127,6 +135,9 @@ function configureMCPServer(appConfig) {
 let _resolvedClaudePath = null;
 
 function isClaudeAvailable() {
+    // Return cached result if we already resolved successfully
+    if (_resolvedClaudePath) return true;
+
     try {
         const { execSync } = require('child_process');
         if (process.platform === 'win32') {
@@ -162,7 +173,7 @@ function isClaudeAvailable() {
 /**
  * Spawn Claude Code in a real PTY terminal
  */
-function spawnClaude(options = {}) {
+async function spawnClaude(options = {}) {
     const {
         onOutput = () => {},
         onExit = () => {},
@@ -178,7 +189,7 @@ function spawnClaude(options = {}) {
     }
 
     // Configure MCP server with tool profile from config
-    configureMCPServer(options.appConfig);
+    await configureMCPServer(options.appConfig);
 
     if (!isClaudeAvailable()) {
         onOutput('[Error] Claude CLI not found. Install with: npm install -g @anthropic-ai/claude-code\n');

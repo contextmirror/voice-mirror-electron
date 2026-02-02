@@ -57,7 +57,7 @@ function createAIManager(options = {}) {
      * Start Claude Code with Voice Mirror MCP tools.
      * Spawns a real PTY terminal running Claude Code.
      */
-    function startClaudeCode() {
+    async function startClaudeCode() {
         if (isClaudeRunning()) {
             console.log('[AIManager] Claude already running');
             return;
@@ -74,7 +74,7 @@ function createAIManager(options = {}) {
 
         // Spawn Claude in a real PTY terminal (pass config for tool profile)
         const appConfig = getConfig ? getConfig() : {};
-        const pty = spawnClaude({
+        const pty = await spawnClaude({
             onOutput: (data) => {
                 // Forward PTY output to the UI terminal
                 sendOutput('stdout', data);
@@ -136,7 +136,7 @@ function createAIManager(options = {}) {
      * Routes to Claude Code PTY or OpenAI-compatible API provider.
      * @returns {boolean} True if started
      */
-    function start() {
+    async function start() {
         const config = getConfig();
         const providerType = config?.ai?.provider || 'claude';
         const model = config?.ai?.model || config?.ai?.localModel || null;
@@ -169,7 +169,7 @@ function createAIManager(options = {}) {
                 console.log('[AIManager] Claude already running');
                 return false;
             }
-            startClaudeCode();
+            await startClaudeCode();
             if (isSwitch && onSystemSpeak) {
                 // Delay to let PTY initialize
                 const hint = getActivationHint ? ` ${getActivationHint()}` : '';
