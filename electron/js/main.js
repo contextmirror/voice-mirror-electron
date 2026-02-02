@@ -462,36 +462,36 @@ async function init() {
     initSettings();
 
     // Manual drag for Windows (CSS -webkit-app-region: drag is unreliable on small transparent windows)
+    // Uses screen.getCursorScreenPoint() via IPC — works even when cursor leaves the 64px window.
+    // Window moves with cursor so mouseup always fires (cursor stays over window).
     if (navigator.platform.startsWith('Win')) {
         let dragging = false;
         let dragStartCursor = null;
         let dragStartWin = null;
+        let dragTimer = null;
 
         orb.addEventListener('mousedown', async (e) => {
             if (e.button !== 0 || state.isExpanded) return;
-            dragging = true;
+            e.preventDefault();
             dragStartCursor = await window.voiceMirror.getCursorPosition();
             dragStartWin = await window.voiceMirror.getWindowPosition();
-            await window.voiceMirror.startDragCapture();
+            dragging = true;
+            // Start polling immediately at ~60fps
+            const poll = async () => {
+                if (!dragging) return;
+                const cursor = await window.voiceMirror.getCursorPosition();
+                const dx = cursor.x - dragStartCursor.x;
+                const dy = cursor.y - dragStartCursor.y;
+                await window.voiceMirror.setWindowPosition(dragStartWin.x + dx, dragStartWin.y + dy);
+                if (dragging) dragTimer = requestAnimationFrame(poll);
+            };
+            dragTimer = requestAnimationFrame(poll);
         });
 
-        document.addEventListener('mousemove', async (e) => {
-            if (!dragging || !dragStartCursor || !dragStartWin) return;
-            const cursor = await window.voiceMirror.getCursorPosition();
-            const dx = cursor.x - dragStartCursor.x;
-            const dy = cursor.y - dragStartCursor.y;
-            await window.voiceMirror.setWindowPosition(dragStartWin.x + dx, dragStartWin.y + dy);
-        });
-
-        document.addEventListener('mouseup', async () => {
+        window.addEventListener('mouseup', () => {
             if (!dragging) return;
             dragging = false;
-            const cursor = await window.voiceMirror.getCursorPosition();
-            const dx = cursor.x - dragStartCursor.x;
-            const dy = cursor.y - dragStartCursor.y;
-            const newX = dragStartWin.x + dx;
-            const newY = dragStartWin.y + dy;
-            await window.voiceMirror.stopDragCapture(newX, newY);
+            if (dragTimer) { cancelAnimationFrame(dragTimer); dragTimer = null; }
             dragStartCursor = null;
             dragStartWin = null;
         });
