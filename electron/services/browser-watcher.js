@@ -5,6 +5,7 @@
  */
 
 const fs = require('fs');
+const fsPromises = fs.promises;
 const path = require('path');
 
 /**
@@ -49,20 +50,27 @@ function createBrowserWatcher(options = {}) {
         const requestPath = path.join(contextMirrorDir, 'browser_request.json');
         const responsePath = path.join(contextMirrorDir, 'browser_response.json');
 
-        watcher = setInterval(async () => {
-            try {
-                if (!fs.existsSync(requestPath)) return;
+        let processing = false;
 
-                const request = JSON.parse(fs.readFileSync(requestPath, 'utf-8'));
+        async function processRequest() {
+            if (processing) return;
+            processing = true;
+            try {
+                let raw;
+                try {
+                    raw = await fsPromises.readFile(requestPath, 'utf-8');
+                } catch {
+                    return; // File doesn't exist or read error
+                }
+
+                const request = JSON.parse(raw);
                 const requestTime = new Date(request.timestamp).getTime();
                 const now = Date.now();
 
-                if (now - requestTime > 5000) {
-                    fs.unlinkSync(requestPath);
-                    return;
-                }
+                // Delete request immediately to prevent duplicate processing
+                try { await fsPromises.unlink(requestPath); } catch {}
 
-                fs.unlinkSync(requestPath);
+                if (now - requestTime > 5000) return;
 
                 console.log(`[BrowserWatcher] Request: ${request.action}`);
 
@@ -104,25 +112,47 @@ function createBrowserWatcher(options = {}) {
                         result = { success: false, error: `Unknown browser action: ${request.action}` };
                 }
 
-                fs.writeFileSync(responsePath, JSON.stringify({
+                await fsPromises.writeFile(responsePath, JSON.stringify({
                     ...result,
                     request_id: request.id,
                     timestamp: new Date().toISOString()
-                }, null, 2));
+                }));
 
                 console.log(`[BrowserWatcher] Response written for ${request.action}`);
-
             } catch (err) {
                 console.error('[BrowserWatcher] Error:', err);
+            } finally {
+                processing = false;
             }
-        }, 500);
+        }
+
+        // Use fs.watch on the data directory instead of polling
+        try {
+            watcher = fs.watch(contextMirrorDir, (eventType, filename) => {
+                if (filename === 'browser_request.json') {
+                    processRequest();
+                }
+            });
+            watcher.on('error', (err) => {
+                console.error('[BrowserWatcher] fs.watch error, falling back to polling:', err.message);
+                watcher = null;
+                watcher = setInterval(() => processRequest(), 2000);
+            });
+        } catch (err) {
+            console.error('[BrowserWatcher] fs.watch unavailable, using polling fallback:', err.message);
+            watcher = setInterval(() => processRequest(), 2000);
+        }
 
         console.log('[BrowserWatcher] Started');
     }
 
     function stop() {
         if (watcher) {
-            clearInterval(watcher);
+            if (typeof watcher.close === 'function') {
+                watcher.close(); // fs.watch
+            } else {
+                clearInterval(watcher); // polling fallback
+            }
             watcher = null;
             console.log('[BrowserWatcher] Stopped');
         }

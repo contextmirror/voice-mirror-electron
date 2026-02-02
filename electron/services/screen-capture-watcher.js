@@ -4,6 +4,7 @@
  */
 
 const fs = require('fs');
+const fsPromises = fs.promises;
 const path = require('path');
 
 /**
@@ -38,34 +39,37 @@ function createScreenCaptureWatcher(options = {}) {
             fs.mkdirSync(imagesDir, { recursive: true });
         }
 
-        // Watch for capture requests
-        watcher = setInterval(async () => {
-            try {
-                if (!fs.existsSync(requestPath)) return;
+        let processing = false;
 
-                const request = JSON.parse(fs.readFileSync(requestPath, 'utf-8'));
+        async function processRequest() {
+            if (processing) return;
+            processing = true;
+            try {
+                let raw;
+                try {
+                    raw = await fsPromises.readFile(requestPath, 'utf-8');
+                } catch {
+                    return; // File doesn't exist or read error
+                }
+
+                const request = JSON.parse(raw);
                 const requestTime = new Date(request.timestamp).getTime();
                 const now = Date.now();
 
-                // Only process requests from the last 5 seconds
-                if (now - requestTime > 5000) {
-                    fs.unlinkSync(requestPath);
-                    return;
-                }
-
                 // Delete request immediately to prevent multiple captures
-                fs.unlinkSync(requestPath);
+                try { await fsPromises.unlink(requestPath); } catch {}
+
+                // Only process requests from the last 5 seconds
+                if (now - requestTime > 5000) return;
 
                 console.log('[ScreenCapture] Capture requested by Claude');
 
-                // Capture the screen
                 if (!captureScreen) {
                     console.error('[ScreenCapture] No capture function provided');
-                    fs.writeFileSync(responsePath, JSON.stringify({
-                        success: false,
-                        error: 'Screen capture not available',
+                    await fsPromises.writeFile(responsePath, JSON.stringify({
+                        success: false, error: 'Screen capture not available',
                         timestamp: new Date().toISOString()
-                    }, null, 2));
+                    }));
                     return;
                 }
 
@@ -79,31 +83,26 @@ function createScreenCaptureWatcher(options = {}) {
                     const source = sources[displayIndex] || sources[0];
                     const dataUrl = source.thumbnail.toDataURL();
 
-                    // Save image to file
                     const imagePath = path.join(imagesDir, `capture-${Date.now()}.png`);
                     const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, '');
                     const imageBuffer = Buffer.from(base64Data, 'base64');
-                    fs.writeFileSync(imagePath, imageBuffer);
+                    await fsPromises.writeFile(imagePath, imageBuffer);
 
-                    // Write response
-                    fs.writeFileSync(responsePath, JSON.stringify({
-                        success: true,
-                        image_path: imagePath,
+                    await fsPromises.writeFile(responsePath, JSON.stringify({
+                        success: true, image_path: imagePath,
                         timestamp: new Date().toISOString(),
-                        width: 1920,
-                        height: 1080
-                    }, null, 2));
+                        width: 1920, height: 1080
+                    }));
 
                     console.log('[ScreenCapture] Screenshot saved:', imagePath);
 
                     // Also add to inbox so Claude can reference it
                     const inboxPath = path.join(contextMirrorDir, 'inbox.json');
                     let data = { messages: [] };
-                    if (fs.existsSync(inboxPath)) {
-                        try {
-                            data = JSON.parse(fs.readFileSync(inboxPath, 'utf-8'));
-                        } catch {}
-                    }
+                    try {
+                        const existing = await fsPromises.readFile(inboxPath, 'utf-8');
+                        data = JSON.parse(existing);
+                    } catch {}
 
                     data.messages.push({
                         id: `capture-${Date.now()}`,
@@ -114,19 +113,37 @@ function createScreenCaptureWatcher(options = {}) {
                         image_path: imagePath
                     });
 
-                    fs.writeFileSync(inboxPath, JSON.stringify(data, null, 2));
+                    await fsPromises.writeFile(inboxPath, JSON.stringify(data));
                 } else {
-                    fs.writeFileSync(responsePath, JSON.stringify({
-                        success: false,
-                        error: 'No displays available',
+                    await fsPromises.writeFile(responsePath, JSON.stringify({
+                        success: false, error: 'No displays available',
                         timestamp: new Date().toISOString()
-                    }, null, 2));
+                    }));
                 }
-
             } catch (err) {
                 console.error('[ScreenCapture] Error:', err);
+            } finally {
+                processing = false;
             }
-        }, 500);  // Check every 500ms
+        }
+
+        // Use fs.watch on the data directory instead of polling
+        try {
+            watcher = fs.watch(contextMirrorDir, (eventType, filename) => {
+                if (filename === 'screen_capture_request.json') {
+                    processRequest();
+                }
+            });
+            watcher.on('error', (err) => {
+                console.error('[ScreenCapture] fs.watch error, falling back to polling:', err.message);
+                watcher = null;
+                // Fallback: poll at 2s instead of 500ms
+                watcher = setInterval(() => processRequest(), 2000);
+            });
+        } catch (err) {
+            console.error('[ScreenCapture] fs.watch unavailable, using polling fallback:', err.message);
+            watcher = setInterval(() => processRequest(), 2000);
+        }
 
         console.log('[ScreenCapture] Watcher started');
     }
@@ -136,7 +153,11 @@ function createScreenCaptureWatcher(options = {}) {
      */
     function stop() {
         if (watcher) {
-            clearInterval(watcher);
+            if (typeof watcher.close === 'function') {
+                watcher.close(); // fs.watch
+            } else {
+                clearInterval(watcher); // polling fallback
+            }
             watcher = null;
             console.log('[ScreenCapture] Watcher stopped');
         }

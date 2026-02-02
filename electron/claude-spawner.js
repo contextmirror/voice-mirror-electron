@@ -451,7 +451,7 @@ function writeResponseToInbox(message) {
         data.messages = data.messages.slice(-100);
     }
 
-    fs.writeFileSync(INBOX_PATH, JSON.stringify(data, null, 2), 'utf-8');
+    fs.writeFileSync(INBOX_PATH, JSON.stringify(data), 'utf-8');
     return newMessage;
 }
 

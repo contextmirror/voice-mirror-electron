@@ -65,7 +65,7 @@ function start(dir) {
 
             data.messages.push(msg);
             if (data.messages.length > 100) data.messages = data.messages.slice(-100);
-            fs.writeFileSync(inboxPath, JSON.stringify(data, null, 2), 'utf-8');
+            fs.writeFileSync(inboxPath, JSON.stringify(data), 'utf-8');
 
             collector.addStage(traceId, 'inbox_write', {
                 message_id: msgId,

@@ -5,6 +5,7 @@
  */
 
 const fs = require('fs');
+const fsPromises = fs.promises;
 const path = require('path');
 
 /**
@@ -79,12 +80,20 @@ function createInboxWatcher(options = {}) {
             console.error('[InboxWatcher] Failed to seed message IDs:', err);
         }
 
-        // Poll every 500ms for new Claude messages
-        watcher = setInterval(() => {
-            try {
-                if (!fs.existsSync(inboxPath)) return;
+        // Debounce: coalesce rapid file changes into a single check
+        let debounceTimer = null;
+        let fsWatcher = null;
 
-                const data = JSON.parse(fs.readFileSync(inboxPath, 'utf-8'));
+        async function checkInbox() {
+            try {
+                let raw;
+                try {
+                    raw = await fsPromises.readFile(inboxPath, 'utf-8');
+                } catch {
+                    return; // File doesn't exist yet
+                }
+
+                const data = JSON.parse(raw);
                 const messages = data.messages || [];
 
                 if (messages.length === 0) return;
@@ -111,7 +120,6 @@ function createInboxWatcher(options = {}) {
 
                     console.log('[InboxWatcher] New Claude message:', latestClaudeMessage.message?.slice(0, 50));
 
-                    // Send to UI via callbacks
                     if (onClaudeMessage) {
                         onClaudeMessage({
                             role: 'assistant',
@@ -131,20 +139,15 @@ function createInboxWatcher(options = {}) {
                 }
 
                 // === Inbox Bridge for Non-Claude Providers ===
-                // Forward user messages to OpenAI-compatible providers (Ollama, LM Studio, etc.)
-                // Claude handles inbox directly via MCP tools, but other providers need this bridge
                 const claudeRunning = isClaudeRunning ? isClaudeRunning() : false;
                 const activeProvider = getProvider ? getProvider() : null;
 
                 if (!claudeRunning && activeProvider && activeProvider.isRunning()) {
                     for (const msg of messages) {
-                        // Skip if already processed or not from voice user
                         if (processedUserMessageIds.has(msg.id) || msg.from !== 'nathan') continue;
 
-                        // Mark as processed immediately to avoid duplicate forwarding
                         processedUserMessageIds.add(msg.id);
 
-                        // Keep Set size bounded
                         if (processedUserMessageIds.size > 100) {
                             const iterator = processedUserMessageIds.values();
                             processedUserMessageIds.delete(iterator.next().value);
@@ -154,7 +157,6 @@ function createInboxWatcher(options = {}) {
                         console.log(`[InboxWatcher] Forwarding inbox message to ${providerName}: ${msg.message?.slice(0, 50)}...`);
                         _devlog('BACKEND', 'forwarding', { text: msg.message, source: providerName, msgId: msg.id });
 
-                        // Diagnostic trace: provider forward
                         try {
                             const dc = require('./diagnostic-collector');
                             if (dc.hasActiveTrace()) {
@@ -166,7 +168,6 @@ function createInboxWatcher(options = {}) {
                             }
                         } catch { /* diagnostic not available */ }
 
-                        // Send to UI as user message
                         if (onUserMessage) {
                             onUserMessage({
                                 role: 'user',
@@ -177,16 +178,10 @@ function createInboxWatcher(options = {}) {
                             });
                         }
 
-                        // Capture response and write back to inbox for Python TTS
                         captureProviderResponse(activeProvider, msg.message, _devlog).then((response) => {
                             if (response) {
-                                // Strip any echoed/quoted user message from the response
                                 const cleanedResponse = stripEchoedContent(response);
-
-                                // Write to inbox so Python can speak it
                                 writeResponseToInbox(contextMirrorDir, cleanedResponse, providerName, msg.id);
-
-                                // Also display in chat UI
                                 if (onAssistantMessage) {
                                     onAssistantMessage({
                                         role: 'assistant',
@@ -196,7 +191,6 @@ function createInboxWatcher(options = {}) {
                                     });
                                 }
                             } else {
-                                // No response captured — ensure UI transitions out of "Processing..."
                                 console.log('[InboxWatcher] No response captured, sending idle event');
                                 _devlog('BACKEND', 'no-response', { reason: 'capture returned null/empty' });
                                 if (onVoiceEvent) {
@@ -205,7 +199,6 @@ function createInboxWatcher(options = {}) {
                             }
                         }).catch((err) => {
                             console.error(`[InboxWatcher] Error forwarding to ${providerName}:`, err);
-                            // Ensure UI doesn't stay stuck on error either
                             if (onVoiceEvent) {
                                 onVoiceEvent({ type: 'idle' });
                             }
@@ -214,15 +207,46 @@ function createInboxWatcher(options = {}) {
                 }
 
             } catch (err) {
-                if (err instanceof SyntaxError) {
-                    // JSON parse error — inbox file may be corrupted, skip this tick
-                } else {
-                    console.error('[InboxWatcher] Poll error:', err.message);
+                if (!(err instanceof SyntaxError)) {
+                    console.error('[InboxWatcher] Check error:', err.message);
                 }
             }
-        }, 500);
+        }
 
-        console.log('[InboxWatcher] Started');
+        function debouncedCheck() {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => checkInbox(), 100);
+        }
+
+        // Use fs.watch on the data directory for inbox changes
+        try {
+            fsWatcher = fs.watch(contextMirrorDir, (eventType, filename) => {
+                if (filename === 'inbox.json') {
+                    debouncedCheck();
+                }
+            });
+            fsWatcher.on('error', (err) => {
+                console.error('[InboxWatcher] fs.watch error, falling back to polling:', err.message);
+                fsWatcher = null;
+                // Fallback: poll at 2s instead of 500ms
+                watcher = setInterval(() => checkInbox(), 2000);
+            });
+        } catch (err) {
+            console.error('[InboxWatcher] fs.watch unavailable, using polling fallback:', err.message);
+            watcher = setInterval(() => checkInbox(), 2000);
+        }
+
+        // Store references for cleanup
+        watcher = {
+            fsWatcher,
+            debounceTimer: null,  // tracked via closure
+            _close() {
+                if (fsWatcher) { try { fsWatcher.close(); } catch {} }
+                if (debounceTimer) clearTimeout(debounceTimer);
+            }
+        };
+
+        console.log('[InboxWatcher] Started (fs.watch mode)');
     }
 
     /**
@@ -230,7 +254,13 @@ function createInboxWatcher(options = {}) {
      */
     function stop() {
         if (watcher) {
-            clearInterval(watcher);
+            if (watcher._close) {
+                watcher._close(); // fs.watch mode
+            } else if (typeof watcher.close === 'function') {
+                watcher.close();
+            } else {
+                clearInterval(watcher); // polling fallback
+            }
             watcher = null;
             console.log('[InboxWatcher] Stopped');
         }
@@ -682,7 +712,7 @@ function writeResponseToInbox(dataDir, response, providerName, replyToId) {
     };
 
     data.messages.push(newMessage);
-    fs.writeFileSync(inboxPath, JSON.stringify(data, null, 2));
+    fs.writeFileSync(inboxPath, JSON.stringify(data));
 
     console.log(`[InboxWatcher] Wrote response to inbox from ${senderId}`);
 }

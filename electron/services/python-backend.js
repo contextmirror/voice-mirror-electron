@@ -453,7 +453,7 @@ function createPythonBackend(options = {}) {
                     data.messages = data.messages.slice(-100);
                 }
 
-                fs.writeFileSync(inboxPath, JSON.stringify(data, null, 2));
+                fs.writeFileSync(inboxPath, JSON.stringify(data));
 
                 // Also create trigger file to notify watchers
                 const triggerPath = path.join(contextMirrorDir, 'claude_message_trigger.json');
