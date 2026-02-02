@@ -218,13 +218,13 @@ async function sendImageWithPrompt(prompt) {
 }
 
 /**
- * Capture screen and show preview
- * Also starts voice listening workflow
+ * Capture a specific screen and show preview.
+ * @param {string} sourceId - desktopCapturer source ID
  */
-async function captureScreen() {
+async function captureAndPreview(sourceId) {
     statusText.textContent = 'Capturing screen...';
     try {
-        const dataUrl = await window.voiceMirror.captureScreen();
+        const dataUrl = await window.voiceMirror.captureScreen(sourceId);
         if (dataUrl) {
             const base64 = dataUrl;
             const sizeEstimate = Math.round((base64.length * 3) / 4);
@@ -250,6 +250,105 @@ async function captureScreen() {
         setTimeout(() => {
             statusText.textContent = 'Listening...';
         }, 2000);
+    }
+}
+
+/**
+ * Show a picker overlay when multiple screens are detected.
+ * @param {Array} screens - Array of {id, name, thumbnail}
+ */
+function showScreenPicker(screens) {
+    // Remove existing picker if any
+    dismissScreenPicker();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'screen-picker-overlay';
+    overlay.id = 'screen-picker';
+
+    const title = document.createElement('div');
+    title.className = 'screen-picker-title';
+    title.textContent = 'Choose a screen to capture';
+    overlay.appendChild(title);
+
+    const grid = document.createElement('div');
+    grid.className = 'screen-picker-grid';
+
+    for (const scr of screens) {
+        const item = document.createElement('div');
+        item.className = 'screen-picker-item';
+        item.addEventListener('click', () => {
+            dismissScreenPicker();
+            captureAndPreview(scr.id);
+        });
+
+        const img = document.createElement('img');
+        img.src = scr.thumbnail;
+        img.alt = scr.name;
+        item.appendChild(img);
+
+        const label = document.createElement('span');
+        label.className = 'screen-picker-label';
+        label.textContent = scr.name;
+        item.appendChild(label);
+
+        grid.appendChild(item);
+    }
+
+    overlay.appendChild(grid);
+
+    // Click backdrop to dismiss
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) dismissScreenPicker();
+    });
+
+    document.body.appendChild(overlay);
+
+    // Escape to dismiss
+    const onKey = (e) => {
+        if (e.key === 'Escape') {
+            dismissScreenPicker();
+            document.removeEventListener('keydown', onKey);
+        }
+    };
+    document.addEventListener('keydown', onKey);
+}
+
+function dismissScreenPicker() {
+    const existing = document.getElementById('screen-picker');
+    if (existing) existing.remove();
+}
+
+/**
+ * Update the capture button enabled/disabled state based on vision support.
+ */
+async function updateCaptureButtonState() {
+    const btn = document.getElementById('capture-screen-btn');
+    if (!btn) return;
+    try {
+        const hasVision = await window.voiceMirror.supportsVision();
+        btn.disabled = !hasVision;
+        btn.title = hasVision ? 'Capture Screen' : 'Requires a vision-capable model';
+        btn.style.opacity = hasVision ? '' : '0.4';
+    } catch {
+        // If check fails, leave enabled
+    }
+}
+
+/**
+ * Capture screen — single monitor captures immediately,
+ * multiple monitors show a picker.
+ */
+async function captureScreen() {
+    try {
+        const screens = await window.voiceMirror.getScreens();
+        if (!screens || screens.length === 0) return;
+        if (screens.length === 1) {
+            await captureAndPreview(screens[0].id);
+        } else {
+            showScreenPicker(screens);
+        }
+    } catch (err) {
+        console.error('Screen capture failed:', err);
     }
 }
 
@@ -379,9 +478,11 @@ function handleVoiceEvent(data) {
             if (data.provider && data.providerName) {
                 updateProviderDisplay(data.providerName, data.provider, data.model);
             }
+            updateCaptureButtonState();
             break;
         case 'claude_disconnected':
             updateAIStatus(false);
+            updateCaptureButtonState();
             break;
         case 'disconnected':
             statusText.textContent = 'Disconnected';
@@ -633,6 +734,9 @@ async function init() {
             await handleImageBlob(file, file.name);
         }
     });
+
+    // Set initial capture button state based on vision support
+    updateCaptureButtonState();
 
     console.log('[Voice Mirror] Initialized');
 }

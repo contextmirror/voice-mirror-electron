@@ -11,7 +11,9 @@ contextBridge.exposeInMainWorld('voiceMirror', {
     toggleExpand: () => ipcRenderer.invoke('toggle-expand'),
 
     // Capture screen for vision API
-    captureScreen: () => ipcRenderer.invoke('capture-screen'),
+    getScreens: () => ipcRenderer.invoke('get-screens'),
+    captureScreen: (sourceId) => ipcRenderer.invoke('capture-screen', sourceId),
+    supportsVision: () => ipcRenderer.invoke('supports-vision'),
 
     // Get current state
     getState: () => ipcRenderer.invoke('get-state'),

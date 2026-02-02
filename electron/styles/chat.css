@@ -446,3 +446,59 @@
 .tool-result-icon {
     display: none;  /* Hidden - status badge shows success/error */
 }
+
+/* ========== Screen Picker Overlay ========== */
+
+.screen-picker-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+}
+
+.screen-picker-title {
+    color: #ccc;
+    font-size: 14px;
+    margin-bottom: 16px;
+}
+
+.screen-picker-grid {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: 0 20px;
+}
+
+.screen-picker-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    padding: 8px;
+    transition: border-color 0.15s;
+}
+
+.screen-picker-item:hover {
+    border-color: #667eea;
+}
+
+.screen-picker-item img {
+    width: 240px;
+    height: 135px;
+    object-fit: cover;
+    border-radius: 4px;
+    background: #1a1a2e;
+}
+
+.screen-picker-label {
+    color: #aaa;
+    font-size: 12px;
+}

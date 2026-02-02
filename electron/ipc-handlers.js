@@ -63,16 +63,36 @@ function registerIpcHandlers(ctx) {
         return ctx.getIsExpanded();
     });
 
-    ipcMain.handle('capture-screen', async () => {
+    ipcMain.handle('get-screens', async () => {
+        const sources = await desktopCapturer.getSources({
+            types: ['screen'],
+            thumbnailSize: { width: 320, height: 180 }
+        });
+        return sources.map((s, i) => ({
+            id: s.id,
+            name: s.name || `Screen ${i + 1}`,
+            thumbnail: s.thumbnail.toDataURL()
+        }));
+    });
+
+    ipcMain.handle('capture-screen', async (_event, sourceId) => {
         const sources = await desktopCapturer.getSources({
             types: ['screen'],
             thumbnailSize: { width: 1920, height: 1080 }
         });
+        const source = sourceId
+            ? sources.find(s => s.id === sourceId) || sources[0]
+            : sources[0];
+        return source ? source.thumbnail.toDataURL() : null;
+    });
 
-        if (sources.length > 0) {
-            return sources[0].thumbnail.toDataURL();
-        }
-        return null;
+    ipcMain.handle('supports-vision', () => {
+        const aiManager = ctx.getAIManager();
+        // Claude Code always supports vision via MCP screen capture
+        if (aiManager && aiManager.isClaudeRunning()) return true;
+        const provider = aiManager && aiManager.getProvider();
+        if (provider && provider.supportsVision) return provider.supportsVision();
+        return false;
     });
 
     ipcMain.handle('get-state', () => {
