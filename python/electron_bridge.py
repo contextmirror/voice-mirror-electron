@@ -538,6 +538,15 @@ async def process_commands(agent):
                         key = ptt_key or "MouseButton4"
                         if hotkey:
                             hotkey.update_key(key)
+                        else:
+                            # Create hotkey listener if it doesn't exist yet
+                            try:
+                                from global_hotkey import GlobalHotkeyListener
+                                agent._hotkey_listener = GlobalHotkeyListener()
+                                agent._hotkey_listener.start(key)
+                                print(f"[GlobalHotkey] Started via config_update: {key}")
+                            except Exception as e:
+                                print(f"[GlobalHotkey] Failed to start via config_update: {e}")
                     else:
                         if hotkey:
                             hotkey.stop()

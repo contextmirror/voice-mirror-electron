@@ -132,18 +132,34 @@ class VoiceMirror:
 
     def refresh_tts_settings(self):
         """
-        Re-read TTS settings from config and update the TTS adapter if voice changed.
+        Re-read TTS settings from config and update/reload the TTS adapter.
         Called when settings are updated from Electron.
+        Handles both voice changes and adapter type changes.
         """
         settings = load_voice_settings()
+        new_adapter = settings.get("tts_adapter", "kokoro")
         new_voice = settings.get("tts_voice")
+        new_model_size = settings.get("tts_model_size", "0.6B")
 
+        # If adapter type changed, rebuild the entire TTS adapter
+        if self.tts and new_adapter != self.tts.name:
+            print(f"🔄 TTS adapter changed: {self.tts.name} -> {new_adapter}")
+            try:
+                self.tts = create_tts_adapter(new_adapter, voice=new_voice, model_size=new_model_size)
+                self.tts.load()
+                print(f"✅ TTS adapter reloaded: {new_adapter} (voice: {new_voice})")
+            except Exception as e:
+                print(f"❌ Failed to reload TTS adapter: {e}")
+            return
+
+        # Same adapter, just update voice if changed
         if self.tts and new_voice and new_voice != self.tts.voice:
             if self.tts.set_voice(new_voice):
                 print(f"✅ TTS voice updated to: {new_voice}")
 
     def load_models(self):
         """Load OpenWakeWord and Parakeet models."""
+        print("[DEBUG] load_models() START")
         # Clean up old inbox messages on startup
         removed = cleanup_inbox()
         if removed > 0:
@@ -209,12 +225,15 @@ class VoiceMirror:
             self.tts = create_tts_adapter("kokoro", voice=tts_voice)
 
         # Load TTS model
+        print("[DEBUG] about to call tts.load()")
         try:
             self.tts.load()
+            print("[DEBUG] tts.load() completed")
         except Exception as e:
             print(f"⚠️ TTS failed to load: {e}")
             print("   Voice output will be unavailable. Run setup to fix.")
             self.tts = None
+        print("[DEBUG] load_models() END")
 
     def is_call_active(self) -> bool:
         """
@@ -621,7 +640,9 @@ class VoiceMirror:
 
     async def run(self):
         """Main loop."""
+        print("[DEBUG] run() START")
         self.load_models()
+        print("[DEBUG] load_models returned, about to load voice config")
 
         # Load voice config for device selection
         self._voice_config = {}
@@ -633,6 +654,7 @@ class VoiceMirror:
         except Exception:
             pass
 
+        print("[DEBUG] about to print Ready banner")
         print("\n" + "=" * 50)
         print("Voice Mirror - Ready")
         print("=" * 50)
@@ -728,6 +750,7 @@ class VoiceMirror:
         with stream:
             # Start GlobalHotkey listener NOW that the audio stream is active
             # (must be after stream start so PTT triggers aren't lost during model loading)
+            print(f"[GlobalHotkey] activation_mode={self._activation_mode}, PTT={ActivationMode.PUSH_TO_TALK}")
             if self._activation_mode == ActivationMode.PUSH_TO_TALK:
                 try:
                     from global_hotkey import GlobalHotkeyListener
@@ -738,8 +761,11 @@ class VoiceMirror:
                             ptt_key = json.load(f).get("behavior", {}).get("pttKey", "MouseButton4")
                     self._hotkey_listener = GlobalHotkeyListener()
                     self._hotkey_listener.start(ptt_key)
+                    print(f"[GlobalHotkey] Started with key: {ptt_key}")
                 except Exception as e:
                     print(f"[GlobalHotkey] Failed to start: {e}")
+            else:
+                print(f"[GlobalHotkey] Skipped (not PTT mode)")
 
             # Start notification watcher in background
             notification_task = None
