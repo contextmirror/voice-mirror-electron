@@ -175,8 +175,8 @@ function registerIpcHandlers(ctx) {
             height: orbSize
         });
 
-        // Save new position
-        ctx.config.updateConfig({ window: { orbX: v.value.newX, orbY: v.value.newY } });
+        // Save new position (async, don't block drag end)
+        ctx.config.updateConfigAsync({ window: { orbX: v.value.newX, orbY: v.value.newY } });
 
         preDragBounds = null;
         console.log('[Voice Mirror] Drag capture ended at', newX, newY);
@@ -221,7 +221,7 @@ function registerIpcHandlers(ctx) {
         const oldVoice = appConfig?.voice;
         const oldWakeWord = appConfig?.wakeWord;
 
-        const newConfig = ctx.config.updateConfig(updates);
+        const newConfig = await ctx.config.updateConfigAsync(updates);
         ctx.setAppConfig(newConfig);
 
         // Auto-restart AI provider if provider, model, or context length changed
@@ -267,7 +267,7 @@ function registerIpcHandlers(ctx) {
             if (!ok) {
                 // Rollback already happened in updateBinding; revert config too
                 ctx.logger.log('HOTKEY', `Reverted config hotkey to "${oldHotkey}"`);
-                const reverted = ctx.config.updateConfig({ behavior: { hotkey: oldHotkey } });
+                const reverted = await ctx.config.updateConfigAsync({ behavior: { hotkey: oldHotkey } });
                 ctx.setAppConfig(reverted);
                 // Also fix the local reference for the return value
                 reverted.behavior.hotkey = oldHotkey;
@@ -511,10 +511,10 @@ function registerIpcHandlers(ctx) {
         return providerDetector.getCachedStatus();
     });
 
-    ipcMain.handle('ai-set-provider', (event, providerId, model) => {
+    ipcMain.handle('ai-set-provider', async (event, providerId, model) => {
         const v = validators['ai-set-provider'](providerId, model);
         if (!v.valid) return { success: false, error: v.error };
-        const newConfig = ctx.config.updateConfig({
+        const newConfig = await ctx.config.updateConfigAsync({
             ai: {
                 provider: v.value.providerId,
                 model: v.value.model

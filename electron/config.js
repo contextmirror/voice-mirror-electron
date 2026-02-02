@@ -234,6 +234,42 @@ function updateConfig(updates) {
 }
 
 /**
+ * Save configuration to disk (async, non-blocking).
+ */
+async function saveConfigAsync(config) {
+    ensureConfigDir();
+    const configPath = getConfigPath();
+    const tempPath = configPath + '.tmp';
+    const backupPath = configPath + '.bak';
+
+    try {
+        const json = JSON.stringify(config, null, 2);
+        await fsPromises.writeFile(tempPath, json, 'utf8');
+
+        try {
+            await fsPromises.access(configPath);
+            try { await fsPromises.copyFile(configPath, backupPath); } catch { /* best-effort */ }
+        } catch { /* config doesn't exist yet */ }
+
+        await fsPromises.rename(tempPath, configPath);
+        return true;
+    } catch (error) {
+        console.error('[Config] Error saving config (async):', error.message);
+        try { await fsPromises.unlink(tempPath); } catch { /* ignore */ }
+        return false;
+    }
+}
+
+/**
+ * Update specific config values (async, non-blocking).
+ */
+async function updateConfigAsync(updates) {
+    const current = loadConfig();
+    const updated = deepMerge(current, updates);
+    return (await saveConfigAsync(updated)) ? updated : current;
+}
+
+/**
  * Reset configuration to defaults.
  */
 function resetConfig() {
@@ -353,7 +389,9 @@ module.exports = {
     // Config CRUD
     loadConfig,
     saveConfig,
+    saveConfigAsync,
     updateConfig,
+    updateConfigAsync,
     resetConfig,
     getConfigValue,
     setConfigValue
