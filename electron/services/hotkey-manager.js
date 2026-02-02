@@ -236,16 +236,20 @@ function createHotkeyManager(options = {}) {
 
     // --- Power/display recovery ---
 
+    let _onResume = null;
+    let _onUnlock = null;
+
     function setupPowerMonitor() {
-        powerMonitor.on('resume', () => {
+        _onResume = () => {
             log('HOTKEY', 'System resumed from sleep — re-registering shortcuts in 2s');
             setTimeout(() => reRegisterAll(), RESUME_DELAY_MS);
-        });
-
-        powerMonitor.on('unlock-screen', () => {
+        };
+        _onUnlock = () => {
             log('HOTKEY', 'Screen unlocked — re-registering shortcuts in 1s');
             setTimeout(() => reRegisterAll(), UNLOCK_DELAY_MS);
-        });
+        };
+        powerMonitor.on('resume', _onResume);
+        powerMonitor.on('unlock-screen', _onUnlock);
     }
 
     function reRegisterAll() {
@@ -351,6 +355,9 @@ function createHotkeyManager(options = {}) {
      */
     function destroy() {
         stopHealthCheck();
+        // Remove powerMonitor listeners to prevent leaks
+        if (_onResume) { powerMonitor.removeListener('resume', _onResume); _onResume = null; }
+        if (_onUnlock) { powerMonitor.removeListener('unlock-screen', _onUnlock); _onUnlock = null; }
         for (const [id, binding] of bindings) {
             unregisterGlobalShortcut(binding.accelerator);
         }

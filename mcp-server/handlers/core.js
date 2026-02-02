@@ -340,7 +340,6 @@ async function handleClaudeListen(args) {
 
         const startTime = Date.now();
         const timeoutMs = timeoutSeconds * 1000;
-        const pollIntervalMs = 500;
         const lockRefreshIntervalMs = 30000;  // Refresh lock every 30s
         let lastLockRefresh = Date.now();
 
@@ -353,30 +352,63 @@ async function handleClaudeListen(args) {
             }
         } catch {}
 
-        while (Date.now() - startTime < timeoutMs) {
-            await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-
-            // Periodically refresh lock to keep it valid during long listens
-            if (Date.now() - lastLockRefresh > lockRefreshIntervalMs) {
-                refreshListenerLock(instanceId);
-                lastLockRefresh = Date.now();
-            }
-
+        // Helper: check inbox for new messages from sender
+        function checkForNewMessages() {
             try {
-                if (!fs.existsSync(CLAUDE_MESSAGES_PATH)) continue;
-
+                if (!fs.existsSync(CLAUDE_MESSAGES_PATH)) return null;
                 const data = JSON.parse(fs.readFileSync(CLAUDE_MESSAGES_PATH, 'utf-8'));
                 const messages = data.messages || [];
-
-                // Find new messages from sender
                 let fromSenderMsgs = messages.filter(m => m.from === fromSender);
                 if (threadFilter) {
                     fromSenderMsgs = fromSenderMsgs.filter(m => m.thread_id === threadFilter);
                 }
                 const newMsgs = fromSenderMsgs.filter(m => !existingIds.has(m.id));
+                return newMsgs.length > 0 ? newMsgs[newMsgs.length - 1] : null;
+            } catch {
+                return null;
+            }
+        }
 
-                if (newMsgs.length > 0) {
-                    const latest = newMsgs[newMsgs.length - 1];
+        // Use fs.watch to wake on file changes instead of 500ms polling
+        const inboxDir = path.dirname(CLAUDE_MESSAGES_PATH);
+        const inboxFilename = path.basename(CLAUDE_MESSAGES_PATH);
+        let fileWatcher = null;
+
+        try {
+            // Wait for new messages using fs.watch + lock refresh interval
+            while (Date.now() - startTime < timeoutMs) {
+                // Periodically refresh lock to keep it valid during long listens
+                if (Date.now() - lastLockRefresh > lockRefreshIntervalMs) {
+                    refreshListenerLock(instanceId);
+                    lastLockRefresh = Date.now();
+                }
+
+                // Wait for file change or timeout (check every 5s as fallback)
+                const remainingMs = Math.min(timeoutMs - (Date.now() - startTime), 5000);
+                await new Promise((resolve) => {
+                    const timer = setTimeout(resolve, remainingMs);
+                    try {
+                        fileWatcher = fs.watch(inboxDir, (eventType, filename) => {
+                            if (filename === inboxFilename) {
+                                clearTimeout(timer);
+                                try { fileWatcher.close(); } catch {}
+                                fileWatcher = null;
+                                resolve();
+                            }
+                        });
+                        fileWatcher.on('error', () => {
+                            // fs.watch failed, fall through to timeout
+                        });
+                    } catch {
+                        // fs.watch unavailable, rely on timeout fallback
+                    }
+                });
+
+                // Clean up watcher if still open
+                if (fileWatcher) { try { fileWatcher.close(); } catch {} fileWatcher = null; }
+
+                const latest = checkForNewMessages();
+                if (latest) {
                     const waitTime = Math.round((Date.now() - startTime) / 1000);
 
                     // Auto-load tool groups based on message intent
@@ -391,14 +423,12 @@ async function handleClaudeListen(args) {
                                        `Time: ${latest.timestamp}\n` +
                                        `ID: ${latest.id}\n`;
 
-                    // Include image path if present
                     if (latest.image_path) {
                         responseText += `Image: ${latest.image_path}\n`;
                     }
 
                     responseText += `\n${latest.message}`;
 
-                    // If there's an image, tell Claude to read it
                     if (latest.image_path) {
                         responseText += `\n\n[Attached image at: ${latest.image_path} - use the Read tool to view it]`;
                     }
@@ -410,7 +440,10 @@ async function handleClaudeListen(args) {
                         }]
                     };
                 }
-            } catch {}
+            }
+        } finally {
+            // Ensure watcher is closed on any exit path
+            if (fileWatcher) { try { fileWatcher.close(); } catch {} }
         }
 
         // Release lock on timeout

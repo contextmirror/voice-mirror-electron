@@ -197,6 +197,10 @@ Every feature, bug fix, or code change MUST include tests that verify the implem
 
 No change is considered done until it has passing tests. This applies to all parts of the codebase: Electron, Python backend, MCP server, and browser automation.
 
+### Proactive Recommendations
+
+Always provide honest recommendations, warnings, and suggestions — even when not explicitly asked. If you see a better approach, a potential issue, or an optimization opportunity, speak up. The user values direct technical guidance and will always take it into account.
+
 ---
 
 *Created: January 2026*

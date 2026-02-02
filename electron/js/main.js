@@ -740,6 +740,17 @@ async function init() {
     // Set initial capture button state based on vision support
     updateCaptureButtonState();
 
+    // Performance stats bar
+    const perfBar = document.getElementById('perf-stats-bar');
+    const perfCpu = document.getElementById('perf-cpu');
+    const perfMem = document.getElementById('perf-mem');
+    if (perfBar) {
+        window.voiceMirror.onPerfStats((stats) => {
+            perfCpu.textContent = `CPU: ${stats.cpu.toFixed(1)}%`;
+            perfMem.textContent = `MEM: ${stats.rss}MB`;
+        });
+    }
+
     console.log('[Voice Mirror] Initialized');
 }
 
@@ -773,6 +784,15 @@ document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === 'KeyV') {
         e.preventDefault();
         window.voiceMirror.hotkeyFallback('toggle-panel');
+    }
+    // Ctrl+Shift+P toggles performance stats bar
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === 'KeyP') {
+        e.preventDefault();
+        const bar = document.getElementById('perf-stats-bar');
+        if (bar) {
+            bar.classList.toggle('hidden');
+            window.voiceMirror.togglePerfMonitor();
+        }
     }
 });
 

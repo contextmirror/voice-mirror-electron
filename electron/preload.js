@@ -182,6 +182,12 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         ipcRenderer.on('open-settings', () => callback());
     },
 
+    // Performance monitor
+    onPerfStats: (callback) => {
+        ipcRenderer.on('perf-stats', (event, data) => callback(data));
+    },
+    togglePerfMonitor: () => ipcRenderer.send('toggle-perf-monitor'),
+
     // Hotkey fallback — renderer sends this when it detects the hotkey via DOM keydown
     // (only honored if primary uiohook + globalShortcut layers both failed)
     hotkeyFallback: (id) => ipcRenderer.send('hotkey-fallback', id)

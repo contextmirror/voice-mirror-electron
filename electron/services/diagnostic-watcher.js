@@ -1,9 +1,10 @@
 /**
- * Diagnostic Watcher — polls for pipeline_trace requests from MCP.
+ * Diagnostic Watcher — watches for pipeline_trace requests from MCP.
  * Injects messages into the live pipeline and collects trace data.
  */
 
 const fs = require('fs');
+const fsPromises = fs.promises;
 const path = require('path');
 const collector = require('./diagnostic-collector');
 
@@ -16,21 +17,31 @@ function start(dir) {
     const { getDataDir } = require('./platform-paths');
     dataDir = dir || getDataDir();
 
-    watcher = setInterval(async () => {
+    let processing = false;
+
+    async function processRequest() {
+        if (processing) return;
+        processing = true;
         try {
             const requestPath = path.join(dataDir, 'diagnostic_request.json');
-            if (!fs.existsSync(requestPath)) return;
 
-            const request = JSON.parse(fs.readFileSync(requestPath, 'utf-8'));
+            let raw;
+            try {
+                raw = await fsPromises.readFile(requestPath, 'utf-8');
+            } catch {
+                return; // File doesn't exist
+            }
+
+            const request = JSON.parse(raw);
 
             // Stale check (10s)
             if (Date.now() - new Date(request.timestamp).getTime() > 10000) {
-                fs.unlinkSync(requestPath);
+                try { await fsPromises.unlink(requestPath); } catch {}
                 return;
             }
 
             // Remove request immediately
-            fs.unlinkSync(requestPath);
+            try { await fsPromises.unlink(requestPath); } catch {}
 
             const traceId = request.trace_id;
             const message = request.message;
@@ -45,11 +56,12 @@ function start(dir) {
             const inboxPath = path.join(dataDir, 'inbox.json');
             let data = { messages: [] };
             try {
-                const raw = JSON.parse(fs.readFileSync(inboxPath, 'utf-8'));
-                if (raw && Array.isArray(raw.messages)) {
-                    data = raw;
-                } else if (Array.isArray(raw)) {
-                    data = { messages: raw };
+                const inboxRaw = await fsPromises.readFile(inboxPath, 'utf-8');
+                const parsed = JSON.parse(inboxRaw);
+                if (parsed && Array.isArray(parsed.messages)) {
+                    data = parsed;
+                } else if (Array.isArray(parsed)) {
+                    data = { messages: parsed };
                 }
             } catch { data = { messages: [] }; }
 
@@ -65,7 +77,7 @@ function start(dir) {
 
             data.messages.push(msg);
             if (data.messages.length > 100) data.messages = data.messages.slice(-100);
-            fs.writeFileSync(inboxPath, JSON.stringify(data), 'utf-8');
+            await fsPromises.writeFile(inboxPath, JSON.stringify(data), 'utf-8');
 
             collector.addStage(traceId, 'inbox_write', {
                 message_id: msgId,
@@ -97,7 +109,7 @@ function start(dir) {
             const trace = collector.endTrace(traceId);
             if (trace) {
                 const tracePath = path.join(dataDir, `diagnostic_trace_${traceId}.json`);
-                fs.writeFileSync(tracePath, JSON.stringify(trace, null, 2), 'utf-8');
+                await fsPromises.writeFile(tracePath, JSON.stringify(trace, null, 2), 'utf-8');
                 console.log(`[Diagnostic] Trace complete: ${trace.stages.length} stages, ${trace.duration_ms}ms`);
             }
 
@@ -105,15 +117,38 @@ function start(dir) {
 
         } catch (err) {
             console.error('[Diagnostic] Error:', err.message);
+        } finally {
+            processing = false;
         }
-    }, 1000);
+    }
+
+    // Use fs.watch instead of 1s polling
+    try {
+        const fsWatcher = fs.watch(dataDir, (eventType, filename) => {
+            if (filename === 'diagnostic_request.json') {
+                processRequest();
+            }
+        });
+        fsWatcher.on('error', (err) => {
+            console.error('[Diagnostic] fs.watch error, falling back to polling:', err.message);
+            watcher = setInterval(() => processRequest(), 2000);
+        });
+        watcher = fsWatcher;
+    } catch (err) {
+        console.error('[Diagnostic] fs.watch unavailable, using polling fallback:', err.message);
+        watcher = setInterval(() => processRequest(), 2000);
+    }
 
     console.log('[Diagnostic] Watcher started');
 }
 
 function stop() {
     if (watcher) {
-        clearInterval(watcher);
+        if (typeof watcher.close === 'function') {
+            watcher.close();
+        } else {
+            clearInterval(watcher);
+        }
         watcher = null;
     }
 }

@@ -106,6 +106,10 @@ class SessionManager {
                     this.session.topics.push(topic);
                 }
             }
+            // Cap topics to prevent unbounded growth
+            if (this.session.topics.length > 200) {
+                this.session.topics = this.session.topics.slice(-200);
+            }
         }
 
         // Reset flushed flag on new activity

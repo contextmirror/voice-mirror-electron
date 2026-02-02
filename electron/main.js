@@ -31,6 +31,7 @@ const { createScreenCaptureWatcher } = require('./services/screen-capture-watche
 const { createBrowserWatcher } = require('./services/browser-watcher');
 const { createAIManager } = require('./services/ai-manager');
 const { createInboxWatcher } = require('./services/inbox-watcher');
+const { createPerfMonitor } = require('./services/perf-monitor');
 const { createTrayService } = require('./window/tray');
 const { createWindowManager } = require('./window');
 const { createWaylandOrb } = require('./services/wayland-orb');
@@ -67,6 +68,9 @@ let aiManager = null;
 
 // Inbox watcher service (initialized after config is loaded)
 let inboxWatcherService = null;
+
+// Performance monitor service
+let perfMonitor = null;
 
 // Handle EPIPE errors gracefully (happens when terminal pipe breaks)
 process.stdout.on('error', (err) => {
@@ -224,17 +228,19 @@ function ensureLocalLLMRunning(providerName, config) {
     }
 }
 
-function startOllamaServer(config) {
-    const { spawn: spawnDetached } = require('child_process');
-    const { execSync } = require('child_process');
+async function startOllamaServer(config) {
+    const { spawn: spawnDetached, execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
     const path = require('path');
     const fs = require('fs');
 
-    // Find ollama executable
+    // Find ollama executable (async to avoid blocking main thread)
     let ollamaPath = null;
     try {
-        const cmd = process.platform === 'win32' ? 'where ollama' : 'which ollama';
-        ollamaPath = execSync(cmd, { encoding: 'utf8' }).trim().split('\n')[0];
+        const cmd = process.platform === 'win32' ? 'where' : 'which';
+        const { stdout } = await execFileAsync(cmd, ['ollama'], { encoding: 'utf8' });
+        ollamaPath = stdout.trim().split('\n')[0];
     } catch {
         // Not on PATH — check common locations
         const candidates = [];
@@ -283,21 +289,18 @@ function startOllamaServer(config) {
 /**
  * Write Electron's voice config to voice_settings.json so Python reads correct settings on startup.
  */
-function syncVoiceSettingsToFile(cfg) {
+async function syncVoiceSettingsToFile(cfg) {
     try {
+        const fsP = fs.promises;
         const dataDir = config.getDataDir();
-        if (!fs.existsSync(dataDir)) {
-            fs.mkdirSync(dataDir, { recursive: true });
-        }
+        await fsP.mkdir(dataDir, { recursive: true });
         const settingsPath = path.join(dataDir, 'voice_settings.json');
 
         // Read existing settings to preserve location/timezone
         let existing = {};
-        if (fs.existsSync(settingsPath)) {
-            try {
-                existing = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-            } catch (e) { /* ignore parse errors */ }
-        }
+        try {
+            existing = JSON.parse(await fsP.readFile(settingsPath, 'utf-8'));
+        } catch { /* ignore parse errors or missing file */ }
 
         // Merge Electron voice config into settings
         const voice = cfg?.voice || {};
@@ -308,7 +311,7 @@ function syncVoiceSettingsToFile(cfg) {
         if (voice.sttModel) updates.stt_adapter = voice.sttModel;
 
         const merged = { ...existing, ...updates };
-        fs.writeFileSync(settingsPath, JSON.stringify(merged, null, 2), 'utf-8');
+        await fsP.writeFile(settingsPath, JSON.stringify(merged, null, 2), 'utf-8');
         console.log('[Voice Mirror] Synced voice settings to', settingsPath);
     } catch (err) {
         console.error('[Voice Mirror] Failed to sync voice settings:', err.message);
@@ -751,6 +754,18 @@ app.whenReady().then(() => {
     startScreenCaptureWatcher();
     startInboxWatcher();
     startBrowserRequestWatcher();
+
+    // Initialize and start performance monitor
+    perfMonitor = createPerfMonitor({
+        dataDir: config.getDataDir(),
+        safeSend
+    });
+    perfMonitor.start();
+
+    // Toggle perf monitor from renderer
+    ipcMain.on('toggle-perf-monitor', () => {
+        // Renderer handles visibility; this is a no-op hook for future use
+    });
 
     // Start diagnostic pipeline tracer
     try {
