@@ -433,6 +433,27 @@ export async function saveSettings() {
         }
     };
 
+    // Detect provider/model changes BEFORE config.set() — the main process
+    // restarts the provider during that await, and the 'start' event arrives
+    // before config.set() returns. The flag must be set first.
+    const oldProvider = state.currentProvider;
+    const oldModel = state.currentModel;
+    const oldContextLength = state.currentContextLength;
+    const providerChanged = oldProvider !== aiProvider;
+    const modelChanged = oldModel !== aiModel;
+    const contextLengthChanged = oldContextLength !== aiContextLength;
+    if (providerChanged || modelChanged || contextLengthChanged) {
+        console.log(`[Settings] Provider/model changed: ${oldProvider}/${oldModel} -> ${aiProvider}/${aiModel}`);
+
+        // Update state so next terminal banner shows the NEW provider name
+        state.currentProvider = aiProvider;
+        state.currentModel = aiModel;
+        state.currentContextLength = aiContextLength;
+
+        // Flag: clear terminal when new provider connects
+        state.pendingProviderClear = true;
+    }
+
     try {
         const newConfig = await window.voiceMirror.config.set(updates);
         console.log('[Settings] Saved config:', newConfig);
@@ -451,27 +472,6 @@ export async function saveSettings() {
             displayName = `${displayName} (${shortModel})`;
         }
         updateProviderDisplay(displayName, aiProvider, aiModel);
-
-        // If AI provider, model, or context length changed, clear terminal
-        // NOTE: Main process set-config handler handles the actual stop/start restart
-        const oldProvider = state.currentProvider;
-        const oldModel = state.currentModel;
-        const oldContextLength = state.currentContextLength;
-        const providerChanged = oldProvider !== aiProvider;
-        const modelChanged = oldModel !== aiModel;
-        const contextLengthChanged = oldContextLength !== aiContextLength;
-        if (providerChanged || modelChanged || contextLengthChanged) {
-            console.log(`[Settings] Provider/model changed: ${oldProvider}/${oldModel} -> ${aiProvider}/${aiModel}`);
-
-            // Update state so next terminal banner shows the NEW provider name
-            state.currentProvider = aiProvider;
-            state.currentModel = aiModel;
-            state.currentContextLength = aiContextLength;
-
-            // Flag: clear terminal when new provider connects (not now — old provider
-            // exit messages would write over a premature clear)
-            state.pendingProviderClear = true;
-        }
 
         // Show save confirmation
         const saveBtn = document.querySelector('.settings-btn.primary');
