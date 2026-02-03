@@ -765,6 +765,12 @@ async function init() {
             perfCpu.textContent = `CPU: ${stats.cpu.toFixed(1)}%`;
             perfMem.textContent = `MEM: ${stats.rss}MB`;
         });
+
+        // Listen for toggle-stats-bar from main process (global hotkey)
+        window.voiceMirror.onToggleStatsBar(() => {
+            perfBar.classList.toggle('hidden');
+            window.voiceMirror.togglePerfMonitor();
+        });
     }
 
     // Context usage indicator (local LLMs only)
@@ -864,19 +870,12 @@ window.navigateToBrowserPage = navigateToBrowserPage;
 // Tertiary hotkey fallback: detect Ctrl+Shift+V (or Cmd+Shift+V on Mac) via DOM keydown.
 // This only works when the Electron window has focus, but provides a safety net
 // when both uiohook and globalShortcut layers have failed.
+// Fallback keydown listener for when window has focus but global hotkeys fail
+// Note: Stats bar toggle is now handled by global hotkey manager (configurable)
 document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === 'KeyV') {
         e.preventDefault();
         window.voiceMirror.hotkeyFallback('toggle-panel');
-    }
-    // Ctrl+Shift+M toggles performance stats bar
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === 'KeyM') {
-        e.preventDefault();
-        const bar = document.getElementById('perf-stats-bar');
-        if (bar) {
-            bar.classList.toggle('hidden');
-            window.voiceMirror.togglePerfMonitor();
-        }
     }
 });
 

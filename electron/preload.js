@@ -196,6 +196,9 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         ipcRenderer.on('context-usage', (event, data) => callback(data));
     },
     togglePerfMonitor: () => ipcRenderer.send('toggle-perf-monitor'),
+    onToggleStatsBar: (callback) => {
+        ipcRenderer.on('toggle-stats-bar', () => callback());
+    },
 
     // Update checker
     onUpdateAvailable: (callback) => {

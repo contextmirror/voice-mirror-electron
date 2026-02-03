@@ -215,6 +215,7 @@ function registerIpcHandlers(ctx) {
             console.log(`[Config] AI update: provider=${oldProvider}->${updates.ai.provider}, model=${oldModel}->${updates.ai.model}`);
         }
         const oldHotkey = appConfig?.behavior?.hotkey;
+        const oldStatsHotkey = appConfig?.behavior?.statsHotkey;
         const oldActivationMode = appConfig?.behavior?.activationMode;
         const oldPttKey = appConfig?.behavior?.pttKey;
         const oldOutputName = appConfig?.overlay?.outputName || null;
@@ -271,6 +272,22 @@ function registerIpcHandlers(ctx) {
                 ctx.setAppConfig(reverted);
                 // Also fix the local reference for the return value
                 reverted.behavior.hotkey = oldHotkey;
+                return reverted;
+            }
+        }
+
+        // Re-register stats hotkey if changed
+        if (updates.behavior?.statsHotkey && updates.behavior.statsHotkey !== oldStatsHotkey && hotkeyManager) {
+            const statsCallback = () => {
+                ctx.logger.log('HOTKEY', 'Toggle stats triggered');
+                ctx.safeSend('toggle-stats-bar');
+            };
+            const ok = hotkeyManager.updateBinding('toggle-stats', updates.behavior.statsHotkey, statsCallback);
+            if (!ok) {
+                ctx.logger.log('HOTKEY', `Reverted config statsHotkey to "${oldStatsHotkey}"`);
+                const reverted = await ctx.config.updateConfigAsync({ behavior: { statsHotkey: oldStatsHotkey } });
+                ctx.setAppConfig(reverted);
+                reverted.behavior.statsHotkey = oldStatsHotkey;
                 return reverted;
             }
         }

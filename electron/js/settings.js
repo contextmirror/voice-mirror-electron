@@ -116,6 +116,9 @@ export async function loadSettingsUI() {
         const pttKeyRaw = state.currentConfig.behavior?.pttKey || 'MouseButton4';
         document.getElementById('keybind-ptt').textContent = formatKeybind(pttKeyRaw);
         document.getElementById('keybind-ptt').dataset.rawKey = pttKeyRaw;
+        const statsKeyRaw = state.currentConfig.behavior?.statsHotkey || 'CommandOrControl+Shift+M';
+        document.getElementById('keybind-stats').textContent = formatKeybind(statsKeyRaw);
+        document.getElementById('keybind-stats').dataset.rawKey = statsKeyRaw;
 
         // Wake word settings
         document.getElementById('wake-word-phrase').value = state.currentConfig.wakeWord?.phrase || 'hey_claude';
@@ -442,6 +445,10 @@ export async function saveSettings() {
                 .replace('Ctrl', 'CommandOrControl'),
             pttKey: document.getElementById('keybind-ptt').dataset.rawKey ||
                 document.getElementById('keybind-ptt').textContent.replace(/ \+ /g, '+'),
+            statsHotkey: (document.getElementById('keybind-stats').dataset.rawKey ||
+                document.getElementById('keybind-stats').textContent)
+                .replace(/ \+ /g, '+')
+                .replace('Ctrl', 'CommandOrControl'),
             startMinimized: document.getElementById('start-minimized').checked,
             startWithSystem: document.getElementById('start-with-system').checked
         },

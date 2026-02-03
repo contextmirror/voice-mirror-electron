@@ -824,6 +824,12 @@ app.whenReady().then(() => {
         }
     });
 
+    const statsHotkey = appConfig?.behavior?.statsHotkey || 'CommandOrControl+Shift+M';
+    hotkeyManager.register('toggle-stats', statsHotkey, () => {
+        logger.log('HOTKEY', 'Toggle stats triggered');
+        safeSend('toggle-stats-bar');
+    });
+
     // PTT capture is handled entirely by Python's GlobalHotkeyListener (evdev/pynput).
     // Python captures key press/release globally regardless of window state and writes
     // ptt_trigger.json directly. Electron's uiohook PTT was unreliable when collapsed to orb.
