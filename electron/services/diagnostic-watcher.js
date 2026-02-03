@@ -68,7 +68,7 @@ function start(dir) {
             const msgId = `diag-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
             const msg = {
                 id: msgId,
-                from: 'nathan',
+                from: (() => { try { const c = require('../config'); return (c.get('user.name') || 'user').toLowerCase(); } catch { return 'user'; } })(),
                 message: message,
                 timestamp: new Date().toISOString(),
                 read_by: [],

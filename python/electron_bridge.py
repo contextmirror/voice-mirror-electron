@@ -45,7 +45,8 @@ def get_sender_name() -> str:
         config_path = get_data_dir() / "voice_config.json"
         if config_path.exists():
             with open(config_path, encoding='utf-8') as f:
-                return json.load(f).get("userName") or "user"
+                name = json.load(f).get("userName")
+                return name.lower() if name else "user"
     except Exception:
         pass
     return "user"

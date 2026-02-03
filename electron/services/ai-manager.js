@@ -100,7 +100,8 @@ function createAIManager(options = {}) {
             console.log('[AIManager] Claude PTY started');
 
             // Wait for Claude TUI to be ready, then send voice mode command
-            const voicePrompt = 'Use claude_listen to wait for voice input from nathan, then reply with claude_send. Loop forever.\n';
+            const senderName = (appConfig.user?.name || 'user').toLowerCase();
+            const voicePrompt = `Use claude_listen to wait for voice input from ${senderName}, then reply with claude_send. Loop forever.\n`;
             sendInputWhenReady(voicePrompt, 20000)
                 .then(() => {
                     console.log('[AIManager] Voice mode command sent successfully');

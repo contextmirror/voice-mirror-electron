@@ -78,7 +78,8 @@ function _needsInputGroupEscalation() {
  * @returns {Object} Python backend service instance
  */
 function createPythonBackend(options = {}) {
-    const { pythonDir, dataDir, isWindows, log } = options;
+    const { pythonDir, dataDir, isWindows, log, getSenderName } = options;
+    const _senderName = () => (getSenderName ? getSenderName() : 'user');
 
     let pythonProcess = null;
     let onEventCallback = null;
@@ -303,9 +304,9 @@ function createPythonBackend(options = {}) {
                 if (onEventCallback) {
                     if (line.includes('Wake word detected')) {
                         onEventCallback({ type: 'wake' });
-                    } else if (line.includes('Recording')) {
+                    } else if (line.includes('Recording') && line.includes('speak now')) {
                         onEventCallback({ type: 'recording' });
-                    } else if (line.includes('Speaking')) {
+                    } else if (line.includes('Speaking:')) {
                         onEventCallback({ type: 'speaking' });
                     } else if (line.includes('Listening')) {
                         onEventCallback({ type: 'idle' });
@@ -455,7 +456,7 @@ function createPythonBackend(options = {}) {
                 // Use proper message format (from, message, timestamp, etc.)
                 const newMessage = {
                     id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                    from: 'nathan',  // Voice user
+                    from: _senderName(),
                     message: `Please analyze this screenshot: ${imagePath}`,
                     timestamp: new Date().toISOString(),
                     read_by: [],
@@ -475,7 +476,7 @@ function createPythonBackend(options = {}) {
                 // Also create trigger file to notify watchers
                 const triggerPath = path.join(contextMirrorDir, 'claude_message_trigger.json');
                 fs.writeFileSync(triggerPath, JSON.stringify({
-                    from: 'nathan',
+                    from: _senderName(),
                     messageId: newMessage.id,
                     timestamp: newMessage.timestamp,
                     has_image: true,

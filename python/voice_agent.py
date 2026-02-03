@@ -99,7 +99,17 @@ class VoiceMirror:
             chunk_samples=CHUNK_SAMPLES
         )
         self.tts = None  # TTS adapter (kokoro, qwen, etc.) - loaded in load_models()
-        self.inbox = InboxManager(INBOX_PATH, lambda: self._ai_provider)
+        def _get_sender_name():
+            try:
+                config_path = VM_DATA_DIR / "voice_config.json"
+                if config_path.exists():
+                    with open(config_path, encoding='utf-8') as f:
+                        name = json.load(f).get("userName")
+                        return name.lower() if name else "user"
+            except Exception:
+                pass
+            return "user"
+        self.inbox = InboxManager(INBOX_PATH, lambda: self._ai_provider, sender_name_getter=_get_sender_name)
         self.audio_state = AudioState()  # Shared audio state
         self.stt_adapter = None  # STT adapter (parakeet, whisper, etc.)
 

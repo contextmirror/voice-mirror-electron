@@ -23,6 +23,7 @@ const path = require('path');
 function createInboxWatcher(options = {}) {
     const {
         dataDir,
+        getSenderName,
         isClaudeRunning,
         getProvider,
         onClaudeMessage,
@@ -31,6 +32,9 @@ function createInboxWatcher(options = {}) {
         onVoiceEvent,
         log
     } = options;
+
+    // Helper to get the current sender name (user-configurable)
+    const _senderName = () => (getSenderName ? getSenderName() : 'user');
 
     // Dev log helper — uses logger.devlog if provided, else no-op
     const _devlog = log?.devlog
@@ -68,8 +72,8 @@ function createInboxWatcher(options = {}) {
                 for (const msg of messages) {
                     if (msg.id) {
                         displayedMessageIds.add(msg.id);
-                        // Also seed processedUserMessageIds for "nathan" messages
-                        if (msg.from === 'nathan') {
+                        // Also seed processedUserMessageIds for user messages
+                        if (msg.from === _senderName()) {
                             processedUserMessageIds.add(msg.id);
                         }
                     }
@@ -144,7 +148,7 @@ function createInboxWatcher(options = {}) {
 
                 if (!claudeRunning && activeProvider && activeProvider.isRunning()) {
                     for (const msg of messages) {
-                        if (processedUserMessageIds.has(msg.id) || msg.from !== 'nathan') continue;
+                        if (processedUserMessageIds.has(msg.id) || msg.from !== _senderName()) continue;
 
                         processedUserMessageIds.add(msg.id);
 
@@ -306,7 +310,7 @@ function createInboxWatcher(options = {}) {
                 for (const msg of messages) {
                     if (msg.id) {
                         displayedMessageIds.add(msg.id);
-                        if (msg.from === 'nathan') {
+                        if (msg.from === _senderName()) {
                             processedUserMessageIds.add(msg.id);
                         }
                     }

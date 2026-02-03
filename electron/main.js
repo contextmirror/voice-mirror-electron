@@ -511,7 +511,8 @@ app.whenReady().then(() => {
         pythonDir: path.join(__dirname, '..', 'python'),
         dataDir: config.getDataDir(),
         isWindows,
-        log: (level, msg) => logger.log(level, msg)
+        log: (level, msg) => logger.log(level, msg),
+        getSenderName: () => (appConfig.user?.name || 'user').toLowerCase()
     });
 
     // --- Jarvis-style startup greeting ---
@@ -662,6 +663,7 @@ app.whenReady().then(() => {
     // Initialize inbox watcher service
     inboxWatcherService = createInboxWatcher({
         dataDir: config.getDataDir(),
+        getSenderName: () => (appConfig.user?.name || 'user').toLowerCase(),
         isClaudeRunning: () => aiManager?.isClaudeRunning() || false,
         getProvider: () => aiManager?.getProvider() || null,
         onClaudeMessage: (msg) => {

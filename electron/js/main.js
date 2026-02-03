@@ -471,6 +471,17 @@ function handleVoiceEvent(data) {
             statusIndicator.className = '';
             statusText.textContent = 'Listening...';
             break;
+        case 'claude_message':
+            // Claude responded via inbox — transition to idle after a short delay
+            // (gives Python TTS time to claim 'speaking' state if notifications are on)
+            setTimeout(() => {
+                if (statusText.textContent === 'Processing...') {
+                    setOrbState('idle');
+                    statusIndicator.className = '';
+                    statusText.textContent = 'Listening...';
+                }
+            }, 2000);
+            break;
         case 'call_active':
             statusText.textContent = 'Call active - speak anytime';
             break;
