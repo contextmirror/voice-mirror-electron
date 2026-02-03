@@ -25,7 +25,7 @@ export function showToast(message, type = 'info', duration = 4000) {
 
     const iconSpan = document.createElement('span');
     iconSpan.className = 'toast-icon';
-    iconSpan.textContent = toastIcons[type] || toastIcons.info;
+    iconSpan.innerHTML = toastIcons[type] || toastIcons.info;
     const msgSpan = document.createElement('span');
     msgSpan.className = 'toast-message';
     msgSpan.textContent = message;
