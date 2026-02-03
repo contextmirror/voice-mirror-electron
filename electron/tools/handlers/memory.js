@@ -189,4 +189,97 @@ async function memoryRemember(args = {}) {
     }
 }
 
-module.exports = { memorySearch, memoryRemember };
+/**
+ * Forget (delete) a specific memory by content match.
+ *
+ * @param {Object} args - Tool arguments
+ * @param {string} args.content - Content to match and delete
+ * @returns {Promise<Object>} Result or error
+ */
+async function memoryForget(args = {}) {
+    const { content } = args;
+
+    if (!content) {
+        return { success: false, error: 'Content is required to identify what to forget' };
+    }
+
+    try {
+        const memoryDir = getMemoryDir();
+        const contentLower = content.toLowerCase();
+        let totalDeleted = 0;
+
+        for (const tier of ['core', 'stable', 'notes']) {
+            const memoryFile = path.join(memoryDir, `memory_${tier}.json`);
+            if (!fs.existsSync(memoryFile)) continue;
+
+            const data = JSON.parse(fs.readFileSync(memoryFile, 'utf-8'));
+            if (!data.memories) continue;
+
+            const before = data.memories.length;
+            data.memories = data.memories.filter(m =>
+                !(m.content || '').toLowerCase().includes(contentLower)
+            );
+            const deleted = before - data.memories.length;
+
+            if (deleted > 0) {
+                totalDeleted += deleted;
+                data.metadata = data.metadata || {};
+                data.metadata.updated = new Date().toISOString();
+                fs.writeFileSync(memoryFile, JSON.stringify(data, null, 2));
+            }
+        }
+
+        if (totalDeleted === 0) {
+            return { success: true, result: `No memories found matching "${content}".` };
+        }
+
+        return { success: true, result: `Forgot ${totalDeleted} memory(s) matching "${content}".` };
+    } catch (err) {
+        console.error('[MemoryForget] Error:', err);
+        return { success: false, error: `Failed to forget: ${err.message}` };
+    }
+}
+
+/**
+ * Clear all memories in a tier (or all tiers).
+ *
+ * @param {Object} args - Tool arguments
+ * @param {string} args.tier - Tier to clear: core, stable, notes, or "all"
+ * @returns {Promise<Object>} Result or error
+ */
+async function memoryClear(args = {}) {
+    const { tier = 'all' } = args;
+
+    const validTiers = ['core', 'stable', 'notes', 'all'];
+    if (!validTiers.includes(tier)) {
+        return { success: false, error: `Invalid tier: ${tier}. Must be one of: ${validTiers.join(', ')}` };
+    }
+
+    try {
+        const memoryDir = getMemoryDir();
+        const tiersToClean = tier === 'all' ? ['core', 'stable', 'notes'] : [tier];
+        let totalCleared = 0;
+
+        for (const t of tiersToClean) {
+            const memoryFile = path.join(memoryDir, `memory_${t}.json`);
+            if (!fs.existsSync(memoryFile)) continue;
+
+            const data = JSON.parse(fs.readFileSync(memoryFile, 'utf-8'));
+            const count = (data.memories || []).length;
+            totalCleared += count;
+
+            data.memories = [];
+            data.metadata = data.metadata || {};
+            data.metadata.updated = new Date().toISOString();
+            fs.writeFileSync(memoryFile, JSON.stringify(data, null, 2));
+        }
+
+        const tierLabel = tier === 'all' ? 'all tiers' : `${tier} tier`;
+        return { success: true, result: `Cleared ${totalCleared} memory(s) from ${tierLabel}.` };
+    } catch (err) {
+        console.error('[MemoryClear] Error:', err);
+        return { success: false, error: `Failed to clear memories: ${err.message}` };
+    }
+}
+
+module.exports = { memorySearch, memoryRemember, memoryForget, memoryClear };

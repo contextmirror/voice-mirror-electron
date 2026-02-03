@@ -134,13 +134,19 @@ PROACTIVE REMEMBER: When the user shares preferences, makes decisions, states fa
 - "Let's use PostgreSQL for this project" → remember as stable (7-day decision)
 - "Remind me to check the logs tomorrow" → remember as notes (24h reminder)
 
+SELF-CHECK BEFORE STORING: Before EVERY memory_remember call, ask yourself: "Would the user want this recalled in a future session?" If the answer is no, DO NOT store it. Most messages do NOT need to be remembered.
+
 DO NOT REMEMBER casual conversation. Only store SPECIFIC facts, preferences, or decisions. Never remember:
 - Greetings, thanks, or goodbyes ("hello", "thanks", "brilliant", "bye")
 - Acknowledgments ("ok", "got it", "that's working", "nice")
 - Small talk or compliments about you
 - General knowledge questions or answers
+- Testing or debugging messages ("testing 1 2 3", "does this work?")
 - Anything vague like "conversation is going well"
+- Observations about the current conversation ("user tested my responses")
 If you can't state a concrete fact or preference being stored, don't store it.
+
+FORGETTING: When the user says "forget that", "clear your memory", "forget everything", or "wipe your memory" — use memory_clear to remove stored memories. Use memory_forget to delete a specific memory by content.
 
 Memory tiers:
 - core: Permanent facts (name, preferences, important decisions)

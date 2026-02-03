@@ -230,6 +230,10 @@ class ToolExecutor {
                 return await handlers.memorySearch(args);
             case 'memory_remember':
                 return await handlers.memoryRemember(args);
+            case 'memory_forget':
+                return await handlers.memoryForget(args);
+            case 'memory_clear':
+                return await handlers.memoryClear(args);
             case 'n8n_list_workflows':
                 return await handlers.n8nListWorkflows(args);
             case 'n8n_trigger_workflow':

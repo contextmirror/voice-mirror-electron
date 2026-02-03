@@ -45,6 +45,33 @@ const tools = {
         example: '{"tool": "memory_remember", "args": {"content": "User prefers dark mode", "tier": "core"}}'
     },
 
+    memory_forget: {
+        name: 'memory_forget',
+        description: 'Delete memories matching a content phrase. Use when the user says "forget that" or "forget about X".',
+        args: {
+            content: {
+                type: 'string',
+                required: true,
+                description: 'Content to match and delete from memory'
+            }
+        },
+        example: '{"tool": "memory_forget", "args": {"content": "dark mode"}}'
+    },
+
+    memory_clear: {
+        name: 'memory_clear',
+        description: 'Clear all memories in a tier or all tiers. Use when the user says "clear your memory", "forget everything", or "wipe your memory".',
+        args: {
+            tier: {
+                type: 'string',
+                required: false,
+                default: 'all',
+                description: 'Tier to clear: core, stable, notes, or all (default: all)'
+            }
+        },
+        example: '{"tool": "memory_clear", "args": {"tier": "all"}}'
+    },
+
     browser_control: {
         name: 'browser_control',
         description: 'Control the embedded browser — search the web, open pages, read content, click elements, type text. The browser is embedded in the Voice Mirror panel.',
