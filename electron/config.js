@@ -97,6 +97,7 @@ const DEFAULT_CONFIG = {
         model: null,                  // Specific model ID (auto-detected for local providers)
         contextLength: 32768,         // Context window size for local models (tokens). Higher = more data but more VRAM.
         autoDetect: true,             // Auto-detect local LLM servers on startup
+        systemPrompt: null,              // Custom system prompt / persona (optional)
         toolProfile: 'voice-assistant',  // Active tool profile name (Claude Code only)
         toolProfiles: {                  // Saved tool profiles (which MCP groups to pre-load)
             'voice-assistant': { groups: ['core', 'meta', 'screen', 'memory', 'browser'] },

@@ -159,6 +159,12 @@ export async function loadSettingsUI() {
             contextLengthSelect.value = String(aiConfig.contextLength || 32768);
         }
 
+        // System prompt / persona
+        const systemPromptTextarea = document.getElementById('ai-system-prompt');
+        if (systemPromptTextarea) {
+            systemPromptTextarea.value = aiConfig.systemPrompt || '';
+        }
+
         // Track current provider/model for change detection on save
         state.currentProvider = selectedProvider;
         state.currentModel = aiConfig.model || null;
@@ -407,13 +413,15 @@ export async function saveSettings() {
     const aiEndpoint = document.getElementById('ai-endpoint').value;
 
     const aiContextLength = parseInt(document.getElementById('ai-context-length')?.value) || 32768;
+    const aiSystemPrompt = document.getElementById('ai-system-prompt')?.value?.trim() || null;
 
     // Build AI config
     const aiUpdates = {
         provider: aiProvider,
         model: aiModel,
         autoDetect: aiAutoDetect,
-        contextLength: aiContextLength
+        contextLength: aiContextLength,
+        systemPrompt: aiSystemPrompt
     };
 
     // Update endpoint if it's a local provider with custom endpoint

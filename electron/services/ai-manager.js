@@ -101,7 +101,15 @@ function createAIManager(options = {}) {
 
             // Wait for Claude TUI to be ready, then send voice mode command
             const senderName = (appConfig.user?.name || 'user').toLowerCase();
-            const voicePrompt = `Use claude_listen to wait for voice input from ${senderName}, then reply with claude_send. Loop forever.\n`;
+            const customPrompt = appConfig.ai?.systemPrompt;
+
+            // Build the full prompt: custom persona (if any) + voice mode instructions
+            let voicePrompt = '';
+            if (customPrompt) {
+                voicePrompt += `${customPrompt}\n\n`;
+            }
+            voicePrompt += `Use claude_listen to wait for voice input from ${senderName}, then reply with claude_send. Loop forever.\n`;
+
             sendInputWhenReady(voicePrompt, 20000)
                 .then(() => {
                     console.log('[AIManager] Voice mode command sent successfully');
@@ -206,7 +214,8 @@ function createAIManager(options = {}) {
             model: model,
             baseUrl: endpoints[providerType] || undefined,
             apiKey: apiKey,
-            contextLength: config?.ai?.contextLength || 32768
+            contextLength: config?.ai?.contextLength || 32768,
+            systemPrompt: config?.ai?.systemPrompt || null
         });
 
         // Set up output handlers

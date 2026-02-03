@@ -445,6 +445,47 @@
     color: rgba(255, 255, 255, 0.3);
 }
 
+/* Vertical setting row (for textareas) */
+.setting-row.setting-row-vertical {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+}
+
+.setting-row.setting-row-vertical label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.setting-row .label-hint {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 12px;
+    font-weight: normal;
+}
+
+.setting-row textarea {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    color: white;
+    padding: 10px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 60px;
+    max-height: 200px;
+}
+
+.setting-row textarea:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.setting-row textarea::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+
 /* Scan button in AI Provider section */
 #ai-scan-btn {
     margin: 12px;
