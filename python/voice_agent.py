@@ -44,6 +44,7 @@ from settings import load_voice_settings
 # STT adapters
 from stt import create_stt_adapter
 from tts import create_tts_adapter
+print("[IMPORT DEBUG] tts done", flush=True)
 
 # Configuration
 TTS_VOICE = os.getenv("TTS_VOICE", "af_bella")  # Female voice, change to am_puck for male
@@ -175,7 +176,6 @@ class VoiceMirror:
 
     def load_models(self):
         """Load OpenWakeWord and Parakeet models."""
-        print("[DEBUG] load_models() START")
         # Clean up old inbox messages on startup
         removed = cleanup_inbox()
         if removed > 0:
@@ -241,15 +241,12 @@ class VoiceMirror:
             self.tts = create_tts_adapter("kokoro", voice=tts_voice)
 
         # Load TTS model
-        print("[DEBUG] about to call tts.load()")
         try:
             self.tts.load()
-            print("[DEBUG] tts.load() completed")
         except Exception as e:
             print(f"⚠️ TTS failed to load: {e}")
             print("   Voice output will be unavailable. Run setup to fix.")
             self.tts = None
-        print("[DEBUG] load_models() END")
 
     def is_call_active(self) -> bool:
         """
@@ -663,9 +660,7 @@ class VoiceMirror:
 
     async def run(self):
         """Main loop."""
-        print("[DEBUG] run() START")
         self.load_models()
-        print("[DEBUG] load_models returned, about to load voice config")
 
         # Load voice config for device selection
         self._voice_config = {}
@@ -677,7 +672,6 @@ class VoiceMirror:
         except Exception:
             pass
 
-        print("[DEBUG] about to print Ready banner")
         print("\n" + "=" * 50)
         print("Voice Mirror - Ready")
         print("=" * 50)

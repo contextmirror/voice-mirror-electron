@@ -90,7 +90,7 @@ function createPythonBackend(options = {}) {
     let intentionalStop = false;
     let isStarting = false; // Guard against concurrent start attempts
     const MAX_RESTARTS = 3;
-    const RESTART_DELAY = 8000; // 8 seconds - give Windows time to release model resources
+    const RESTART_DELAY = 8000; // 8 seconds
 
     /**
      * Handle JSON events from Python electron_bridge.py
