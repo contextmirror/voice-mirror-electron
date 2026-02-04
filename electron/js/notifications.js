@@ -15,9 +15,12 @@ const toastIcons = {
  * @param {string} message - Toast message
  * @param {string} type - Type: info, success, warning, error, loading
  * @param {number} duration - Duration in ms (0 for no auto-dismiss)
+ * @param {Object} options - Additional options
+ * @param {string} options.actionText - Text for action button
+ * @param {Function} options.onAction - Callback when action button clicked
  * @returns {HTMLElement} - The toast element
  */
-export function showToast(message, type = 'info', duration = 4000) {
+export function showToast(message, type = 'info', duration = 4000, options = {}) {
     const toastContainer = document.getElementById('toast-container');
 
     const toast = document.createElement('div');
@@ -26,17 +29,32 @@ export function showToast(message, type = 'info', duration = 4000) {
     const iconSpan = document.createElement('span');
     iconSpan.className = 'toast-icon';
     iconSpan.innerHTML = toastIcons[type] || toastIcons.info;
+
     const msgSpan = document.createElement('span');
     msgSpan.className = 'toast-message';
     msgSpan.textContent = message;
+
+    toast.appendChild(iconSpan);
+    toast.appendChild(msgSpan);
+
+    // Add action button if provided
+    if (options.actionText && options.onAction) {
+        const actionBtn = document.createElement('button');
+        actionBtn.className = 'toast-action';
+        actionBtn.textContent = options.actionText;
+        actionBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            options.onAction(toast);
+        });
+        toast.appendChild(actionBtn);
+    }
+
     const closeBtn = document.createElement('button');
     closeBtn.className = 'toast-close';
     closeBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
     </svg>`;
     closeBtn.addEventListener('click', () => window.dismissToast(toast));
-    toast.appendChild(iconSpan);
-    toast.appendChild(msgSpan);
     toast.appendChild(closeBtn);
 
     toastContainer.appendChild(toast);

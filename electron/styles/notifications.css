@@ -67,6 +67,33 @@
     flex: 1;
 }
 
+/* ========== Toast Action Button ========== */
+.toast-action {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--duration-fast) var(--ease-out);
+}
+
+.toast-action:hover {
+    background: var(--accent-hover);
+}
+
+.toast-action:active {
+    transform: scale(0.97);
+}
+
+/* Hide action button in loading state */
+.toast.loading .toast-action {
+    display: none;
+}
+
 .toast-close {
     background: none;
     border: none;

@@ -841,17 +841,18 @@ async function init() {
 
     // Update checker notifications
     window.voiceMirror.onUpdateAvailable((data) => {
-        const toast = showToast(
-            `Update available (${data.behind} commit${data.behind > 1 ? 's' : ''} behind) — click to update`,
+        showToast(
+            `Update available (${data.behind} commit${data.behind > 1 ? 's' : ''} behind)`,
             'info',
-            0
+            0,
+            {
+                actionText: 'Update',
+                onAction: async (toast) => {
+                    updateToast(toast, 'Pulling updates...', 'loading');
+                    await window.voiceMirror.applyUpdate();
+                }
+            }
         );
-        toast.style.cursor = 'pointer';
-        toast.addEventListener('click', async (e) => {
-            if (e.target.closest('.toast-close')) return;
-            updateToast(toast, 'Pulling updates...', 'loading');
-            await window.voiceMirror.applyUpdate();
-        });
     });
 
     window.voiceMirror.onUpdateStatus((data) => {
