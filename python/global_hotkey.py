@@ -274,15 +274,25 @@ class GlobalHotkeyListener:
             from pynput.keyboard import Listener as KeyboardListener
             from pynput.mouse import Listener as MouseListener
 
-            self._kb_listener = KeyboardListener(
+            kb_kwargs = dict(
                 on_press=self._on_press,
-                on_release=self._on_release
+                on_release=self._on_release,
             )
+            mouse_kwargs = dict(
+                on_click=self._on_click,
+            )
+
+            # On Windows, suppress the PTT key/button to prevent the
+            # system "ding" beep and unwanted side-effects (e.g. browser
+            # back on Mouse4).  Similar to how Discord handles PTT.
+            if platform.system() == "Windows":
+                kb_kwargs["win32_event_filter"] = self._win32_kb_filter
+                mouse_kwargs["win32_event_filter"] = self._win32_mouse_filter
+
+            self._kb_listener = KeyboardListener(**kb_kwargs)
             self._kb_listener.start()
 
-            self._mouse_listener = MouseListener(
-                on_click=self._on_click
-            )
+            self._mouse_listener = MouseListener(**mouse_kwargs)
             self._mouse_listener.start()
 
             print(f"[GlobalHotkey] pynput: Listening for {self._key_type} key: {key_name} -> {self._target_key!r}")
@@ -408,6 +418,51 @@ class GlobalHotkeyListener:
                     return True
 
         return False
+
+    # ── Windows event suppression ──────────────────────────────
+
+    def _get_target_vk(self) -> int | None:
+        """Get the Windows virtual-key code for the current PTT key."""
+        from pynput.keyboard import Key, KeyCode
+
+        target = self._target_key
+        if isinstance(target, Key):
+            return target.value.vk
+        if isinstance(target, KeyCode):
+            return target.vk
+        return None
+
+    def _win32_kb_filter(self, msg, data):
+        """Suppress the PTT key on Windows so the system doesn't beep."""
+        if self._key_type != "keyboard":
+            return True
+        target_vk = self._get_target_vk()
+        if target_vk is not None and data.vkCode == target_vk:
+            self._kb_listener.suppress_event()
+
+    def _win32_mouse_filter(self, msg, data):
+        """Suppress the PTT mouse button on Windows (prevent browser-back etc)."""
+        if self._key_type != "mouse":
+            return True
+
+        from pynput.mouse import Button
+
+        target = self._target_key
+        should_suppress = False
+
+        # Middle button: WM_MBUTTONDOWN=0x207, WM_MBUTTONUP=0x208
+        if target == Button.middle and msg in (0x0207, 0x0208):
+            should_suppress = True
+        # X buttons: WM_XBUTTONDOWN=0x20B, WM_XBUTTONUP=0x20C
+        elif msg in (0x020B, 0x020C):
+            x_button = (data.mouseData >> 16) & 0xFFFF
+            btn4 = getattr(Button, "x1", None) or getattr(Button, "button8", None)
+            btn5 = getattr(Button, "x2", None) or getattr(Button, "button9", None)
+            if (target == btn4 and x_button == 1) or (target == btn5 and x_button == 2):
+                should_suppress = True
+
+        if should_suppress:
+            self._mouse_listener.suppress_event()
 
     # ── Trigger file ────────────────────────────────────────────
 
