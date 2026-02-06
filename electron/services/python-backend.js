@@ -404,7 +404,8 @@ function createPythonBackend(options = {}) {
                 } catch { /* already exited */ }
             }, 3000);
             proc.on('close', () => clearTimeout(killTimer));
-            pythonProcess.kill();
+            // Don't kill immediately — let the 'stop' command trigger graceful exit.
+            // The 3-second timeout above will force-kill if it doesn't exit in time.
             pythonProcess = null;
             return true;
         }

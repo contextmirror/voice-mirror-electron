@@ -81,6 +81,7 @@ class InboxManager:
         self._last_message_hash = None
         self._last_message_time = 0.0
         self._last_seen_message_id = None
+        self.awaiting_response = False  # True while wait_for_response() is active
 
     def send(self, message: str) -> str | None:
         """
@@ -149,9 +150,17 @@ class InboxManager:
         ai_provider = self._get_ai_provider()
         print(f"⏳ Waiting for {ai_provider['name']} to respond...")
 
+        self.awaiting_response = True
         start_time = time.time()
         poll_interval = 0.5  # Check every 500ms
 
+        try:
+            return await self._poll_for_response(ai_provider, my_message_id, timeout, start_time, poll_interval)
+        finally:
+            self.awaiting_response = False
+
+    async def _poll_for_response(self, ai_provider, my_message_id, timeout, start_time, poll_interval):
+        """Internal polling loop for wait_for_response."""
         while (time.time() - start_time) < timeout:
             await asyncio.sleep(poll_interval)
 

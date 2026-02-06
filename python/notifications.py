@@ -125,6 +125,11 @@ class NotificationWatcher:
                 if self.tts.is_speaking or self._is_recording() or self._is_processing():
                     continue
 
+                # Skip if voice_agent is actively waiting for a response
+                # (it will handle TTS itself — avoids double-speak race condition)
+                if self.inbox.awaiting_response:
+                    continue
+
                 # Skip if in active conversation mode (user is interacting)
                 if self._in_conversation():
                     continue

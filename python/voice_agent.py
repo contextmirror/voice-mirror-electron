@@ -545,7 +545,7 @@ class VoiceMirror:
             self.audio_state.start_recording('ptt')
             self.audio_state._ptt_start_time = time.time()
             print('🔴 Recording (PTT)... (speak now)')
-        elif ptt_action == "stop" and self.audio_state.is_recording and not self.audio_state.is_processing:
+        elif ptt_action == "stop" and self.audio_state.is_recording:
             # PTT released - process immediately (don't wait for silence)
             print('⏹️ PTT released, processing...{"event": "recording_stop", "data": {}}')
             self.audio_state.is_recording = False
@@ -645,6 +645,10 @@ class VoiceMirror:
 
             # Send to AI provider via inbox
             msg_id = self.send_to_inbox(text)
+
+            # Release processing lock before waiting for response
+            # so PTT can be used again while waiting
+            self.audio_state.is_processing = False
 
             # Wait for AI provider to respond via inbox
             response = await self.wait_for_claude_response(msg_id, timeout=90.0)

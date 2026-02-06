@@ -568,7 +568,9 @@ async function init() {
             deepseek: 'DeepSeek'
         };
         let displayName = providerNames[provider] || provider;
-        if (model) {
+        // Only append model name for non-CLI providers (Claude Code doesn't use localModel)
+        const cliProviders = ['claude'];
+        if (model && !cliProviders.includes(provider)) {
             const shortModel = model.split(':')[0];
             displayName = `${displayName} (${shortModel})`;
         }
