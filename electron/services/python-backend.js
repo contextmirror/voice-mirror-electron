@@ -204,8 +204,10 @@ function createPythonBackend(options = {}) {
         } else if (eventType === 'audio_devices') {
             // Cache late-arriving audio device list
             cachedAudioDevices = data;
+        } else if (eventType === 'config_updated') {
+            // Config sync acknowledgment - no action needed
         } else {
-            console.log('[Python] Unknown event:', eventType, data);
+            console.log('[Python] Unknown event:', eventType);
         }
     }
 
@@ -647,6 +649,13 @@ function createPythonBackend(options = {}) {
 function startDockerServices() {
     const { execSync } = require('child_process');
 
+    // Check if Docker is available first
+    try {
+        execSync('docker --version', { encoding: 'utf-8', timeout: 3000, stdio: 'pipe' });
+    } catch {
+        return; // Docker not installed - skip silently
+    }
+
     // Docker containers to start (name -> description)
     const services = {
         'searxng': 'SearXNG (web search)',
@@ -658,7 +667,8 @@ function startDockerServices() {
             // Check if container exists
             const allContainers = execSync('docker ps -a --format "{{.Names}}"', {
                 encoding: 'utf-8',
-                timeout: 5000
+                timeout: 5000,
+                stdio: 'pipe'
             }).trim();
             const exists = allContainers.split('\n').includes(containerName);
 

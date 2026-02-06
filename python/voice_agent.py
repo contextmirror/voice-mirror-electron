@@ -469,8 +469,6 @@ class VoiceMirror:
                 self.audio_state.in_conversation = True
                 self.audio_state.conversation_end_time = time.time() + CONVERSATION_WINDOW
                 print(f"💬 Conversation mode active ({CONVERSATION_WINDOW}s window - speak without wake word)")
-            elif self.audio_state.recording_source == 'ptt':
-                print("👂 PTT finished. Press key to speak again.")
             elif self.is_call_active():
                 print("📞 Call active - speak anytime...")
 
@@ -678,84 +676,57 @@ class VoiceMirror:
 
         print("\n" + "=" * 50)
         print("Voice Mirror - Ready")
-        print("=" * 50)
         # Show activation mode info
         activation_display = {
-            ActivationMode.WAKE_WORD: "🎤 Wake Word (Hey Claude)",
-            ActivationMode.CALL_MODE: "📞 Call Mode (always listening)",
+            ActivationMode.WAKE_WORD: "🎤 Wake Word",
+            ActivationMode.CALL_MODE: "📞 Call Mode",
             ActivationMode.PUSH_TO_TALK: "🎙️ Push-to-Talk"
         }
-        print(f"Activation: {activation_display.get(self._activation_mode, self._activation_mode)}")
-        if self.stt_adapter is not None and self.stt_adapter.is_loaded:
-            print(f"STT: {self.stt_adapter.name}")
-        else:
-            print("STT: Not loaded yet (will load on first use)")
-        if self.tts and self.tts.is_loaded:
-            print(f"TTS: {self.tts.name} - LOCAL")
-        else:
-            print("TTS: Not available")
-        print(f"Inbox: {INBOX_PATH}")
-        print(f"Routing: 🤖 {self._ai_provider['name']} (via MCP inbox)")
-        print("=" * 50)
-
-        # Show activation mode specific instructions
-        print(f"\n{self.get_listening_status()}")
-        if self._activation_mode == ActivationMode.WAKE_WORD:
-            wake_phrase = self._ai_provider.get('wakePhrase', 'Hey Claude')
-            print(f"   Say '{wake_phrase}' then speak your command!")
-            print(f"\n   Conversation mode: {CONVERSATION_WINDOW}s follow-up window")
-            print("   (After a response, speak again without wake word)")
-        elif self._activation_mode == ActivationMode.CALL_MODE:
-            print("   Just start speaking - no wake word needed!")
-        elif self._activation_mode == ActivationMode.PUSH_TO_TALK:
-            print("   Hold your PTT key and speak, release to process.")
-
+        stt_name = self.stt_adapter.name if (self.stt_adapter and self.stt_adapter.is_loaded) else "lazy-load"
+        tts_name = self.tts.name if (self.tts and self.tts.is_loaded) else "none"
+        print(f"  Mode: {activation_display.get(self._activation_mode, self._activation_mode)}")
+        print(f"  STT: {stt_name} | TTS: {tts_name}")
+        print(f"  AI: {self._ai_provider['name']}")
         if NOTIFICATION_ENABLED:
-            print("\n   📢 Notifications: ON (Claude messages will be spoken)")
-        print("   (Press Ctrl+C to quit)\n")
-
-        # List available input devices
-        print("\n📢 Available input devices:")
-        for i, d in enumerate(sd.query_devices()):
-            if d['max_input_channels'] > 0:
-                print(f"   {i}: {d['name']} ({d['max_input_channels']} ch)")
+            print("  Notifications: ON")
+        print("=" * 50)
 
         # Select input device: config override > known mic brands > generic USB > default
         input_device = None
+        all_devices = sd.query_devices()
 
         # Check config for explicit device override
         config_device = self._voice_config.get("inputDevice")
         if config_device is not None:
             if isinstance(config_device, int):
                 input_device = config_device
-                print(f"   ✅ Selected (config): {input_device} - {sd.query_devices(input_device)['name']}")
             elif isinstance(config_device, str):
-                for i, d in enumerate(sd.query_devices()):
+                for i, d in enumerate(all_devices):
                     if d['max_input_channels'] > 0 and config_device.lower() in d['name'].lower():
                         input_device = i
-                        print(f"   ✅ Selected (config match): {i} - {d['name']}")
                         break
 
         # Two-pass auto-detection: known mic brands first, then generic USB
         if input_device is None:
             known_mics = ['seiren', 'yeti', 'snowball', 'at2020', 'elgato', 'hyperx',
                           'blue', 'rode', 'fifine', 'tonor', 'samson']
-            for i, d in enumerate(sd.query_devices()):
+            for i, d in enumerate(all_devices):
                 name = d['name'].lower()
                 if d['max_input_channels'] > 0:
                     if any(mic in name for mic in known_mics):
                         input_device = i
-                        print(f"   ✅ Selected: {i} - {d['name']}")
                         break
         if input_device is None:
-            for i, d in enumerate(sd.query_devices()):
+            for i, d in enumerate(all_devices):
                 name = d['name'].lower()
                 if d['max_input_channels'] > 0:
                     if 'usb' in name and 'audio' in name:
                         input_device = i
-                        print(f"   ✅ Selected: {i} - {d['name']}")
                         break
-        if input_device is None:
+
+        if input_device is not None:
+            print(f"   ✅ Input: {all_devices[input_device]['name']}")
+        else:
             print("   Using default input device")
 
         # Start audio stream
@@ -771,7 +742,6 @@ class VoiceMirror:
         with stream:
             # Start GlobalHotkey listener NOW that the audio stream is active
             # (must be after stream start so PTT triggers aren't lost during model loading)
-            print(f"[GlobalHotkey] activation_mode={self._activation_mode}, PTT={ActivationMode.PUSH_TO_TALK}")
             if self._activation_mode == ActivationMode.PUSH_TO_TALK:
                 try:
                     from global_hotkey import GlobalHotkeyListener
@@ -785,8 +755,6 @@ class VoiceMirror:
                     print(f"[GlobalHotkey] Started with key: {ptt_key}")
                 except Exception as e:
                     print(f"[GlobalHotkey] Failed to start: {e}")
-            else:
-                print(f"[GlobalHotkey] Skipped (not PTT mode)")
 
             # Start notification watcher in background
             notification_task = None
@@ -830,7 +798,6 @@ class VoiceMirror:
                         self.audio_state.ptt_process_pending = False
                         await self.process_recording()
                         self.audio_state.is_processing = False
-                        print(f"\n{self.get_listening_status()}")
                         continue
 
                     # Check for silence timeout during recording
@@ -842,14 +809,10 @@ class VoiceMirror:
                             self.audio_state.is_processing = True
                             await self.process_recording()
                             self.audio_state.is_processing = False
-                            # Show appropriate status based on mode
-                            if self.is_call_active():
-                                print("\n📞 Call active - speak anytime...")
-                            elif self.audio_state.in_conversation:
+                            # Only show status for conversational modes where context changes
+                            if self.audio_state.in_conversation:
                                 remaining = max(0, self.audio_state.conversation_end_time - time.time())
                                 print(f"\n💬 Conversation active ({remaining:.1f}s) - speak without wake word...")
-                            else:
-                                print(f"\n{self.get_listening_status()}")
 
             except KeyboardInterrupt:
                 print("\n\n👋 Goodbye!")

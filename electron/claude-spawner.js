@@ -53,7 +53,7 @@ const DEBUG_LOG_PATH = path.join(_getDataDir(), '..', 'claude-spawner-debug.log'
 function debugLog(msg) {
     const timestamp = new Date().toISOString();
     const line = `[${timestamp}] ${msg}\n`;
-    console.log('[Claude Spawner]', msg);
+    // Only write to debug log file, not console (reduces startup noise)
     try {
         fs.appendFileSync(DEBUG_LOG_PATH, line);
     } catch (e) {}
@@ -97,6 +97,7 @@ async function configureMCPServer(appConfig) {
     // Write to all config directories in parallel for cross-version compatibility
     const writePromises = [];
 
+    let writtenCount = 0;
     for (const configDir of CLAUDE_CONFIG_DIRS) {
         await fsPromises.mkdir(configDir, { recursive: true });
 
@@ -107,7 +108,7 @@ async function configureMCPServer(appConfig) {
                     settings.mcpServers = settings.mcpServers || {};
                     settings.mcpServers['voice-mirror-electron'] = serverEntry;
                     return fsPromises.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8')
-                        .then(() => console.log(`[Claude Spawner] MCP settings written to: ${settingsPath}`));
+                        .then(() => { writtenCount++; });
                 })
             );
         }
@@ -121,11 +122,12 @@ async function configureMCPServer(appConfig) {
                 mcpServers: { ...existing.mcpServers, 'voice-mirror-electron': serverEntry }
             };
             return fsPromises.writeFile(projectMcpPath, JSON.stringify(projectSettings, null, 2), 'utf-8')
-                .then(() => console.log(`[Claude Spawner] MCP settings written to: ${projectMcpPath}`));
+                .then(() => { writtenCount++; });
         })
     );
 
     await Promise.all(writePromises);
+    console.log(`[Claude Spawner] MCP settings written to ${writtenCount} locations`);
 }
 
 /**

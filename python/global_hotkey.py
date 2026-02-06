@@ -295,7 +295,7 @@ class GlobalHotkeyListener:
             self._mouse_listener = MouseListener(**mouse_kwargs)
             self._mouse_listener.start()
 
-            print(f"[GlobalHotkey] pynput: Listening for {self._key_type} key: {key_name} -> {self._target_key!r}")
+            print(f"[GlobalHotkey] Listening for key: {key_name}")
             return True
         except Exception as e:
             print(f"[GlobalHotkey] Failed to start pynput: {e}")
@@ -480,6 +480,5 @@ class GlobalHotkeyListener:
                     "timestamp": datetime.now().isoformat()
                 }, f)
             os.replace(temp_path, self._ptt_path)  # Atomic on all platforms
-            print(f"[GlobalHotkey] PTT {action}")
         except Exception as e:
             print(f"[GlobalHotkey] Failed to write trigger: {e}")
