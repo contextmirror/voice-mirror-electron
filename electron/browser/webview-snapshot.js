@@ -8,6 +8,21 @@ const cdp = require('./webview-cdp');
 const { buildRoleSnapshotFromAriaSnapshot, getRoleSnapshotStats } = require('./role-refs');
 const { storeRefs } = require('./webview-actions');
 
+const crypto = require('crypto');
+
+// Lazy-loaded to avoid circular dependency (browser-controller requires webview-snapshot)
+let _getDialogState = null;
+function getDialogState() {
+    if (!_getDialogState) {
+        _getDialogState = require('./browser-controller').getDialogState;
+    }
+    return _getDialogState();
+}
+
+// Snapshot hash tracking for ifChanged optimization
+let lastSnapshotHash = null;
+let lastSnapshotStats = null;
+
 /**
  * Take a snapshot of the page in the specified format.
  * @param {Object} opts
@@ -16,6 +31,8 @@ const { storeRefs } = require('./webview-actions');
  * @param {boolean} [opts.compact] - Remove unnamed structural elements (role format)
  * @param {number} [opts.maxDepth] - Max tree depth (role format)
  * @param {number} [opts.limit] - Max nodes (aria format)
+ * @param {boolean} [opts.ifChanged] - Return short response if page unchanged since last snapshot
+ * @param {number} [opts.maxPageText] - Max chars of page text (0 = skip, default: 4000)
  * @returns {Promise<Object>}
  */
 async function takeSnapshot(opts = {}) {
@@ -91,18 +108,42 @@ async function takeRoleSnapshot(opts = {}) {
 
     const stats = getRoleSnapshotStats(built.snapshot, built.refs);
 
-    // Extract visible page text to supplement the tree (captures scores, data, etc.)
-    let pageText = '';
+    // Compute hash for ifChanged optimization
+    const snapshotHash = crypto.createHash('md5').update(built.snapshot).digest('hex');
+    if (opts.ifChanged && lastSnapshotHash === snapshotHash) {
+        return { ok: true, unchanged: true, stats: lastSnapshotStats || stats };
+    }
+    lastSnapshotHash = snapshotHash;
+    lastSnapshotStats = stats;
+
+    // Check for active JS dialog and prepend banner
+    let snapshotText = built.snapshot;
     try {
-        pageText = await getPageText();
-    } catch (err) {
-        console.log('[webview-snapshot] Page text extraction failed:', err.message);
+        const ds = getDialogState();
+        if (ds.active) {
+            const d = ds.active;
+            const banner = `[DIALOG: ${d.type} "${(d.message || '').slice(0, 200)}"]` +
+                (d.defaultPrompt ? ` [default: "${d.defaultPrompt}"]` : '') +
+                '\n- Use browser_act with kind "dialog_accept" or "dialog_dismiss" to handle this dialog.\n';
+            snapshotText = banner + snapshotText;
+        }
+    } catch { /* ignore if dialog state not available */ }
+
+    // Extract visible page text to supplement the tree (captures scores, data, etc.)
+    const maxPageText = opts.maxPageText ?? 4000;
+    let pageText = '';
+    if (maxPageText > 0) {
+        try {
+            pageText = await getPageText(maxPageText);
+        } catch (err) {
+            console.log('[webview-snapshot] Page text extraction failed:', err.message);
+        }
     }
 
     return {
         ok: true,
         format: 'role',
-        snapshot: built.snapshot,
+        snapshot: snapshotText,
         pageText,
         refs: built.refs,
         stats
@@ -245,9 +286,10 @@ async function takeDomSnapshot() {
  * Extract visible page text content (innerText).
  * Supplements the role tree snapshot with readable text that may not
  * appear in the structured tree (scores, stats, dates, etc.).
+ * @param {number} [maxLength=4000] - Maximum characters to extract
  * @returns {Promise<string>}
  */
-async function getPageText() {
+async function getPageText(maxLength = 4000) {
     // First, extract structured table data (league tables, stats, etc.)
     let tableText = '';
     try {
@@ -281,7 +323,7 @@ async function getPageText() {
     const { result } = await cdp.evaluate(`(function() {
         try {
             var text = document.body.innerText || '';
-            return text.substring(0, 4000);
+            return text.substring(0, ${Math.max(100, Math.floor(maxLength))});
         } catch(e) {
             return '(page text error: ' + e.message + ')';
         }
@@ -323,8 +365,9 @@ async function getPageText() {
         .trim();
 
     // Append structured table data if extracted
+    const tableLimit = Math.max(500, Math.floor(maxLength * 0.75));
     if (tableText) {
-        text += '\n\n--- Table Data ---\n' + tableText.substring(0, 3000);
+        text += '\n\n--- Table Data ---\n' + tableText.substring(0, tableLimit);
     }
 
     return text;
@@ -487,6 +530,14 @@ function axValue(v) {
     return '';
 }
 
+/**
+ * Reset snapshot hash (for testing).
+ */
+function resetSnapshotHash() {
+    lastSnapshotHash = null;
+    lastSnapshotStats = null;
+}
+
 module.exports = {
     takeSnapshot,
     takeAriaSnapshot,
@@ -494,5 +545,6 @@ module.exports = {
     takeDomSnapshot,
     getPageText,
     formatAriaSnapshot,
-    formatAxTreeToAriaText
+    formatAxTreeToAriaText,
+    resetSnapshotHash
 };

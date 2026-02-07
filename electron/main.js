@@ -742,6 +742,11 @@ app.whenReady().then(() => {
         try {
             webviewCdp.attachDebugger(guestWebContents);
 
+            // Set up dialog event listener for JS dialog handling
+            browserController.setupDialogListener().catch(err => {
+                console.error('[Voice Mirror] Dialog listener setup failed:', err.message);
+            });
+
             // Track console messages from the webview
             guestWebContents.on('console-message', (e, level, message) => {
                 browserController.trackConsoleMessage({ level, message, timestamp: Date.now() });

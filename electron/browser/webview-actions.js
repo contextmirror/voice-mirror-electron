@@ -788,6 +788,20 @@ async function resizeAction(opts) {
     return { ok: true, action: 'resize', width: opts.width, height: opts.height };
 }
 
+async function dialogAcceptAction(opts) {
+    const params = { accept: true };
+    if (opts.promptText != null) {
+        params.promptText = String(opts.promptText);
+    }
+    await cdp.sendCommand('Page.handleJavaScriptDialog', params);
+    return { ok: true, action: 'dialog_accept' };
+}
+
+async function dialogDismissAction(opts) {
+    await cdp.sendCommand('Page.handleJavaScriptDialog', { accept: false });
+    return { ok: true, action: 'dialog_dismiss' };
+}
+
 /**
  * Dispatch an action request by kind.
  * @param {Object} request - { kind: string, ...params }
@@ -806,10 +820,12 @@ async function executeAction(request) {
         case 'wait':       return await waitAction(request);
         case 'screenshot': return await screenshotAction(request);
         case 'navigate':   return await navigateAction(request);
-        case 'upload':     return await uploadAction(request);
-        case 'resize':     return await resizeAction(request);
+        case 'upload':         return await uploadAction(request);
+        case 'resize':         return await resizeAction(request);
+        case 'dialog_accept':  return await dialogAcceptAction(request);
+        case 'dialog_dismiss': return await dialogDismissAction(request);
         default:
-            throw new Error(`Unknown action kind: "${request.kind}". Supported: click, type, fill, hover, drag, select, press, evaluate, wait, screenshot, navigate, upload, resize.`);
+            throw new Error(`Unknown action kind: "${request.kind}". Supported: click, type, fill, hover, drag, select, press, evaluate, wait, screenshot, navigate, upload, resize, dialog_accept, dialog_dismiss.`);
     }
 }
 
@@ -827,6 +843,8 @@ module.exports = {
     navigateAction,
     uploadAction,
     resizeAction,
+    dialogAcceptAction,
+    dialogDismissAction,
     executeAction,
     storeRefs,
     getStoredRefs,

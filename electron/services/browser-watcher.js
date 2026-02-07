@@ -131,6 +131,28 @@ function createBrowserWatcher(options = {}) {
                     case 'console':
                         result = await getController().getConsoleLog();
                         break;
+                    case 'cookies': {
+                        const ctrl = getController();
+                        switch (args.action) {
+                            case 'list':   result = await ctrl.getCookies(args); break;
+                            case 'set':    result = await ctrl.setCookie(args); break;
+                            case 'delete': result = await ctrl.deleteCookies(args); break;
+                            case 'clear':  result = await ctrl.clearCookies(); break;
+                            default: result = { ok: false, error: `Unknown cookie action: ${args.action}` };
+                        }
+                        break;
+                    }
+                    case 'storage': {
+                        const ctrl = getController();
+                        switch (args.action) {
+                            case 'get':    result = await ctrl.getStorage(args); break;
+                            case 'set':    result = await ctrl.setStorage(args); break;
+                            case 'delete': result = await ctrl.deleteStorage(args); break;
+                            case 'clear':  result = await ctrl.clearStorage(args); break;
+                            default: result = { ok: false, error: `Unknown storage action: ${args.action}` };
+                        }
+                        break;
+                    }
                     default:
                         result = { success: false, error: `Unknown browser action: ${request.action}` };
                 }

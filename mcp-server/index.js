@@ -280,7 +280,7 @@ const TOOL_GROUPS = {
         ]
     },
     browser: {
-        description: 'Chrome browser control and web research (14 tools)',
+        description: 'Chrome browser control and web research (16 tools)',
         keywords: ['search', 'browse', 'website', 'web', 'google', 'open page', 'fetch url', 'look up', 'find online', 'what is', 'who is', 'latest news'],
         dependencies: ['screen'],
         tools: [
@@ -331,12 +331,12 @@ const TOOL_GROUPS = {
             },
             {
                 name: 'browser_snapshot',
-                description: 'Take an accessibility snapshot of a browser tab. Returns the page structure with element refs (e1, e2...) that can be used with browser_act.',
-                inputSchema: { type: 'object', properties: { targetId: { type: 'string', description: 'Target ID (uses active tab if omitted)' }, format: { type: 'string', enum: ['role', 'aria', 'ai'], description: 'Snapshot format (default: role)' }, interactive: { type: 'boolean', description: 'Only show interactive elements' }, compact: { type: 'boolean', description: 'Remove unnamed structural elements' }, selector: { type: 'string', description: 'CSS selector to scope snapshot' }, profile: { type: 'string', description: 'Browser profile name' } } }
+                description: 'Take an accessibility snapshot of a browser tab. Returns the page structure with element refs (e1, e2...) that can be used with browser_act. Token-efficiency options: use ifChanged=true to get a short "unchanged" response when page hasn\'t changed; use maxPageText=0 to skip page text on follow-up snapshots.',
+                inputSchema: { type: 'object', properties: { targetId: { type: 'string', description: 'Target ID (uses active tab if omitted)' }, format: { type: 'string', enum: ['role', 'aria', 'ai'], description: 'Snapshot format (default: role)' }, interactive: { type: 'boolean', description: 'Only show interactive elements' }, compact: { type: 'boolean', description: 'Remove unnamed structural elements' }, selector: { type: 'string', description: 'CSS selector to scope snapshot' }, ifChanged: { type: 'boolean', description: 'If true, returns {unchanged: true} when the page structure has not changed since the last snapshot. Saves tokens on follow-up calls.' }, maxPageText: { type: 'number', description: 'Max characters of page text to include (default: 4000). Set to 0 to skip page text entirely for smaller responses.' }, profile: { type: 'string', description: 'Browser profile name' } } }
             },
             {
                 name: 'browser_act',
-                description: 'Execute an action on a browser page element. Use refs from browser_snapshot (e.g. e1, e2). Actions: click, type, fill, hover, press, select, drag, evaluate, wait, upload, resize.',
+                description: 'Execute an action on a browser page element. Use refs from browser_snapshot (e.g. e1, e2). Actions: click, type, fill, hover, press, select, drag, evaluate, wait, upload, resize, dialog_accept, dialog_dismiss.',
                 inputSchema: {
                     type: 'object',
                     properties: {
@@ -376,6 +376,41 @@ const TOOL_GROUPS = {
                 name: 'browser_fetch',
                 description: 'Fetch and extract text content from a URL using a headless browser. Handles JavaScript-rendered pages. Returns clean text content.',
                 inputSchema: { type: 'object', properties: { url: { type: 'string', description: 'The URL to fetch' }, timeout: { type: 'number', description: 'Timeout in milliseconds (default: 30000, max: 60000)' }, max_length: { type: 'number', description: 'Maximum content length to return (default: 8000)' }, include_links: { type: 'boolean', description: 'Include links found on the page (default: false)' } }, required: ['url'] }
+            },
+            {
+                name: 'browser_cookies',
+                description: 'Manage browser cookies. Actions: list (get cookies, optionally filter by url/domain/name), set (create/update a cookie), delete (remove matching cookies), clear (remove all cookies).',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: { type: 'string', enum: ['list', 'set', 'delete', 'clear'], description: 'Cookie action to perform' },
+                        name: { type: 'string', description: 'Cookie name (required for set/delete)' },
+                        value: { type: 'string', description: 'Cookie value (for set)' },
+                        url: { type: 'string', description: 'URL to scope cookies to' },
+                        domain: { type: 'string', description: 'Domain filter' },
+                        path: { type: 'string', description: 'Cookie path' },
+                        secure: { type: 'boolean', description: 'Secure flag' },
+                        httpOnly: { type: 'boolean', description: 'HttpOnly flag' },
+                        sameSite: { type: 'string', enum: ['Strict', 'Lax', 'None'], description: 'SameSite attribute' },
+                        profile: { type: 'string', description: 'Browser profile name' }
+                    },
+                    required: ['action']
+                }
+            },
+            {
+                name: 'browser_storage',
+                description: 'Read/write browser localStorage or sessionStorage. Actions: get (read entries or a single key), set (write a key-value pair), delete (remove a key), clear (remove all entries).',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        type: { type: 'string', enum: ['localStorage', 'sessionStorage'], description: 'Storage type (default: localStorage)' },
+                        action: { type: 'string', enum: ['get', 'set', 'delete', 'clear'], description: 'Storage action to perform' },
+                        key: { type: 'string', description: 'Storage key (required for set/delete, optional for get)' },
+                        value: { type: 'string', description: 'Value to store (for set)' },
+                        profile: { type: 'string', description: 'Browser profile name' }
+                    },
+                    required: ['action']
+                }
             }
         ]
     },
@@ -855,6 +890,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             return await handleBrowserSearch(args);
         case 'browser_fetch':
             return await handleBrowserFetch(args);
+        case 'browser_cookies':
+            return await handleBrowserControl('cookies', args);
+        case 'browser_storage':
+            return await handleBrowserControl('storage', args);
         // n8n workflow tools
         case 'n8n_search_nodes':
             return await n8n.handleN8nSearchNodes(args);

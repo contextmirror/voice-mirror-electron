@@ -11,6 +11,9 @@ const { executeAction, screenshotAction } = require('./webview-actions');
 /** @type {{ console: Array, errors: Array }} */
 const consoleState = { console: [], errors: [] };
 
+/** @type {{ active: Object|null, history: Array }} */
+const dialogState = { active: null, history: [] };
+
 /** @type {boolean} */
 let browserActive = false;
 
@@ -50,6 +53,45 @@ async function stopBrowser() {
 }
 
 /**
+ * Set up dialog event listener on CDP.
+ * Call after debugger attach to subscribe to Page.javascriptDialogOpening/Closing.
+ */
+async function setupDialogListener() {
+    try {
+        await cdp.sendCommand('Page.enable');
+    } catch { /* may already be enabled */ }
+
+    cdp.onEvent('Page.javascriptDialogOpening', (params) => {
+        dialogState.active = {
+            type: params.type,         // 'alert', 'confirm', 'prompt', 'beforeunload'
+            message: params.message,
+            defaultPrompt: params.defaultPrompt || '',
+            url: params.url || '',
+            timestamp: Date.now()
+        };
+        console.log(`[browser-controller] Dialog opened: ${params.type} "${(params.message || '').slice(0, 80)}"`);
+    });
+
+    cdp.onEvent('Page.javascriptDialogClosed', () => {
+        if (dialogState.active) {
+            dialogState.history.push({ ...dialogState.active, closedAt: Date.now() });
+            if (dialogState.history.length > 20) {
+                dialogState.history = dialogState.history.slice(-20);
+            }
+        }
+        dialogState.active = null;
+    });
+}
+
+/**
+ * Get the current dialog state.
+ * @returns {{ active: Object|null, history: Array }}
+ */
+function getDialogState() {
+    return dialogState;
+}
+
+/**
  * Get browser status.
  */
 async function getStatus() {
@@ -64,7 +106,7 @@ async function getStatus() {
         } catch { /* ignore */ }
     }
 
-    return {
+    const result = {
         ok: true,
         driver: 'webview',
         running: attached && browserActive,
@@ -72,6 +114,12 @@ async function getStatus() {
         url,
         title
     };
+
+    if (dialogState.active) {
+        result.dialog = dialogState.active;
+    }
+
+    return result;
 }
 
 /**
@@ -141,6 +189,165 @@ function trackError(err) {
     }
 }
 
+// ============================================
+// Cookie Operations
+// ============================================
+
+/**
+ * Get cookies for current page or specific URL/domain.
+ * @param {Object} opts - { url?, domain? }
+ */
+async function getCookies(opts = {}) {
+    await ensureBrowserAvailable();
+    await cdp.sendCommand('Network.enable').catch(() => {});
+    const params = {};
+    if (opts.url) params.urls = [opts.url];
+    const result = await cdp.sendCommand('Network.getCookies', params);
+    let cookies = result.cookies || [];
+    if (opts.domain) {
+        cookies = cookies.filter(c => c.domain.includes(opts.domain));
+    }
+    if (opts.name) {
+        cookies = cookies.filter(c => c.name === opts.name);
+    }
+    return { ok: true, cookies };
+}
+
+/**
+ * Set a cookie.
+ * @param {Object} opts - { name, value, url?, domain?, path?, secure?, httpOnly?, sameSite? }
+ */
+async function setCookie(opts = {}) {
+    await ensureBrowserAvailable();
+    await cdp.sendCommand('Network.enable').catch(() => {});
+    if (!opts.name) throw new Error('Cookie name is required');
+    const params = {
+        name: opts.name,
+        value: opts.value ?? ''
+    };
+    if (opts.url) params.url = opts.url;
+    if (opts.domain) params.domain = opts.domain;
+    if (opts.path) params.path = opts.path;
+    if (opts.secure != null) params.secure = opts.secure;
+    if (opts.httpOnly != null) params.httpOnly = opts.httpOnly;
+    if (opts.sameSite) params.sameSite = opts.sameSite;
+    // If no url or domain, use current page URL
+    if (!params.url && !params.domain) {
+        params.url = await cdp.getUrl();
+    }
+    const result = await cdp.sendCommand('Network.setCookie', params);
+    return { ok: true, success: result?.success !== false };
+}
+
+/**
+ * Delete cookies matching filter.
+ * @param {Object} opts - { name, url?, domain?, path? }
+ */
+async function deleteCookies(opts = {}) {
+    await ensureBrowserAvailable();
+    await cdp.sendCommand('Network.enable').catch(() => {});
+    if (!opts.name) throw new Error('Cookie name is required');
+    const params = { name: opts.name };
+    if (opts.url) params.url = opts.url;
+    if (opts.domain) params.domain = opts.domain;
+    if (opts.path) params.path = opts.path;
+    await cdp.sendCommand('Network.deleteCookies', params);
+    return { ok: true };
+}
+
+/**
+ * Clear all cookies.
+ */
+async function clearCookies() {
+    await ensureBrowserAvailable();
+    await cdp.sendCommand('Network.enable').catch(() => {});
+    const result = await cdp.sendCommand('Network.getCookies', {});
+    const cookies = result.cookies || [];
+    for (const cookie of cookies) {
+        await cdp.sendCommand('Network.deleteCookies', {
+            name: cookie.name,
+            domain: cookie.domain,
+            path: cookie.path
+        });
+    }
+    return { ok: true, deleted: cookies.length };
+}
+
+// ============================================
+// Web Storage Operations
+// ============================================
+
+/**
+ * Get web storage entries.
+ * @param {Object} opts - { type: 'localStorage'|'sessionStorage', key? }
+ */
+async function getStorage(opts = {}) {
+    await ensureBrowserAvailable();
+    const storageType = opts.type || 'localStorage';
+    if (storageType !== 'localStorage' && storageType !== 'sessionStorage') {
+        throw new Error(`Invalid storage type: "${storageType}". Use "localStorage" or "sessionStorage".`);
+    }
+    if (opts.key) {
+        const result = await cdp.evaluate(`window.${storageType}.getItem(${JSON.stringify(opts.key)})`);
+        return { ok: true, key: opts.key, value: result?.result?.value ?? null };
+    }
+    const result = await cdp.evaluate(`(function() {
+        var s = window.${storageType};
+        var out = {};
+        for (var i = 0; i < s.length; i++) {
+            var k = s.key(i);
+            out[k] = s.getItem(k);
+        }
+        return JSON.stringify(out);
+    })()`);
+    const entries = JSON.parse(result?.result?.value || '{}');
+    return { ok: true, type: storageType, entries, count: Object.keys(entries).length };
+}
+
+/**
+ * Set a web storage entry.
+ * @param {Object} opts - { type: 'localStorage'|'sessionStorage', key, value }
+ */
+async function setStorage(opts = {}) {
+    await ensureBrowserAvailable();
+    const storageType = opts.type || 'localStorage';
+    if (storageType !== 'localStorage' && storageType !== 'sessionStorage') {
+        throw new Error(`Invalid storage type: "${storageType}". Use "localStorage" or "sessionStorage".`);
+    }
+    if (!opts.key) throw new Error('Storage key is required');
+    await cdp.evaluate(`window.${storageType}.setItem(${JSON.stringify(opts.key)}, ${JSON.stringify(String(opts.value ?? ''))})`);
+    return { ok: true, type: storageType, key: opts.key };
+}
+
+/**
+ * Delete a web storage entry.
+ * @param {Object} opts - { type: 'localStorage'|'sessionStorage', key }
+ */
+async function deleteStorage(opts = {}) {
+    await ensureBrowserAvailable();
+    const storageType = opts.type || 'localStorage';
+    if (storageType !== 'localStorage' && storageType !== 'sessionStorage') {
+        throw new Error(`Invalid storage type: "${storageType}". Use "localStorage" or "sessionStorage".`);
+    }
+    if (!opts.key) throw new Error('Storage key is required');
+    await cdp.evaluate(`window.${storageType}.removeItem(${JSON.stringify(opts.key)})`);
+    return { ok: true, type: storageType, key: opts.key };
+}
+
+/**
+ * Clear all entries in a web storage.
+ * @param {Object} opts - { type: 'localStorage'|'sessionStorage' }
+ */
+async function clearStorage(opts = {}) {
+    await ensureBrowserAvailable();
+    const storageType = opts.type || 'localStorage';
+    if (storageType !== 'localStorage' && storageType !== 'sessionStorage') {
+        throw new Error(`Invalid storage type: "${storageType}". Use "localStorage" or "sessionStorage".`);
+    }
+    await cdp.evaluate(`window.${storageType}.clear()`);
+    return { ok: true, type: storageType };
+}
+
 /**
  * Check if browser is currently active.
  */
@@ -159,5 +366,15 @@ module.exports = {
     screenshotTab,
     trackConsoleMessage,
     trackError,
-    isActive
+    isActive,
+    setupDialogListener,
+    getDialogState,
+    getCookies,
+    setCookie,
+    deleteCookies,
+    clearCookies,
+    getStorage,
+    setStorage,
+    deleteStorage,
+    clearStorage
 };
