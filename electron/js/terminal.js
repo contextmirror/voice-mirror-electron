@@ -11,6 +11,8 @@ let term = null;
 let fitAddon = null;
 let resizeObserver = null;
 let resizeTimeout = null;  // For debouncing resize events
+let lastPtyCols = 0;       // Track last PTY size to avoid duplicate SIGWINCH
+let lastPtyRows = 0;
 
 // DOM elements (initialized in initTerminal)
 let terminalContainer;      // Chat page bottom panel container
@@ -25,6 +27,19 @@ let aiBadge;
 let navTerminalLabel;
 let terminalTitle;
 let terminalFullscreenTitle;
+
+/**
+ * Send resize to PTY only if cols/rows actually changed.
+ * Prevents duplicate SIGWINCH signals that cause Claude Code CLI
+ * to redraw its entire UI (header, prompt, etc.) on each resize.
+ */
+function resizePtyIfChanged() {
+    if (!term || !term.cols || !term.rows) return;
+    if (term.cols === lastPtyCols && term.rows === lastPtyRows) return;
+    lastPtyCols = term.cols;
+    lastPtyRows = term.rows;
+    window.voiceMirror.claude.resize(term.cols, term.rows);
+}
 
 /**
  * Initialize xterm.js terminal
@@ -127,8 +142,26 @@ export async function initXterm() {
         return true;
     });
 
-    // Handle resize - create observer for current container (debounced)
+    // Handle resize - suspend terminal rendering during active resize,
+    // then fit once when settled. This prevents xterm.js canvas repaints
+    // on every frame during drag-resize (major CPU savings).
+    //
+    // Strategy (informed by xterm.js ecosystem research):
+    // - There is no xterm.js API to pause/freeze rendering
+    // - Every PTY resize sends SIGWINCH which makes CLI apps (Claude Code) redraw
+    // - XOFF/XON flow control was rejected upstream (breaks Windows + zsh)
+    // - Our only lever: minimize the number of PTY resizes that fire
+    //
+    // We use visibility:hidden during resize (no canvas repaints) + a 300ms
+    // debounce (long enough to absorb brief pauses during drag). After the
+    // final fit+resize, we delay 50ms before showing the terminal to let
+    // the CLI process SIGWINCH and send its redraw output.
     resizeObserver = new ResizeObserver(() => {
+        // Hide terminal canvas immediately to stop intermediate repaints
+        if (term && term.element && !state.terminalMinimized) {
+            term.element.style.visibility = 'hidden';
+        }
+
         if (resizeTimeout) clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(() => {
             if (fitAddon && !state.terminalMinimized) {
@@ -138,14 +171,32 @@ export async function initXterm() {
                     // Use requestAnimationFrame to ensure layout is settled
                     requestAnimationFrame(() => {
                         fitAddon.fit();
-                        // Tell PTY about new size
-                        if (term.cols && term.rows) {
-                            window.voiceMirror.claude.resize(term.cols, term.rows);
-                        }
+                        // Only send resize to PTY if dimensions actually changed
+                        // (avoids duplicate SIGWINCH causing Claude Code to redraw its UI)
+                        resizePtyIfChanged();
+                        // Force re-render visible rows to clean up stale line artifacts
+                        term.refresh(0, term.rows - 1);
+                        // Brief delay before showing terminal — gives the CLI
+                        // time to process SIGWINCH and send redraw output
+                        setTimeout(() => {
+                            if (term && term.element) {
+                                term.element.style.visibility = '';
+                            }
+                        }, 50);
                     });
+                } else {
+                    // Container not visible — restore visibility anyway
+                    if (term && term.element) {
+                        term.element.style.visibility = '';
+                    }
+                }
+            } else {
+                // Terminal minimized or no fitAddon — restore visibility
+                if (term && term.element) {
+                    term.element.style.visibility = '';
                 }
             }
-        }, 50);  // Debounce 50ms to prevent rapid-fire refits
+        }, 300);  // 300ms debounce — absorbs brief pauses during drag-resize
     });
     resizeObserver.observe(mountContainer);
 
@@ -154,6 +205,7 @@ export async function initXterm() {
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
             fitAddon.fit();
+            resizePtyIfChanged();
         });
     });
 
@@ -188,7 +240,7 @@ export function toggleTerminal() {
                 if (fitAddon) {
                     fitAddon.fit();
                     if (term.cols && term.rows) {
-                        window.voiceMirror.claude.resize(term.cols, term.rows);
+                        resizePtyIfChanged();
                     }
                 }
             });
@@ -205,29 +257,37 @@ export function toggleTerminal() {
  */
 export function minimizeTerminal() {
     state.terminalMinimized = !state.terminalMinimized;
+
+    // Enable CSS transition only for the minimize/expand animation
+    terminalContainer.classList.add('transitioning');
     terminalContainer.classList.toggle('minimized', state.terminalMinimized);
 
-    // Refit when expanding - wait for CSS transition to complete
-    if (!state.terminalMinimized && fitAddon) {
-        const onTransitionEnd = (e) => {
-            // Only respond to height transition on the container itself
-            if (e.propertyName === 'height' && e.target === terminalContainer) {
-                terminalContainer.removeEventListener('transitionend', onTransitionEnd);
+    const onTransitionEnd = (e) => {
+        // Only respond to height transition on the container itself
+        if (e.propertyName === 'height' && e.target === terminalContainer) {
+            terminalContainer.removeEventListener('transitionend', onTransitionEnd);
+            // Remove transition class so window resize doesn't animate
+            terminalContainer.classList.remove('transitioning');
+
+            // Refit when expanding
+            if (!state.terminalMinimized && fitAddon) {
                 requestAnimationFrame(() => {
                     fitAddon.fit();
                     if (term.cols && term.rows) {
-                        window.voiceMirror.claude.resize(term.cols, term.rows);
+                        resizePtyIfChanged();
                     }
+                    term.refresh(0, term.rows - 1);
                 });
             }
-        };
-        terminalContainer.addEventListener('transitionend', onTransitionEnd);
+        }
+    };
+    terminalContainer.addEventListener('transitionend', onTransitionEnd);
 
-        // Fallback in case transitionend doesn't fire (e.g., no transition defined)
-        setTimeout(() => {
-            terminalContainer.removeEventListener('transitionend', onTransitionEnd);
-        }, 300);
-    }
+    // Fallback: clean up transition class if transitionend doesn't fire
+    setTimeout(() => {
+        terminalContainer.removeEventListener('transitionend', onTransitionEnd);
+        terminalContainer.classList.remove('transitioning');
+    }, 300);
 }
 
 /**
@@ -289,9 +349,7 @@ export async function relocateTerminal(location) {
         requestAnimationFrame(() => {
             if (fitAddon) {
                 fitAddon.fit();
-                if (term.cols && term.rows) {
-                    window.voiceMirror.claude.resize(term.cols, term.rows);
-                }
+                resizePtyIfChanged();
             }
         });
     });
@@ -463,7 +521,10 @@ export function handleAIOutput(data) {
             // Fit terminal after provider starts - wait for layout
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
-                    if (fitAddon) fitAddon.fit();
+                    if (fitAddon) {
+                        fitAddon.fit();
+                        resizePtyIfChanged();
+                    }
                 });
             });
             break;

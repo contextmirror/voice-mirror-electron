@@ -9,6 +9,10 @@
     background: #0a0a12;
     border-top: 1px solid rgba(255, 255, 255, 0.15);
     flex-direction: column;
+}
+
+/* Transition only applied during minimize/expand toggle, not during window resize */
+#terminal-container.transitioning {
     transition: height 0.2s ease;
 }
 
