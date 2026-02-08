@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="https://www.contextmirror.com">Website</a> •
+  <a href="https://discord.com/invite/JBpsSFB7EQ">Discord</a> •
   <a href="#features">Features</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#ai-providers">Providers</a> •
@@ -26,6 +27,7 @@
   <img src="https://img.shields.io/badge/AI_providers-11-orange" alt="AI Providers">
   <img src="https://img.shields.io/badge/tests-222_passing-brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+  <a href="https://discord.com/invite/JBpsSFB7EQ"><img src="https://img.shields.io/badge/Discord-Join%20us-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
 </p>
 
 ---
