@@ -14,7 +14,6 @@
   <a href="#features">Features</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#ai-providers">Providers</a> •
-  <a href="#documentation">Docs</a> •
   <a href="#license">License</a>
 </p>
 
@@ -24,8 +23,8 @@
   <img src="https://img.shields.io/badge/node-%3E%3D18-339933" alt="Node.js">
   <img src="https://img.shields.io/badge/python-%3E%3D3.9-3776ab" alt="Python">
   <img src="https://img.shields.io/badge/MCP_tools-55-blueviolet" alt="MCP Tools">
-  <img src="https://img.shields.io/badge/AI_providers-11-orange" alt="AI Providers">
-  <img src="https://img.shields.io/badge/tests-222_passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/AI_providers-15-orange" alt="AI Providers">
+  <img src="https://img.shields.io/badge/tests-406_passing-brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <a href="https://discord.com/invite/JBpsSFB7EQ"><img src="https://img.shields.io/badge/Discord-Join%20us-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
 </p>
@@ -55,7 +54,7 @@ Voice Mirror is an always-on overlay that listens, sees your screen, executes co
 
 - **Claude Code as a PTY-backed brain** — runs Claude Code inside Electron as a real terminal. Full MCP tool access, zero extra API cost beyond the CLI itself.
 - **MCP as the agent backbone** — 55 tools across 8 dynamically-loaded groups. Not a plugin system — a structured tool protocol with schema validation, gating, and hot-loading.
-- **Real browser automation** — not "search and summarize." Actual CDP-level click, type, navigate, screenshot, and DOM snapshot. Verified by a [102-test benchmark](docs/BROWSER-BENCHMARK.md).
+- **Real browser automation** — not "search and summarize." Actual CDP-level click, type, navigate, screenshot, and DOM snapshot. Verified by a 102-test benchmark.
 - **Wayland-native overlay** — Rust layer-shell binary for proper always-on-top on Linux/Wayland, where Electron can't do it alone.
 - **Unified agent loop** — wake word + screen capture + terminal execution + browser control + persistent memory, all wired together. Most tools pick one; this closes the full Hear → See → Think → Act → Speak → Persist loop.
 
@@ -101,12 +100,15 @@ Claude Code runs inside Voice Mirror with full MCP tool access. Execute commands
 
 ## AI Providers
 
-11 providers with automatic detection of local servers and environment API keys.
+15 providers with automatic detection of local servers and environment API keys.
 
 | Provider | Type | Key Features |
 |----------|------|-------------|
-| **Claude Code** | PTY terminal | MCP tools, vision, full terminal |
-| **Ollama** | Local | Auto-detect, vision (llava) |
+| **Claude Code** | CLI agent | MCP tools, vision, full terminal |
+| **OpenAI Codex** | CLI agent | OpenAI's CLI agent |
+| **Gemini CLI** | CLI agent | Google's CLI agent |
+| **Kimi CLI** | CLI agent | Moonshot's CLI agent with MCP |
+| **Ollama** | Local | Auto-detect, vision |
 | **LM Studio** | Local | Auto-detect |
 | **Jan** | Local | Auto-detect |
 | **OpenAI** | Cloud | GPT-4o, vision |
@@ -116,6 +118,7 @@ Claude Code runs inside Voice Mirror with full MCP tool access. Execute commands
 | **Mistral** | Cloud | — |
 | **OpenRouter** | Cloud | Multi-model access |
 | **DeepSeek** | Cloud | — |
+| **Kimi (Moonshot)** | Cloud | Vision |
 
 API keys are **auto-detected** from environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.) on startup.
 
@@ -194,7 +197,7 @@ Settings are accessible from the in-app Settings page — AI provider, voice, ac
 voice-mirror-electron/
 ├── electron/              # Electron app
 │   ├── main.js            # Window, tray, IPC orchestration
-│   ├── services/          # 15 service modules
+│   ├── services/          # 16 service modules
 │   ├── providers/         # Multi-AI provider system
 │   ├── browser/           # CDP browser automation (11 modules)
 │   ├── tools/             # Tool system for local LLMs
@@ -204,25 +207,12 @@ voice-mirror-electron/
 ├── mcp-server/            # MCP server (55 tools, 8 groups)
 ├── wayland-orb/           # Rust native overlay (Linux/Wayland)
 ├── chrome-extension/      # Browser relay extension (MV3)
-├── test/                  # Test suites, 222 cases
+├── test/                  # Test suites (106 suites, 406 cases)
 ├── cli/                   # Setup wizard + CLI
-├── docs/                  # Documentation
 └── assets/                # Icons
 ```
 
 ---
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, data flow, MCP tools |
-| [PYTHON-BACKEND.md](docs/PYTHON-BACKEND.md) | Voice processing, STT/TTS, protocols |
-| [CONFIGURATION.md](docs/CONFIGURATION.md) | Config schema, settings, providers |
-| [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Setup, building, debugging |
-| [ROADMAP.md](docs/ROADMAP.md) | Progress, known issues, future plans |
-| [BROWSER-BENCHMARK.md](docs/BROWSER-BENCHMARK.md) | Browser tool benchmark (102 tests) |
-| [LOCAL-LLM-TOOLS.md](docs/LOCAL-LLM-TOOLS.md) | Tool system for local LLMs |
 
 ---
 
@@ -284,6 +274,7 @@ All cloud provider API keys are auto-detected from environment variables on star
 | `XAI_API_KEY` | Grok (xAI) |
 | `OPENROUTER_API_KEY` | OpenRouter |
 | `DEEPSEEK_API_KEY` | DeepSeek |
+| `MOONSHOT_API_KEY` | Kimi (Moonshot) |
 | `SERPER_API_KEY` | Web search (Serper.dev) |
 
 ---
@@ -294,7 +285,7 @@ All cloud provider API keys are auto-detected from environment variables on star
 npm test
 ```
 
-222 tests covering config safety, API key detection, provider detection, settings, startup behavior, cross-platform paths, and more.
+406 tests across 106 suites covering config safety, API key detection, provider detection, settings, startup behavior, cross-platform paths, terminal rendering, MCP memory, and more.
 
 ---
 

@@ -81,4 +81,5 @@ ruff.toml
 
 # Internal docs (reference only, not for repo)
 docs/
+CLAUDE.md
 cleanup-test.ps1
