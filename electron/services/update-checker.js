@@ -2,6 +2,7 @@
  * Git-based update checker service
  * Checks if the local git repo is behind origin/main and notifies the user.
  * On user action, pulls updates and runs npm install if needed.
+ * Update notifications appear in the sidebar banner (not chat toasts).
  */
 
 const { execFile } = require('child_process');
