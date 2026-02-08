@@ -33,6 +33,7 @@
     flex: 1;
     overflow: hidden;
     padding: 4px;
+    position: relative;
     -webkit-app-region: no-drag;  /* Terminal is interactive */
 }
 
@@ -203,6 +204,7 @@
     flex: 1;
     overflow: hidden;
     padding: 8px;
+    position: relative;
     -webkit-app-region: no-drag;  /* Terminal is interactive */
 }
 

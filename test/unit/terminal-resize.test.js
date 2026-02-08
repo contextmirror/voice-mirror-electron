@@ -64,19 +64,19 @@ describe('Post-resize refresh', () => {
         );
     });
 
-    it('term.refresh() should appear AFTER fitAddon.fit() in ResizeObserver', () => {
+    it('term.refresh() should appear AFTER safeFit() in ResizeObserver', () => {
         const resizeObserverBlock = terminalSource.match(
             /new ResizeObserver\(\(\) => \{[\s\S]*?\}\);[\s]*resizeObserver\.observe/
         );
         assert.ok(resizeObserverBlock, 'Should find ResizeObserver block');
         const block = resizeObserverBlock[0];
-        const fitIndex = block.indexOf('fitAddon.fit()');
+        const fitIndex = block.indexOf('safeFit()');
         const refreshIndex = block.indexOf('term.refresh(0, term.rows - 1)');
-        assert.ok(fitIndex > -1, 'Should find fitAddon.fit()');
+        assert.ok(fitIndex > -1, 'Should find safeFit()');
         assert.ok(refreshIndex > -1, 'Should find term.refresh()');
         assert.ok(
             refreshIndex > fitIndex,
-            'term.refresh() should come after fitAddon.fit()'
+            'term.refresh() should come after safeFit()'
         );
     });
 });

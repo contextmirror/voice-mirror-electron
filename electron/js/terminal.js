@@ -32,6 +32,9 @@ let terminalFullscreenTitle;
  * Send resize to PTY only if cols/rows actually changed.
  * Prevents duplicate SIGWINCH signals that cause Claude Code CLI
  * to redraw its entire UI (header, prompt, etc.) on each resize.
+ *
+ * Uses term.cols directly — safeFit() already shrinks xterm by 1 col,
+ * so the PTY and canvas share the same safe column count.
  */
 function resizePtyIfChanged() {
     if (!term || !term.cols || !term.rows) return;
@@ -39,6 +42,27 @@ function resizePtyIfChanged() {
     lastPtyCols = term.cols;
     lastPtyRows = term.rows;
     window.voiceMirror.claude.resize(term.cols, term.rows);
+}
+
+/**
+ * Safe fit: run FitAddon then shrink xterm by 1 column.
+ *
+ * FitAddon calculates the maximum columns that fit the container, but
+ * subpixel font rounding on Windows HiDPI, container padding measurement
+ * differences, and scrollbar width can cause a 1-col overcount. This makes
+ * the xterm canvas wider than its container, causing characters (especially
+ * Claude Code's box-drawing UI) to visually overflow into the sidebar.
+ *
+ * By calling term.resize(cols-1, rows) after fitAddon.fit(), we shrink the
+ * actual canvas — not just the PTY — so both agree on the safe column count.
+ */
+function safeFit() {
+    if (!fitAddon || !term) return;
+    fitAddon.fit();
+    const safeCols = Math.max(1, term.cols - 1);
+    if (safeCols !== term.cols) {
+        term.resize(safeCols, term.rows);
+    }
 }
 
 /**
@@ -170,7 +194,7 @@ export async function initXterm() {
                 if (currentContainer.offsetParent !== null) {
                     // Use requestAnimationFrame to ensure layout is settled
                     requestAnimationFrame(() => {
-                        fitAddon.fit();
+                        safeFit();
                         // Only send resize to PTY if dimensions actually changed
                         // (avoids duplicate SIGWINCH causing Claude Code to redraw its UI)
                         resizePtyIfChanged();
@@ -204,10 +228,28 @@ export async function initXterm() {
     // Double rAF ensures browser has completed initial layout
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-            fitAddon.fit();
+            safeFit();
             resizePtyIfChanged();
         });
     });
+
+    // Deferred re-fit: the PTY starts at hardcoded 120x30 before FitAddon runs.
+    // Claude Code renders at 120 cols, then gets resized to the actual width.
+    // Its Ink TUI redraws but can leave orphaned characters from the initial
+    // 120-col rendering. We run fit+refresh cycles after startup to clear these,
+    // mimicking what a manual window resize does.
+    for (const delay of [1500, 3000, 5000]) {
+        setTimeout(() => {
+            if (fitAddon && term && !state.terminalMinimized) {
+                const currentContainer = state.terminalLocation === 'chat-bottom' ? xtermContainer : fullscreenContainer;
+                if (currentContainer && currentContainer.offsetParent !== null) {
+                    safeFit();
+                    resizePtyIfChanged();
+                    term.refresh(0, term.rows - 1);
+                }
+            }
+        }, delay);
+    }
 
     // Welcome message - use current provider name
     const providerName = state.currentProviderName || 'AI Provider';
@@ -238,7 +280,7 @@ export function toggleTerminal() {
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 if (fitAddon) {
-                    fitAddon.fit();
+                    safeFit();
                     if (term.cols && term.rows) {
                         resizePtyIfChanged();
                     }
@@ -272,7 +314,7 @@ export function minimizeTerminal() {
             // Refit when expanding
             if (!state.terminalMinimized && fitAddon) {
                 requestAnimationFrame(() => {
-                    fitAddon.fit();
+                    safeFit();
                     if (term.cols && term.rows) {
                         resizePtyIfChanged();
                     }
@@ -348,7 +390,7 @@ export async function relocateTerminal(location) {
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
             if (fitAddon) {
-                fitAddon.fit();
+                safeFit();
                 resizePtyIfChanged();
             }
         });
@@ -522,7 +564,7 @@ export function handleAIOutput(data) {
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
                     if (fitAddon) {
-                        fitAddon.fit();
+                        safeFit();
                         resizePtyIfChanged();
                     }
                 });
