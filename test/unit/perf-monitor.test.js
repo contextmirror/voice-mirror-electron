@@ -16,7 +16,7 @@ describe('perf-monitor', () => {
 
     afterEach(() => {
         if (monitor) monitor.stop();
-        fs.rmSync(tempDir, { recursive: true, force: true });
+        fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     });
 
     it('should create monitor with expected methods', () => {
