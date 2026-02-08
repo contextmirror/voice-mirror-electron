@@ -57,6 +57,49 @@ jobs:
       - name: Run unit tests
         run: npm test
 
+  fresh-clone-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout (only for the installer script)
+        uses: actions/checkout@v4
+        with:
+          path: source
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install setuptools for node-gyp
+        run: pip install setuptools
+
+      - name: Run install.sh (fresh clone)
+        run: |
+          bash source/install.sh \
+            --dir "${{ runner.temp }}/voice-mirror-fresh" \
+            --branch "${{ github.head_ref || github.ref_name }}" \
+            --repo "https://github.com/${{ github.repository }}.git" \
+            --skip-setup \
+            --non-interactive
+        env:
+          DEBIAN_FRONTEND: noninteractive
+
+      - name: Verify fresh installation
+        run: |
+          test -d "${{ runner.temp }}/voice-mirror-fresh/node_modules"
+          test -d "${{ runner.temp }}/voice-mirror-fresh/mcp-server/node_modules"
+          test -f "${{ runner.temp }}/voice-mirror-fresh/electron/main.js"
+
+      - name: Run doctor (informational)
+        working-directory: ${{ runner.temp }}/voice-mirror-fresh
+        run: node cli/index.mjs doctor 2>&1 || true
+
+      - name: Run unit tests
+        working-directory: ${{ runner.temp }}/voice-mirror-fresh
+        run: npm test
+
   installer-macos:
     runs-on: macos-latest
     timeout-minutes: 25
