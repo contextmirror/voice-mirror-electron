@@ -124,18 +124,18 @@ API keys are **auto-detected** from environment variables (`OPENAI_API_KEY`, `AN
 
 **Linux / macOS:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nayballs/voice-mirror-electron/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/contextmirror/voice-mirror-electron/main/install.sh | bash
 ```
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/nayballs/voice-mirror-electron/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/contextmirror/voice-mirror-electron/main/install.ps1 | iex
 ```
 
 ### Manual Setup
 
 ```bash
-git clone https://github.com/nayballs/voice-mirror-electron.git
+git clone https://github.com/contextmirror/voice-mirror-electron.git
 cd voice-mirror-electron
 npm install
 

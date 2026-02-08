@@ -218,7 +218,7 @@ export async function runSetup(opts = {}) {
                 if (!nonInteractive && platform() === 'win32') {
                     const baseDir = guard(await p.text({
                         message: 'Where should Ollama be installed? (an "Ollama" folder will be created)',
-                        placeholder: 'E:\\Hobby Project',
+                        placeholder: 'C:\\Program Files',
                         defaultValue: '',
                     })) || undefined;
                     if (baseDir) ollamaDir = join(baseDir, 'Ollama');
@@ -313,7 +313,7 @@ export async function runSetup(opts = {}) {
                     if (!ollamaDir && !nonInteractive && platform() === 'win32') {
                         const baseDir = guard(await p.text({
                             message: 'Where should Ollama be installed? (an "Ollama" folder will be created)',
-                            placeholder: 'E:\\Hobby Project',
+                            placeholder: 'C:\\Program Files',
                             defaultValue: '',
                         })) || undefined;
                         if (baseDir) ollamaDir = join(baseDir, 'Ollama');
