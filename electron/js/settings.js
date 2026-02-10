@@ -849,13 +849,9 @@ export function initSettings() {
         }
     });
 
-    // Mouse button detection for PTT keybind
+    // Mouse button detection for keybind recording (supports Razer Naga and similar multi-button mice)
     document.addEventListener('mousedown', (e) => {
         if (!state.recordingKeybind) return;
-
-        const isPttKeybind = state.recordingKeybind.id === 'keybind-ptt';
-        const isDictationKeybind = state.recordingKeybind.id === 'keybind-dictation';
-        if (!isPttKeybind && !isDictationKeybind) return;
 
         // Skip left (0) and right (2) click — those are for UI interaction
         if (e.button === 0 || e.button === 2) return;

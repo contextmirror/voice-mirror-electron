@@ -43,9 +43,15 @@ export function blobToBase64(blob) {
  */
 export function formatKeybind(keybind) {
     // Mouse button display names
-    if (keybind === 'MouseButton4') return 'Mouse Back';
-    if (keybind === 'MouseButton5') return 'Mouse Forward';
-    if (keybind === 'MouseButton3') return 'Mouse Middle';
+    const mouseNames = {
+        MouseButton3: 'Mouse Middle',
+        MouseButton4: 'Mouse Back',
+        MouseButton5: 'Mouse Forward',
+    };
+    if (mouseNames[keybind]) return mouseNames[keybind];
+    // Razer Naga and similar mice with 12+ side buttons
+    const m = keybind.match(/^MouseButton(\d+)$/);
+    if (m) return `Mouse Button ${m[1]}`;
 
     return keybind
         .replace('CommandOrControl', 'Ctrl')
