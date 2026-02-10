@@ -563,8 +563,10 @@ class VoiceMirror:
             # Use a flag to trigger processing in main loop
             self.audio_state.ptt_process_pending = True
 
-        # Safety: force-stop PTT recording if it exceeds 30 seconds (missed stop trigger)
-        if self.audio_state.is_recording and hasattr(self.audio_state, '_ptt_start_time'):
+        # Safety: force-stop PTT recording if it exceeds 120s (missed stop trigger)
+        if (self.audio_state.is_recording
+                and self.audio_state.recording_source == 'ptt'
+                and hasattr(self.audio_state, '_ptt_start_time')):
             if time.time() - self.audio_state._ptt_start_time > 120:
                 print('⚠️ PTT recording timeout (120s), force-stopping')
                 self.audio_state.is_recording = False
