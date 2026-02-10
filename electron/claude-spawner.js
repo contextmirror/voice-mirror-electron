@@ -131,6 +131,60 @@ async function configureMCPServer(appConfig) {
 }
 
 /**
+ * Configure claude-pulse status line for Claude Code.
+ * Writes the statusLine entry to ~/.claude/settings.json so Claude Code
+ * shows usage bars in the terminal. Also installs slash commands.
+ */
+async function configureStatusLine() {
+    const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+    const scriptPath = path.join(__dirname, '..', 'vendor', 'claude-pulse', 'claude_status.py');
+
+    // Only configure if the bundled script exists
+    if (!fs.existsSync(scriptPath)) {
+        debugLog('claude-pulse script not found, skipping status line config');
+        return;
+    }
+
+    const pythonExe = path.join(__dirname, '..', 'python', '.venv',
+        process.platform === 'win32' ? 'Scripts\\python.exe' : 'bin/python');
+
+    // Read existing settings
+    let settings = {};
+    try {
+        const content = await fsPromises.readFile(settingsPath, 'utf-8');
+        settings = JSON.parse(content);
+    } catch { /* file doesn't exist or invalid JSON — start fresh */ }
+
+    // Skip if statusLine already points to a claude_status.py (user configured it)
+    if (settings.statusLine?.command?.includes('claude_status.py')) {
+        debugLog('statusLine already configured for claude-pulse, skipping');
+    } else {
+        settings.statusLine = {
+            type: 'command',
+            command: `"${pythonExe}" "${scriptPath}"`,
+            refresh: 150
+        };
+        await fsPromises.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+        console.log('[Claude Spawner] claude-pulse status line configured');
+    }
+
+    // Install slash commands (if not already present)
+    const commandsDir = path.join(os.homedir(), '.claude', 'commands');
+    await fsPromises.mkdir(commandsDir, { recursive: true });
+
+    for (const cmd of ['pulse.md', 'setup.md']) {
+        const dest = path.join(commandsDir, cmd);
+        if (!fs.existsSync(dest)) {
+            const src = path.join(__dirname, '..', 'vendor', 'claude-pulse', 'commands', cmd);
+            if (fs.existsSync(src)) {
+                await fsPromises.copyFile(src, dest);
+                debugLog(`Installed slash command: ${cmd}`);
+            }
+        }
+    }
+}
+
+/**
  * Check if Claude CLI is available.
  * Returns the resolved path on success, or null if not found.
  */
@@ -192,6 +246,9 @@ async function spawnClaude(options = {}) {
 
     // Configure MCP server with tool profile from config
     await configureMCPServer(options.appConfig);
+
+    // Configure claude-pulse status line
+    await configureStatusLine();
 
     if (!isClaudeAvailable()) {
         onOutput('[Error] Claude CLI not found. Install with: npm install -g @anthropic-ai/claude-code\n');
