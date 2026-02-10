@@ -132,7 +132,7 @@ window.voiceMirror = {
   toggleExpand, captureScreen, getState,
 
   // Python backend
-  python: { sendQuery, setMode, start, stop, setCallMode },
+  python: { sendQuery, setMode, start, stop },
 
   // AI provider
   claude: { start, stop, sendInput, resize },

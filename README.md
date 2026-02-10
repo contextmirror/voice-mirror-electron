@@ -67,7 +67,6 @@ Voice Mirror is an always-on overlay that listens, sees your screen, executes co
 | Mode | Trigger | Use Case |
 |------|---------|----------|
 | **Wake Word** | "Hey Claude" | Hands-free, on-demand |
-| **Call Mode** | Always listening | Continuous conversation |
 | **Push to Talk** | Mouse button / keyboard | Manual control |
 
 ### Screen Awareness

@@ -68,7 +68,7 @@ python/
 - **Model**: OpenWakeWord (hey_claude_v2.onnx)
 - **Threshold**: 0.98 (strict, low false positives)
 - **Chunk size**: 80ms (1280 samples @ 16kHz)
-- Can be disabled in Call Mode or PTT Mode
+- Can be disabled in PTT Mode
 
 ### Speech-to-Text Adapters
 
@@ -97,7 +97,6 @@ Vivian, Serena, Dylan, Eric, Ryan, Aiden, Ono_Anna, Sohee, Uncle_Fu
 | Mode | Trigger | Use Case |
 |------|---------|----------|
 | Wake Word | "Hey Claude" | Hands-free |
-| Call Mode | Always listening | Continuous |
 | Push to Talk | Key/button hold | Manual |
 
 ## Electron Bridge Protocol
@@ -173,7 +172,6 @@ scipy                    # Audio resampling
 | `~/.config/voice-mirror-electron/config.json` | Electron config (activation mode) |
 | `~/.config/voice-mirror-electron/data/voice_settings.json` | Voice settings (STT/TTS) |
 | `~/.config/voice-mirror-electron/data/inbox.json` | MCP messages |
-| `~/.config/voice-mirror-electron/data/voice_call.json` | Call mode flag |
 | `~/.config/voice-mirror-electron/data/ptt_trigger.json` | PTT trigger |
 
 ## Logging
