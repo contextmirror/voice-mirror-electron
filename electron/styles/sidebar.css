@@ -364,19 +364,6 @@
     height: 18px;
 }
 
-/* Call mode button active state */
-.sidebar-action-btn.call-active {
-    background: rgba(74, 222, 128, 0.3);
-    color: #4ade80;
-    border-color: rgba(74, 222, 128, 0.5);
-    animation: call-pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes call-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.4); }
-    50% { box-shadow: 0 0 0 8px rgba(74, 222, 128, 0); }
-}
-
 /* Sidebar Status */
 #sidebar-status {
     display: flex;

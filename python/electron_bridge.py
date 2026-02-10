@@ -274,8 +274,6 @@ class ElectronOutputCapture:
         # Recording states - differentiate by source
         elif "Recording (PTT)" in text:
             emit_event("recording_start", {"type": "ptt"})
-        elif "Recording (call)" in text:
-            emit_event("recording_start", {"type": "call"})
         elif "Recording follow-up" in text:
             emit_event("recording_start", {"type": "follow-up"})
         elif "Recording..." in text and "speak now" in text:
@@ -309,12 +307,6 @@ class ElectronOutputCapture:
             match = re.search(r'Sent to inbox: (.+?)\.\.\.', text)
             msg = match.group(1) if match else ""
             emit_event("sent_to_inbox", {"message": msg})
-
-        # Call mode
-        elif "Call started" in text:
-            emit_event("call_start", {})
-        elif "Call ended" in text:
-            emit_event("call_end", {})
 
         # Mode change
         elif "Voice mode changed" in text:
@@ -541,9 +533,6 @@ async def process_commands(agent):
                 activation_mode = cfg.get("activationMode")
                 ptt_key = cfg.get("pttKey")
                 if activation_mode:
-                    call_path = get_data_dir() / "voice_call.json"
-                    with open(call_path, 'w', encoding='utf-8') as f:
-                        json.dump({"active": activation_mode == "callMode"}, f)
                     emit_event("mode_change", {"mode": activation_mode})
 
                     # Start/stop global hotkey listener based on mode

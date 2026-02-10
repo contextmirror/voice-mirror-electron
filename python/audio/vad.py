@@ -13,14 +13,12 @@ _SAMPLE_RATE = 16000
 
 # Mode-specific speech probability thresholds
 _THRESHOLDS = {
-    "call": 0.3,
     "recording": 0.5,
     "follow_up": 0.5,
 }
 
 # Fallback energy thresholds (used when model is not loaded)
 _ENERGY_THRESHOLDS = {
-    "call": 0.008,
     "recording": 0.01,
     "follow_up": 0.03,
 }
@@ -89,7 +87,7 @@ class SileroVAD:
 
         Args:
             audio_chunk: float32 mono samples at 16 kHz (any length).
-            mode: one of 'call', 'recording', 'follow_up'.
+            mode: one of 'recording', 'follow_up'.
 
         Returns:
             (is_speech, probability) where probability is 0-1.

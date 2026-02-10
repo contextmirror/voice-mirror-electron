@@ -6,7 +6,6 @@
 export const state = {
     isExpanded: false,
     pendingImageData: null,
-    callModeActive: false,
     // AI Provider state
     aiRunning: false,               // Whether AI provider is running (renamed from claudeRunning)
     currentProvider: null,          // Provider type: 'claude' | 'ollama' | 'lmstudio' | 'openai' | etc. (null until config loads)

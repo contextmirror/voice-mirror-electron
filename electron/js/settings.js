@@ -520,10 +520,6 @@ export async function saveSettings() {
         const newConfig = await window.voiceMirror.config.set(updates);
         console.log('[Settings] Saved config:', newConfig);
 
-        // Update call mode UI state (actual mode change is handled by set-config in main process)
-        state.callModeActive = (activationMode === 'callMode');
-        updateCallModeUI();
-
         // Update welcome message with new mode
         window.updateWelcomeMessage();
 
@@ -681,24 +677,6 @@ export async function resetSettings() {
         console.log('[Settings] Reset to defaults');
     } catch (err) {
         console.error('[Settings] Failed to reset:', err);
-    }
-}
-
-/**
- * Update call mode UI
- */
-function updateCallModeUI() {
-    const callModeBtn = document.getElementById('call-mode-btn');
-    const statusText = document.getElementById('status-text');
-
-    if (state.callModeActive) {
-        callModeBtn.classList.add('call-active');
-        callModeBtn.title = 'Call Mode ON (always listening)';
-        statusText.textContent = 'Call active - speak anytime';
-    } else {
-        callModeBtn.classList.remove('call-active');
-        callModeBtn.title = 'Call Mode (always listening)';
-        statusText.textContent = 'Listening...';
     }
 }
 

@@ -175,8 +175,6 @@ function createPythonBackend(options = {}) {
                 text: data.text
             }),
             'speaking_end': () => ({ type: 'idle' }),
-            'call_start': () => ({ type: 'call_active' }),
-            'call_end': () => ({ type: 'idle' }),
             'mode_change': () => ({
                 type: 'mode_change',
                 mode: data.mode

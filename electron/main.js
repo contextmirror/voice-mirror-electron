@@ -150,7 +150,6 @@ function forwardVoiceEventToOrb(event) {
         'speaking': 'Speaking',
         'thinking': 'Thinking',
         'processing': 'Thinking',
-        'call_active': 'Recording'
     };
     const orbState = stateMap[event.type];
     if (orbState) {
@@ -535,8 +534,6 @@ app.whenReady().then(() => {
                     .replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
                 return `Say ${phrase} to begin.`;
             }
-            case 'callMode':
-                return 'Listening.';
             default:
                 return '';
         }

@@ -6,7 +6,7 @@ const VALID_PROVIDERS = [
   'openai', 'gemini', 'groq', 'grok', 'mistral', 'openrouter', 'deepseek'
 ];
 
-const VALID_ACTIVATION_MODES = ['wakeWord', 'callMode', 'pushToTalk'];
+const VALID_ACTIVATION_MODES = ['wakeWord', 'pushToTalk'];
 const VALID_VOICE_MODES = ['auto', 'local', 'claude'];
 
 const BLOCKED_SCHEMES = ['file:', 'chrome:', 'javascript:', 'data:', 'vbscript:'];
@@ -237,13 +237,6 @@ const validators = {
       }
     }
     return ok({ providerId, model: model || null });
-  },
-
-  'set-call-mode': (active) => {
-    if (typeof active !== 'boolean') {
-      return fail('active must be a boolean');
-    }
-    return ok(active);
   },
 
   'send-image': (imageData) => {

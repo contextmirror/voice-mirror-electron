@@ -90,12 +90,6 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         // Restart Python backend (manual retry after failures)
         restart: () => ipcRenderer.invoke('python-restart'),
 
-        // Call mode - always listening, no wake word needed
-        setCallMode: (active) => ipcRenderer.invoke('set-call-mode', active),
-
-        // Get current call mode status
-        getCallMode: () => ipcRenderer.invoke('get-call-mode'),
-
         // List available audio input/output devices
         listAudioDevices: () => ipcRenderer.invoke('list-audio-devices'),
 

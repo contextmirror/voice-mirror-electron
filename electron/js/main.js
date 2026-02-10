@@ -25,7 +25,6 @@ const previewFilename = document.getElementById('preview-filename');
 const previewSize = document.getElementById('preview-size');
 const dropZone = document.getElementById('drop-zone');
 const chatContainer = document.getElementById('chat-container');
-const callModeBtn = document.getElementById('call-mode-btn');
 
 /**
  * Update welcome message based on activation mode
@@ -47,9 +46,6 @@ export async function updateWelcomeMessage() {
                 const phrase = config.wakeWord?.phrase || 'hey_claude';
                 const displayPhrase = phrase.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
                 message = `${prefix}Say "${displayPhrase}" to start talking.`;
-                break;
-            case 'callMode':
-                message = `${prefix}Call mode active - I'm listening. Just start speaking.`;
                 break;
             case 'pushToTalk':
                 const pttKey = config.behavior?.pttKey || 'Space';
@@ -148,7 +144,6 @@ async function startImageVoiceWorkflow() {
 
     // Set timeout based on mode
     // For PTT: longer timeout (user needs to press button)
-    // For call mode: 5 seconds then auto-send
     // For wake word: 5 seconds then auto-send
     const timeoutMs = mode === 'pushToTalk' ? 30000 : 5000;
 
@@ -385,35 +380,6 @@ function cancelImage() {
 }
 
 /**
- * Toggle call mode
- */
-async function toggleCallMode() {
-    state.callModeActive = !state.callModeActive;
-    try {
-        await window.voiceMirror.python.setCallMode(state.callModeActive);
-        updateCallModeUI();
-    } catch (err) {
-        console.error('Failed to toggle call mode:', err);
-        state.callModeActive = !state.callModeActive;
-    }
-}
-
-/**
- * Update call mode UI
- */
-function updateCallModeUI() {
-    if (state.callModeActive) {
-        callModeBtn.classList.add('call-active');
-        callModeBtn.title = 'Call Mode ON (always listening)';
-        statusText.textContent = 'Call active - speak anytime';
-    } else {
-        callModeBtn.classList.remove('call-active');
-        callModeBtn.title = 'Call Mode (always listening)';
-        statusText.textContent = 'Listening...';
-    }
-}
-
-/**
  * Handle voice events from Python backend
  */
 function handleVoiceEvent(data) {
@@ -433,8 +399,6 @@ function handleVoiceEvent(data) {
                 if (mode === 'pushToTalk') {
                     const key = cfg.behavior?.pttKey || 'Space';
                     statusText.textContent = `Ready - hold ${key} to talk`;
-                } else if (mode === 'callMode') {
-                    statusText.textContent = 'Ready - listening';
                 } else {
                     const phrase = (cfg.wakeWord?.phrase || 'hey_claude')
                         .replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -498,9 +462,6 @@ function handleVoiceEvent(data) {
                 }
             }, 2000);
             break;
-        case 'call_active':
-            statusText.textContent = 'Call active - speak anytime';
-            break;
         case 'mode_change':
             console.log('Mode changed to:', data.mode);
             break;
@@ -528,11 +489,6 @@ function handleVoiceEvent(data) {
             break;
     }
 
-    // Handle call mode in event
-    if (data.callMode !== undefined) {
-        state.callModeActive = data.callMode;
-        updateCallModeUI();
-    }
 }
 
 /**
@@ -724,11 +680,6 @@ async function init() {
     const claudeStatus = await window.voiceMirror.claude.getStatus();
     updateAIStatus(claudeStatus.running);
 
-    // Check call mode
-    const callModeStatus = await window.voiceMirror.python.getCallMode();
-    state.callModeActive = callModeStatus.active;
-    updateCallModeUI();
-
     // Paste handler for images
     document.addEventListener('paste', async (e) => {
         const items = e.clipboardData?.items;
@@ -896,7 +847,6 @@ window.collapse = collapse;
 window.captureScreen = captureScreen;
 window.sendImage = sendImage;
 window.cancelImage = cancelImage;
-window.toggleCallMode = toggleCallMode;
 window.copyMessage = copyMessage;
 window.minimizeWindow = minimizeWindow;
 window.hideToTray = hideToTray;

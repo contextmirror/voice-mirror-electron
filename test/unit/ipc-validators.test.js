@@ -210,26 +210,6 @@ describe('ai-set-provider', () => {
     });
 });
 
-describe('set-call-mode', () => {
-    const v = validators['set-call-mode'];
-
-    it('true → ok', () => {
-        assert.ok(v(true).valid);
-        assert.strictEqual(v(true).value, true);
-    });
-
-    it('false → ok', () => {
-        assert.ok(v(false).valid);
-        assert.strictEqual(v(false).value, false);
-    });
-
-    it('non-boolean fails', () => {
-        assert.strictEqual(v(1).valid, false);
-        assert.strictEqual(v('true').valid, false);
-        assert.strictEqual(v(null).valid, false);
-    });
-});
-
 describe('send-image', () => {
     const v = validators['send-image'];
 

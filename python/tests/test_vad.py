@@ -39,27 +39,27 @@ class TestInit:
 class TestEnergyFallback:
     def test_fallback_when_not_loaded(self):
         vad = SileroVAD()
-        # Loud audio should trigger in call mode
+        # Loud audio should trigger in recording mode
         loud = np.full(1280, 0.5, dtype=np.float32)
-        is_speech, energy = vad.process(loud, "call")
+        is_speech, energy = vad.process(loud, "recording")
         assert is_speech is True
-        assert energy > _ENERGY_THRESHOLDS["call"]
+        assert energy > _ENERGY_THRESHOLDS["recording"]
 
     def test_fallback_silence(self):
         vad = SileroVAD()
         silence = np.zeros(1280, dtype=np.float32)
-        is_speech, energy = vad.process(silence, "call")
+        is_speech, energy = vad.process(silence, "recording")
         assert is_speech is False
         assert energy == 0.0
 
     def test_fallback_mode_thresholds(self):
         vad = SileroVAD()
-        # Energy just above call threshold but below follow_up
-        level = (_ENERGY_THRESHOLDS["call"] + _ENERGY_THRESHOLDS["follow_up"]) / 2
+        # Energy just above recording threshold but below follow_up
+        level = (_ENERGY_THRESHOLDS["recording"] + _ENERGY_THRESHOLDS["follow_up"]) / 2
         audio = np.full(1280, level, dtype=np.float32)
 
-        is_call, _ = vad.process(audio, "call")
-        assert is_call is True
+        is_recording, _ = vad.process(audio, "recording")
+        assert is_recording is True
 
         is_followup, _ = vad.process(audio, "follow_up")
         assert is_followup is False
@@ -141,13 +141,6 @@ class TestModeThresholds:
         )
         vad._session = mock_session
         return vad
-
-    def test_call_mode_low_threshold(self):
-        """Call mode threshold is 0.3 — prob=0.35 should trigger."""
-        vad = self._make_vad_with_prob(0.35)
-        audio = np.random.randn(512).astype(np.float32)
-        is_speech, _ = vad.process(audio, "call")
-        assert is_speech is True
 
     def test_recording_mode_high_threshold(self):
         """Recording mode threshold is 0.5 — prob=0.35 should NOT trigger."""

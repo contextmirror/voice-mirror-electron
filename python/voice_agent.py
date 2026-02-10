@@ -62,9 +62,6 @@ VM_DATA_DIR.mkdir(parents=True, exist_ok=True)
 # MCP inbox path
 INBOX_PATH = VM_DATA_DIR / "inbox.json"
 
-# Voice call state
-VOICE_CALL_PATH = VM_DATA_DIR / "voice_call.json"
-
 # Push-to-talk trigger file (written by Electron)
 PTT_TRIGGER_PATH = VM_DATA_DIR / "ptt_trigger.json"
 
@@ -127,8 +124,6 @@ class VoiceMirror:
         if self._activation_mode == ActivationMode.WAKE_WORD:
             wake_phrase = self._ai_provider.get('wakePhrase', 'Hey Claude')
             return f"👂 Listening for '{wake_phrase}'..."
-        elif self._activation_mode == ActivationMode.CALL_MODE:
-            return "📞 Call mode active - speak anytime..."
         elif self._activation_mode == ActivationMode.PUSH_TO_TALK:
             return "🎙️ Push-to-talk mode - press key to speak..."
         else:
@@ -258,36 +253,6 @@ class VoiceMirror:
             print(f"⚠️ TTS failed to load: {e}")
             print("   Voice output will be unavailable. Run setup to fix.")
             self.tts = None
-
-    def is_call_active(self) -> bool:
-        """
-        Check if a voice call is currently active.
-        When active, skip wake word detection and listen continuously.
-        Caches result for 0.5 seconds to avoid excessive file reads.
-        """
-        now = time.time()
-        if now - getattr(self, '_call_check_time', 0) < 0.5:
-            return getattr(self, '_call_active', False)
-
-        self._call_check_time = now
-
-        try:
-            if VOICE_CALL_PATH.exists():
-                with open(VOICE_CALL_PATH, encoding='utf-8') as f:
-                    data = json.load(f)
-                    active = data.get("active", False)
-                    if active != getattr(self, '_call_active', False):
-                        if active:
-                            print("\n📞 Call started - listening without wake word")
-                        else:
-                            print("\n📞 Call ended - returning to wake word mode")
-                    self._call_active = active
-                    return active
-        except Exception:
-            pass
-
-        self._call_active = False
-        return False
 
     def check_ptt_trigger(self) -> str | None:
         """
@@ -512,15 +477,12 @@ class VoiceMirror:
             # Enter conversation mode only for wake word or follow-up interactions
             should_enter_conversation = (
                 enter_conversation_mode and
-                not self.is_call_active() and
                 self.audio_state.recording_source in ('wake_word', 'follow_up')
             )
             if should_enter_conversation:
                 self.audio_state.in_conversation = True
                 self.audio_state.conversation_end_time = time.time() + CONVERSATION_WINDOW
                 print(f"💬 Conversation mode active ({CONVERSATION_WINDOW}s window - speak without wake word)")
-            elif self.is_call_active():
-                print("📞 Call active - speak anytime...")
 
         await self.tts.speak(text, on_start=on_speech_start, on_end=on_speech_end)
 
@@ -574,8 +536,7 @@ class VoiceMirror:
 
         # Print audio debug every ~1 second
         if self._audio_debug_counter % 60 == 0:
-            call_active = self.is_call_active()
-            print(f"🎤 Audio: level={level:.4f}, energy={energy:.4f}, listening={self.audio_state.is_listening}, call={call_active}")
+            print(f"🎤 Audio: level={level:.4f}, energy={energy:.4f}, listening={self.audio_state.is_listening}")
 
         if level > 0.05:
             bars = int(level * 20)
@@ -640,16 +601,6 @@ class VoiceMirror:
             if self._activation_mode == ActivationMode.PUSH_TO_TALK:
                 # In PTT mode, don't auto-detect speech - wait for PTT trigger
                 pass
-            # Check if in call mode (setting or file-based)
-            elif self._activation_mode == ActivationMode.CALL_MODE or self.is_call_active():
-                # In call mode - detect speech start without wake word
-                is_speech, prob = self.vad.process(audio, 'call')
-                # Debug: show VAD probability in call mode
-                if prob > 0.05:
-                    print(f"📞 Call mode VAD: {prob:.3f} energy={energy:.4f}", end="\r")
-                if is_speech:
-                    self.audio_state.start_recording('call')
-                    print(f"\n🔴 Recording (call)... VAD={prob:.3f} (speak now)")
             # Check if in conversation mode (no wake word needed, with timeout)
             elif self.audio_state.in_conversation:
                 # Check if conversation window expired
@@ -785,7 +736,6 @@ class VoiceMirror:
         # Show activation mode info
         activation_display = {
             ActivationMode.WAKE_WORD: "🎤 Wake Word",
-            ActivationMode.CALL_MODE: "📞 Call Mode",
             ActivationMode.PUSH_TO_TALK: "🎙️ Push-to-Talk"
         }
         stt_name = self.stt_adapter.name if (self.stt_adapter and self.stt_adapter.is_loaded) else "lazy-load"
@@ -930,7 +880,11 @@ class VoiceMirror:
                         continue
 
                     # Check for silence timeout during recording
-                    if self.audio_state.is_recording and not self.audio_state.is_processing:
+                    # Skip for dictation — user controls stop via button release,
+                    # pauses in speech are normal. The 120s safety timeout still applies.
+                    if (self.audio_state.is_recording
+                            and not self.audio_state.is_processing
+                            and self.audio_state.recording_source not in ('dictation', 'ptt')):
                         elapsed = time.time() - self.audio_state.last_speech_time
                         if elapsed >= SILENCE_TIMEOUT:
                             print("⏹️ Silence detected, processing...")

@@ -433,43 +433,6 @@ function registerIpcHandlers(ctx) {
         return { restarting: false, reason: 'backend not initialized' };
     });
 
-    // Call mode handlers (always listening, no wake word)
-    ipcMain.handle('set-call-mode', (event, active) => {
-        const v = validators['set-call-mode'](active);
-        if (!v.valid) return { error: v.error };
-        active = v.value;
-        const callPath = path.join(ctx.config.getDataDir(), 'voice_call.json');
-
-        // Ensure directory exists
-        const dir = path.dirname(callPath);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-
-        fs.writeFileSync(callPath, JSON.stringify({ active: active }, null, 2));
-        console.log(`[Voice Mirror] Call mode: ${active ? 'ON' : 'OFF'}`);
-
-        ctx.safeSend('voice-event', {
-            type: active ? 'call_active' : 'idle',
-            callMode: active
-        });
-
-        return { callMode: active };
-    });
-
-    ipcMain.handle('get-call-mode', () => {
-        const callPath = path.join(ctx.config.getDataDir(), 'voice_call.json');
-
-        try {
-            if (fs.existsSync(callPath)) {
-                const data = JSON.parse(fs.readFileSync(callPath, 'utf-8'));
-                return { active: data.active || false };
-            }
-        } catch {}
-
-        return { active: false };
-    });
-
     // AI Provider backend IPC handlers (routes to Claude PTY or OpenAI-compatible API)
     ipcMain.handle('start-claude', () => {
         if (!ctx.isAIProviderRunning()) {

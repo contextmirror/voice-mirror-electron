@@ -13,7 +13,6 @@ ELECTRON_CONFIG_PATH = get_config_base() / "voice-mirror-electron" / "config.jso
 class ActivationMode:
     """Voice activation modes from Electron config."""
     WAKE_WORD = "wakeWord"
-    CALL_MODE = "callMode"
     PUSH_TO_TALK = "pushToTalk"
 
 
@@ -79,7 +78,7 @@ def strip_provider_prefix(text: str) -> str:
 def get_activation_mode() -> str:
     """
     Read activation mode from Electron config file.
-    Returns 'wakeWord', 'callMode', or 'pushToTalk'.
+    Returns 'wakeWord' or 'pushToTalk'.
     Defaults to 'wakeWord' if config not found.
     """
     try:

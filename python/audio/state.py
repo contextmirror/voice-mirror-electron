@@ -21,7 +21,7 @@ class AudioState:
     is_listening: bool = True
     is_recording: bool = False
     is_processing: bool = False
-    recording_source: str | None = None  # 'wake_word', 'ptt', 'call', 'follow_up'
+    recording_source: str | None = None  # 'wake_word', 'ptt', 'follow_up'
 
     # Audio buffer (protected by lock)
     audio_buffer: list[np.ndarray] = field(default_factory=list)
