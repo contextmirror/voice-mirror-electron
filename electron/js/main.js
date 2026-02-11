@@ -96,10 +96,10 @@ function minimizeWindow() {
 }
 
 /**
- * Hide window to system tray
+ * Quit the application
  */
-function hideToTray() {
-    window.voiceMirror.hideToTray();
+function quitApp() {
+    window.voiceMirror.quitApp();
 }
 
 /**
@@ -518,11 +518,24 @@ function setAIStatus(text, active = true, autoClearMs = 0, source = 'idle') {
 }
 
 /**
- * Strip ANSI escape codes from a string.
+ * Strip ANSI escape codes and TUI control sequences from a string.
+ * Claude Code uses a full TUI (cursor positioning, DEC private modes, etc.)
+ * so we need to handle much more than basic SGR sequences.
  */
 function stripAnsi(str) {
-    // eslint-disable-next-line no-control-regex
-    return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').replace(/\x1b\][^\x07]*\x07/g, '');
+    return str
+        // CSI sequences: \x1b[ followed by optional prefix (?!>), params, and terminator
+        // Covers: SGR, cursor movement, DEC private modes (?25l, ?25h), erase, etc.
+        // eslint-disable-next-line no-control-regex
+        .replace(/\x1b\[[?!>]?[0-9;]*[a-zA-Z~]/g, '')
+        // OSC sequences: \x1b] ... BEL or ST
+        .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
+        // Other 2-char escapes: charset selection, keypad modes, etc.
+        // eslint-disable-next-line no-control-regex
+        .replace(/\x1b[()#=<>A-Za-z]/g, '')
+        // Stray control characters (except \t \n \r)
+        // eslint-disable-next-line no-control-regex
+        .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
 }
 
 /**
@@ -551,6 +564,10 @@ function setPtyStatus(text, active = true, autoClearMs = 0) {
 
 function parsePtyActivity(rawText) {
     const text = stripAnsi(rawText);
+    // Log stripped PTY text for diagnostics (only non-trivial chunks)
+    if (text.length > 5 && window.voiceMirror?.devlog) {
+        window.voiceMirror.devlog('STATUS', 'pty-text', { len: text.length, preview: text.slice(0, 120) });
+    }
     ptyBuffer += text;
     if (ptyBuffer.length > PTY_BUFFER_MAX) {
         ptyBuffer = ptyBuffer.slice(-PTY_BUFFER_MAX);
@@ -570,8 +587,9 @@ function parsePtyActivity(rawText) {
     }
 
     // --- Claude Code built-in tools ---
-    // Patterns: "⏺ Read(...)" / "Read file.js" / "⏺ Edit(...)" / "Bash(...)"
-    const builtinMatch = ptyBuffer.match(/[⏺+●]\s*(Read|Edit|Write|Bash|Glob|Grep|WebSearch|WebFetch|Task|NotebookEdit|TodoWrite|TodoRead)\b/);
+    // Match tool names with flexible prefix — covers all Claude Code TUI versions:
+    //   "⏺ Read(...)" / "+ Read file.js" / "● Edit(...)" / just "Read(" at line start
+    const builtinMatch = ptyBuffer.match(/(?:[⏺+●•]\s*|\n\s*)(Read|Edit|Write|Bash|Glob|Grep|WebSearch|WebFetch|Task|NotebookEdit|TodoWrite|TodoRead)\s*[(\[]/);
     if (builtinMatch) {
         const names = {
             Read: 'Reading file', Edit: 'Editing file', Write: 'Writing file',
@@ -643,6 +661,16 @@ function parsePtyActivity(rawText) {
         setAIStatus(null);
         ptyBuffer = '';
         return;
+    }
+
+    // --- Generic activity fallback ---
+    // If we're receiving non-trivial PTY data but no specific pattern matched,
+    // show "Working..." so the status bar never says "Waiting for input" while
+    // Claude is clearly active. The hold timer prevents flickering.
+    if (text.length > 10 && currentStatusSource === 'idle') {
+        setPtyStatus('Working...', true);
+        if (ptyActivityTimer) clearTimeout(ptyActivityTimer);
+        ptyActivityTimer = setTimeout(() => setAIStatus(null), 4000);
     }
 }
 
@@ -1172,7 +1200,7 @@ window.sendImage = sendImage;
 window.cancelImage = cancelImage;
 window.copyMessage = copyMessage;
 window.minimizeWindow = minimizeWindow;
-window.hideToTray = hideToTray;
+window.quitApp = quitApp;
 window.updateWelcomeMessage = updateWelcomeMessage;
 // Terminal functions (from terminal.js)
 window.toggleTerminal = toggleTerminal;
