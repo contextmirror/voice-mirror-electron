@@ -452,6 +452,11 @@ function registerIpcHandlers(ctx) {
         return { stopped: false, reason: 'not running' };
     });
 
+    ipcMain.handle('interrupt-ai', () => {
+        const interrupted = ctx.interruptAIProvider?.() || false;
+        return { interrupted };
+    });
+
     ipcMain.handle('get-claude-status', () => {
         const providerType = ctx.getAppConfig()?.ai?.provider || 'claude';
         return {

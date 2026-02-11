@@ -105,6 +105,9 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         // Stop Claude Code backend
         stop: () => ipcRenderer.invoke('stop-claude'),
 
+        // Interrupt current operation (Ctrl+C for PTY, abort for API)
+        interrupt: () => ipcRenderer.invoke('interrupt-ai'),
+
         // Get Claude process status
         getStatus: () => ipcRenderer.invoke('get-claude-status'),
 

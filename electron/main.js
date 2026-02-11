@@ -374,6 +374,11 @@ function isAIProviderRunning() {
     return aiManager?.isRunning() || false;
 }
 
+function interruptAIProvider() {
+    if (aiManager) return aiManager.interrupt();
+    return false;
+}
+
 function sendAIInput(text) {
     if (aiManager) {
         return aiManager.sendTextInput(text);
@@ -693,6 +698,7 @@ app.whenReady().then(() => {
         startPythonVoiceMirror,
         startAIProvider,
         stopAIProvider,
+        interruptAIProvider,
         isAIProviderRunning,
         getAIManager: () => aiManager,
         getPythonBackend: () => pythonBackend,

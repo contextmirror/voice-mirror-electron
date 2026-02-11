@@ -27,6 +27,18 @@ const previewFilename = document.getElementById('preview-filename');
 const previewSize = document.getElementById('preview-size');
 const dropZone = document.getElementById('drop-zone');
 const chatContainer = document.getElementById('chat-container');
+const interruptBtn = document.getElementById('action-interrupt-ai');
+
+// Wire up interrupt button click
+if (interruptBtn) {
+    interruptBtn.addEventListener('click', async () => {
+        try {
+            await window.voiceMirror.claude.interrupt();
+        } catch (err) {
+            console.error('[Main] Failed to interrupt:', err);
+        }
+    });
+}
 
 /**
  * Update welcome message based on activation mode
@@ -487,6 +499,7 @@ function setAIStatus(text, active = true, autoClearMs = 0, source = 'idle') {
         aiStatusText.classList.remove('shiny-text');
         currentStatusPriority = STATUS_PRIORITY.idle;
         currentStatusSource = 'idle';
+        if (interruptBtn) interruptBtn.style.display = 'none';
         return;
     }
 
@@ -502,6 +515,12 @@ function setAIStatus(text, active = true, autoClearMs = 0, source = 'idle') {
     aiStatusText.textContent = text;
     currentStatusPriority = priority;
     currentStatusSource = source;
+
+    // Show interrupt button when AI is actively working (pty/mcp), hide for voice/idle
+    if (interruptBtn) {
+        const showInterrupt = active && (source === 'pty' || source === 'mcp');
+        interruptBtn.style.display = showInterrupt ? 'flex' : 'none';
+    }
 
     // Set hold time so the status stays readable
     statusHoldUntil = now + STATUS_HOLD_MS;

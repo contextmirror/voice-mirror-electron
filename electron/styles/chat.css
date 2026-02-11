@@ -658,6 +658,17 @@
     color: #fff;
 }
 
+.chat-action-btn.interrupt {
+    color: #fbbf24;
+    opacity: 0.85;
+}
+
+.chat-action-btn.interrupt:hover {
+    background: rgba(251, 191, 36, 0.2);
+    color: #fde047;
+    opacity: 1;
+}
+
 /* ========== Voice Waveform Overlay ========== */
 #chat-input-row {
     position: relative;

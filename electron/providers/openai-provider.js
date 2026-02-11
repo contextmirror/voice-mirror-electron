@@ -171,6 +171,21 @@ class OpenAIProvider extends BaseProvider {
     }
 
     /**
+     * Interrupt the current request without stopping the provider.
+     * Aborts in-flight streaming but preserves message history and running state.
+     * @returns {boolean} True if a request was interrupted
+     */
+    interrupt() {
+        if (this.abortController) {
+            console.log(`[OpenAIProvider] ${this.providerName} request interrupted`);
+            this.abortController.abort();
+            // sendInput()'s catch block handles AbortError → emits [Cancelled]
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Send a message and get a response
      *
      * @param {string} text - User message (empty string for tool follow-up)

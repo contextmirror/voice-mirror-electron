@@ -328,6 +328,32 @@ function createAIManager(options = {}) {
     }
 
     /**
+     * Interrupt the active AI provider's current operation.
+     * For PTY providers: sends Ctrl+C. For API providers: aborts the HTTP request.
+     * Does NOT stop the provider or clear history.
+     * @returns {boolean} True if an interrupt was sent
+     */
+    function interrupt() {
+        const config = getConfig();
+        const providerType = config?.ai?.provider || 'claude';
+
+        if (CLI_PROVIDERS.includes(providerType)) {
+            if (isClaudeRunning()) {
+                sendRawInput('\x03');
+                console.log('[AIManager] Sent Ctrl+C to PTY');
+                return true;
+            }
+            return false;
+        }
+
+        if (activeProvider && activeProvider.isRunning() && activeProvider.interrupt) {
+            return activeProvider.interrupt();
+        }
+
+        return false;
+    }
+
+    /**
      * Check if AI provider is running.
      * @returns {boolean} True if running
      */
@@ -450,6 +476,7 @@ function createAIManager(options = {}) {
     return {
         start,
         stop,
+        interrupt,
         isRunning,
         sendTextInput,
         sendRawInputData,
