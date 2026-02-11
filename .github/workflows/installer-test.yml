@@ -221,7 +221,8 @@ jobs:
           $VENV_PYTHON -c "import onnxruntime; print(f'onnxruntime {onnxruntime.__version__}')"
           $VENV_PYTHON -c "import psutil; print(f'psutil {psutil.__version__}')"
           $VENV_PYTHON -c "import sounddevice; print(f'sounddevice {sounddevice.__version__}')"
-          $VENV_PYTHON -c "import pynput; print('pynput OK')"
+          # pynput needs X/Wayland display to import — verify installed via pip
+          $VENV_PYTHON -m pip show pynput | head -2
 
       - name: Run unit tests
         working-directory: ${{ runner.temp }}/voice-mirror-full
@@ -385,7 +386,8 @@ jobs:
           $VENV_PYTHON -c "import onnxruntime; print(f'onnxruntime {onnxruntime.__version__}')"
           $VENV_PYTHON -c "import psutil; print(f'psutil {psutil.__version__}')"
           $VENV_PYTHON -c "import sounddevice; print(f'sounddevice {sounddevice.__version__}')"
-          $VENV_PYTHON -c "import pynput; print('pynput OK')"
+          # pynput needs display server to import — verify installed via pip
+          $VENV_PYTHON -m pip show pynput | head -2
 
       - name: Run unit tests
         working-directory: ${{ runner.temp }}/voice-mirror-full
