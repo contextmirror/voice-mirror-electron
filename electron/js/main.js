@@ -564,10 +564,6 @@ function setPtyStatus(text, active = true, autoClearMs = 0) {
 
 function parsePtyActivity(rawText) {
     const text = stripAnsi(rawText);
-    // Log stripped PTY text for diagnostics (only non-trivial chunks)
-    if (text.length > 5 && window.voiceMirror?.devlog) {
-        window.voiceMirror.devlog('STATUS', 'pty-text', { len: text.length, preview: text.slice(0, 120) });
-    }
     ptyBuffer += text;
     if (ptyBuffer.length > PTY_BUFFER_MAX) {
         ptyBuffer = ptyBuffer.slice(-PTY_BUFFER_MAX);
@@ -665,10 +661,13 @@ function parsePtyActivity(rawText) {
 
     // --- Generic activity fallback ---
     // If we're receiving non-trivial PTY data but no specific pattern matched,
-    // show "Working..." so the status bar never says "Waiting for input" while
-    // Claude is clearly active. The hold timer prevents flickering.
-    if (text.length > 10 && currentStatusSource === 'idle') {
-        setPtyStatus('Working...', true);
+    // show "Working..." when idle, and keep the activity timer alive so the
+    // status doesn't flicker back to "Waiting for input" during continuous work.
+    if (text.length > 10) {
+        if (currentStatusSource === 'idle') {
+            setPtyStatus('Working...', true);
+        }
+        // Always refresh the auto-clear timer — keeps status alive while data flows
         if (ptyActivityTimer) clearTimeout(ptyActivityTimer);
         ptyActivityTimer = setTimeout(() => setAIStatus(null), 4000);
     }
