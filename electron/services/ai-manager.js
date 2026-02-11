@@ -341,6 +341,15 @@ function createAIManager(options = {}) {
             if (isClaudeRunning()) {
                 sendRawInput('\x03');
                 console.log('[AIManager] Sent Ctrl+C to PTY');
+
+                // After Ctrl+C, Claude returns to its prompt but exits the
+                // voice loop (no longer calling claude_listen). Re-send the
+                // listen command so Claude resumes waiting for voice input.
+                const senderName = (getConfig()?.user?.name || 'user').toLowerCase();
+                sendInputWhenReady(`Use claude_listen to wait for voice input from ${senderName}, then reply with claude_send. Loop forever.\n`, 10000)
+                    .then(() => console.log('[AIManager] Resumed voice listening after interrupt'))
+                    .catch(() => {});
+
                 return true;
             }
             return false;

@@ -499,7 +499,6 @@ function setAIStatus(text, active = true, autoClearMs = 0, source = 'idle') {
         aiStatusText.classList.remove('shiny-text');
         currentStatusPriority = STATUS_PRIORITY.idle;
         currentStatusSource = 'idle';
-        if (interruptBtn) interruptBtn.style.display = 'none';
         return;
     }
 
@@ -515,12 +514,6 @@ function setAIStatus(text, active = true, autoClearMs = 0, source = 'idle') {
     aiStatusText.textContent = text;
     currentStatusPriority = priority;
     currentStatusSource = source;
-
-    // Show interrupt button when AI is actively working (pty/mcp), hide for voice/idle
-    if (interruptBtn) {
-        const showInterrupt = active && (source === 'pty' || source === 'mcp');
-        interruptBtn.style.display = showInterrupt ? 'flex' : 'none';
-    }
 
     // Set hold time so the status stays readable
     statusHoldUntil = now + STATUS_HOLD_MS;
