@@ -15,6 +15,7 @@ import { initChatStore, autoSave, triggerAutoName } from './chat-store.js';
 import { blobToBase64, formatSize } from './utils.js';
 import { initOrbCanvas, setOrbState, destroyOrbCanvas } from './orb-canvas.js';
 import { showToast, updateToast } from './notifications.js';
+import { resolveTheme, applyTheme as applyThemeEngine } from './theme-engine.js';
 
 // DOM elements
 const orb = document.getElementById('orb');
@@ -884,6 +885,10 @@ async function init() {
             displayName = `${displayName} (${shortModel})`;
         }
         updateProviderDisplay(displayName, provider, model);
+
+        // Apply saved theme (colors, fonts, orb) before first paint
+        const { colors: themeColors, fonts: themeFonts } = resolveTheme(config.appearance);
+        applyThemeEngine(themeColors, themeFonts);
     } catch (err) {
         console.warn('[Init] Failed to load provider config:', err);
     }

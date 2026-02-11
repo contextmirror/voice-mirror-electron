@@ -5,6 +5,31 @@ Format inspired by game dev patch notes — grouped by release, categorized by i
 
 ---
 
+## Patch 0.6.0 — "The Paintbrush" (2026-02-11)
+
+### New Features
+- **Full theme customization** — New Appearance tab in settings with 10 key colors, 2 font families, and orb colors all user-configurable
+- **5 preset themes** — Dark, Midnight, Emerald, Rose, and Slate presets with one-click switching
+- **Native color picker** — Uses the OS-native color picker (works on Windows, macOS, Linux) for every customizable color
+- **Live app-wide preview** — Every color/font change updates the ENTIRE app in real-time — sidebar, chat, settings, orb, everything
+- **Live orb preview** — 128×128 animated orb in settings cycles through all 5 states (idle, recording, speaking, thinking, dictating) with your custom colors
+- **Theme import/export** — Save and load themes as JSON files for community sharing
+- **Font customization** — Choose UI font (System Default, Inter, Roboto, Open Sans, Poppins, Ubuntu) and code font (Cascadia Code, Fira Code, JetBrains Mono, Source Code Pro, Consolas)
+- **Color derivation engine** — 10 key colors automatically derive 20+ CSS variables (hover states, borders, shadows, glows)
+
+### Improved
+- **Orb color system** — Orb ring, inner gradient, and icon colors now derive from theme accent and orbCore colors (no more hardcoded RGB)
+- **Settings reorganization** — Appearance section moved from General tab to its own dedicated tab with icon cards for quick navigation
+
+### Technical
+- New `theme-engine.js` module (~300 lines) — color utilities, HSL operations, preset definitions, CSS variable derivation
+- IPC validators for theme colors (hex format), font strings, and theme presets
+- Theme export/import via Electron file dialogs (`dialog.showSaveDialog` / `dialog.showOpenDialog`)
+- Snapshot/revert system — navigating away from settings without saving restores original theme
+- 38 new tests for theme engine (presets, color derivation, export/import validation)
+
+---
+
 ## Patch 0.5.0 — "The Dashboard" (2026-02-11)
 
 ### New Features

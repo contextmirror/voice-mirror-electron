@@ -6,6 +6,8 @@ import { state } from './state.js';
 import { formatKeybind } from './utils.js';
 import { navigateTo } from './navigation.js';
 import { updateProviderDisplay } from './terminal.js';
+import { PRESETS, deriveOrbColors, applyTheme, resolveTheme, buildExportData, validateImportData } from './theme-engine.js';
+import { renderOrb, DURATIONS } from './orb-canvas.js';
 
 // Provider display names
 const PROVIDER_NAMES = {
@@ -85,6 +87,7 @@ const SETTINGS_TABS = [
     { id: 'ai',      label: 'AI & Tools' },
     { id: 'voice',   label: 'Voice & Audio' },
     { id: 'general', label: 'General' },
+    { id: 'appearance', label: 'Appearance' },
 ];
 
 const SETTINGS_TAB_STORAGE_KEY = 'vm-settings-tab';
@@ -171,7 +174,9 @@ function switchSettingsTab(tabId) {
  */
 export function toggleSettings() {
     if (state.currentPage === 'settings') {
-        // Go back to chat
+        // Go back to chat — revert unsaved theme changes
+        revertThemeIfUnsaved();
+        stopOrbPreview();
         navigateTo('chat');
         state.settingsVisible = false;
     } else {
@@ -228,10 +233,8 @@ export async function loadSettingsUI() {
         document.getElementById('volume-value').textContent = Math.round((state.currentConfig.voice?.ttsVolume || 1.0) * 100) + '%';
         document.getElementById('stt-model').value = state.currentConfig.voice?.sttModel || 'parakeet';
 
-        // Appearance
-        document.getElementById('orb-size').value = state.currentConfig.appearance?.orbSize || 64;
-        document.getElementById('orb-size-value').textContent = (state.currentConfig.appearance?.orbSize || 64) + 'px';
-        document.getElementById('theme-select').value = state.currentConfig.appearance?.theme || 'dark';
+        // Appearance (theme, colors, fonts, orb)
+        loadAppearanceUI();
 
         // Behavior
         document.getElementById('start-minimized').checked = state.currentConfig.behavior?.startMinimized || false;
@@ -570,10 +573,7 @@ export async function saveSettings() {
             inputDevice: document.getElementById('audio-input-device').value || null,
             outputDevice: document.getElementById('audio-output-device').value || null
         },
-        appearance: {
-            orbSize: parseInt(document.getElementById('orb-size').value),
-            theme: document.getElementById('theme-select').value
-        },
+        appearance: buildAppearanceSaveData(),
         user: {
             name: document.getElementById('user-name').value.trim() || state.currentConfig.user?.name || null
         },
@@ -618,6 +618,9 @@ export async function saveSettings() {
             displayName = `${displayName} (${shortModel})`;
         }
         updateProviderDisplay(displayName, aiProvider, aiModel);
+
+        // Clear theme snapshot (prevents revert of saved changes)
+        state._themeSnapshot = null;
 
         // Show save confirmation
         const saveBtn = document.querySelector('.settings-btn.primary');
@@ -871,6 +874,9 @@ export async function initSettings() {
 
     // Initialize tool profile selector
     initToolProfiles();
+
+    // Initialize appearance tab (presets, color pickers, orb preview, import/export)
+    initAppearanceTab();
 
     // Activation mode change handler
     document.querySelectorAll('input[name="activationMode"]').forEach(radio => {
@@ -1275,6 +1281,340 @@ function updateTerminalProfileBadge(displayName) {
     badges.forEach(badge => {
         badge.textContent = provider === 'claude' ? displayName : '';
     });
+}
+
+// ============================================
+// Appearance Tab — Theme, Colors, Fonts, Orb Preview
+// ============================================
+
+const APPEARANCE_COLOR_KEYS = ['bg', 'bgElevated', 'text', 'textStrong', 'muted', 'accent', 'ok', 'warn', 'danger', 'orbCore'];
+const ORB_PREVIEW_STATES = ['idle', 'recording', 'speaking', 'thinking', 'dictating'];
+let orbPreviewFrame = null;
+let orbPreviewStateIdx = 0;
+let orbPreviewCycleTimer = null;
+let orbPreviewPhaseStart = 0;
+
+/** Gather current color picker values into an object */
+function gatherColors() {
+    const colors = {};
+    for (const key of APPEARANCE_COLOR_KEYS) {
+        const picker = document.getElementById(`color-${key}`);
+        colors[key] = picker ? picker.value : PRESETS.dark.colors[key];
+    }
+    return colors;
+}
+
+/** Gather current font select values */
+function gatherFonts() {
+    return {
+        fontFamily: document.getElementById('font-family-select')?.value || PRESETS.dark.fonts.fontFamily,
+        fontMono: document.getElementById('font-mono-select')?.value || PRESETS.dark.fonts.fontMono,
+    };
+}
+
+/** Apply the current picker/select values as a live theme */
+function applyLiveTheme() {
+    applyTheme(gatherColors(), gatherFonts());
+}
+
+/** Select a preset theme — updates pickers, fonts, and applies live */
+function selectPreset(presetKey) {
+    const preset = PRESETS[presetKey];
+    if (!preset) return;
+
+    state._activeThemePreset = presetKey;
+    state._themeCustomized = false;
+
+    // Update preset card active states
+    document.querySelectorAll('.theme-preset-card').forEach(card => {
+        card.classList.toggle('active', card.dataset.preset === presetKey);
+        card.classList.remove('customized');
+    });
+
+    // Update all color pickers
+    for (const [key, value] of Object.entries(preset.colors)) {
+        const picker = document.getElementById(`color-${key}`);
+        if (picker) picker.value = value;
+        const hex = document.getElementById(`color-${key}-hex`);
+        if (hex) hex.textContent = value;
+    }
+
+    // Update font selects
+    const fontSelect = document.getElementById('font-family-select');
+    if (fontSelect) fontSelect.value = preset.fonts.fontFamily;
+    const monoSelect = document.getElementById('font-mono-select');
+    if (monoSelect) monoSelect.value = preset.fonts.fontMono;
+
+    applyTheme(preset.colors, preset.fonts);
+}
+
+/** Check if colors differ from preset and show badge */
+function markCustomized() {
+    if (!state._activeThemePreset || !PRESETS[state._activeThemePreset]) return;
+    const preset = PRESETS[state._activeThemePreset];
+    const colors = gatherColors();
+    const customized = Object.keys(preset.colors).some(k => colors[k] !== preset.colors[k]);
+    state._themeCustomized = customized;
+
+    const card = document.querySelector(`.theme-preset-card[data-preset="${state._activeThemePreset}"]`);
+    if (card) card.classList.toggle('customized', customized);
+}
+
+/** Start the 128×128 orb preview animation loop */
+function startOrbPreview() {
+    stopOrbPreview(); // Clean up any existing preview
+
+    const previewCanvas = document.getElementById('orb-preview-canvas');
+    if (!previewCanvas) return;
+
+    const previewCtx = previewCanvas.getContext('2d');
+    orbPreviewPhaseStart = performance.now();
+    orbPreviewStateIdx = 0;
+
+    // Cycle through orb states every 3 seconds
+    orbPreviewCycleTimer = setInterval(() => {
+        orbPreviewStateIdx = (orbPreviewStateIdx + 1) % ORB_PREVIEW_STATES.length;
+        orbPreviewPhaseStart = performance.now();
+        const label = document.getElementById('orb-preview-state');
+        if (label) {
+            const name = ORB_PREVIEW_STATES[orbPreviewStateIdx];
+            label.textContent = name.charAt(0).toUpperCase() + name.slice(1);
+        }
+    }, 3000);
+
+    // Render loop
+    function renderPreview() {
+        const now = performance.now();
+        const orbState = ORB_PREVIEW_STATES[orbPreviewStateIdx];
+        const duration = DURATIONS[orbState] || 1500;
+        const phase = ((now - orbPreviewPhaseStart) % duration) / duration;
+
+        const w = previewCanvas.width;
+        const h = previewCanvas.height;
+        const imageData = previewCtx.createImageData(w, h);
+
+        const orbColors = deriveOrbColors(gatherColors());
+        renderOrb(imageData, w, h, orbState, phase, orbColors);
+        previewCtx.putImageData(imageData, 0, 0);
+
+        orbPreviewFrame = requestAnimationFrame(renderPreview);
+    }
+
+    orbPreviewFrame = requestAnimationFrame(renderPreview);
+}
+
+/** Stop orb preview animation */
+function stopOrbPreview() {
+    if (orbPreviewFrame) { cancelAnimationFrame(orbPreviewFrame); orbPreviewFrame = null; }
+    if (orbPreviewCycleTimer) { clearInterval(orbPreviewCycleTimer); orbPreviewCycleTimer = null; }
+}
+
+/** Import a theme from JSON file */
+async function importTheme() {
+    try {
+        const result = await window.voiceMirror.theme.import();
+        if (!result) return; // User cancelled
+
+        const validation = validateImportData(result);
+        if (!validation.valid) {
+            alert('Invalid theme file: ' + validation.error);
+            return;
+        }
+
+        // Apply imported colors to pickers
+        for (const [key, value] of Object.entries(validation.colors)) {
+            const picker = document.getElementById(`color-${key}`);
+            if (picker) picker.value = value;
+            const hex = document.getElementById(`color-${key}-hex`);
+            if (hex) hex.textContent = value;
+        }
+
+        if (validation.fonts) {
+            const fontSelect = document.getElementById('font-family-select');
+            if (fontSelect && validation.fonts.fontFamily) fontSelect.value = validation.fonts.fontFamily;
+            const monoSelect = document.getElementById('font-mono-select');
+            if (monoSelect && validation.fonts.fontMono) monoSelect.value = validation.fonts.fontMono;
+        }
+
+        // Enable customize toggle
+        const toggle = document.getElementById('customize-colors-toggle');
+        if (toggle) {
+            toggle.checked = true;
+            document.getElementById('color-picker-grid').style.display = '';
+        }
+
+        state._themeCustomized = true;
+        document.querySelectorAll('.theme-preset-card').forEach(card => {
+            card.classList.remove('active');
+            card.classList.remove('customized');
+        });
+
+        applyLiveTheme();
+    } catch (err) {
+        console.error('[Theme] Import failed:', err);
+    }
+}
+
+/** Export current theme to JSON file */
+async function exportTheme() {
+    try {
+        const colors = gatherColors();
+        const fonts = gatherFonts();
+        const data = buildExportData('My Theme', colors, fonts);
+        await window.voiceMirror.theme.export(data);
+    } catch (err) {
+        console.error('[Theme] Export failed:', err);
+    }
+}
+
+/** Revert to theme snapshot if user navigates away without saving */
+function revertThemeIfUnsaved() {
+    if (state._themeSnapshot) {
+        applyTheme(state._themeSnapshot.colors, state._themeSnapshot.fonts);
+        state._themeSnapshot = null;
+    }
+}
+
+/** Load appearance UI state from config */
+function loadAppearanceUI() {
+    const appearance = state.currentConfig.appearance || {};
+    const themeName = appearance.theme || 'dark';
+    const preset = PRESETS[themeName] || PRESETS.dark;
+
+    state._activeThemePreset = PRESETS[themeName] ? themeName : 'dark';
+    state._themeCustomized = !!appearance.colors;
+
+    // Update preset cards
+    document.querySelectorAll('.theme-preset-card').forEach(card => {
+        card.classList.toggle('active', card.dataset.preset === state._activeThemePreset);
+        card.classList.remove('customized');
+        if (appearance.colors && card.dataset.preset === state._activeThemePreset) {
+            card.classList.add('customized');
+        }
+    });
+
+    // Populate color pickers
+    const activeColors = appearance.colors || preset.colors;
+    for (const key of APPEARANCE_COLOR_KEYS) {
+        const picker = document.getElementById(`color-${key}`);
+        if (picker) picker.value = activeColors[key] || PRESETS.dark.colors[key];
+        const hex = document.getElementById(`color-${key}-hex`);
+        if (hex) hex.textContent = activeColors[key] || PRESETS.dark.colors[key];
+    }
+
+    // Customize toggle
+    const customizeToggle = document.getElementById('customize-colors-toggle');
+    if (customizeToggle) {
+        customizeToggle.checked = !!appearance.colors;
+        const pickerGrid = document.getElementById('color-picker-grid');
+        if (pickerGrid) pickerGrid.style.display = appearance.colors ? '' : 'none';
+    }
+
+    // Fonts
+    const activeFonts = appearance.fonts || preset.fonts;
+    const fontSelect = document.getElementById('font-family-select');
+    if (fontSelect) fontSelect.value = activeFonts.fontFamily;
+    const monoSelect = document.getElementById('font-mono-select');
+    if (monoSelect) monoSelect.value = activeFonts.fontMono;
+
+    // Orb size
+    document.getElementById('orb-size').value = appearance.orbSize || 64;
+    document.getElementById('orb-size-value').textContent = (appearance.orbSize || 64) + 'px';
+
+    // Theme snapshot for revert on cancel
+    state._themeSnapshot = { colors: { ...activeColors }, fonts: { ...activeFonts } };
+
+    // Apply theme to match UI state
+    applyTheme(activeColors, activeFonts);
+}
+
+/** Build the appearance save data from current UI state */
+function buildAppearanceSaveData() {
+    const themeName = state._activeThemePreset || 'dark';
+    const preset = PRESETS[themeName] || PRESETS.dark;
+    const currentColors = gatherColors();
+    const currentFonts = gatherFonts();
+
+    const colorsCustomized = state._themeCustomized ||
+        Object.keys(preset.colors).some(k => currentColors[k] !== preset.colors[k]);
+
+    const fontsCustomized = currentFonts.fontFamily !== preset.fonts.fontFamily ||
+        currentFonts.fontMono !== preset.fonts.fontMono;
+
+    return {
+        orbSize: parseInt(document.getElementById('orb-size').value),
+        theme: themeName,
+        colors: colorsCustomized ? currentColors : null,
+        fonts: fontsCustomized ? currentFonts : null,
+    };
+}
+
+/** Initialize appearance tab — preset cards, color pickers, orb preview, import/export */
+function initAppearanceTab() {
+    // Populate preset cards
+    const grid = document.getElementById('theme-preset-grid');
+    if (!grid) return;
+
+    grid.innerHTML = '';
+    for (const [key, preset] of Object.entries(PRESETS)) {
+        const card = document.createElement('div');
+        card.className = 'theme-preset-card';
+        card.dataset.preset = key;
+
+        const swatches = document.createElement('div');
+        swatches.className = 'preset-swatches';
+        for (const color of [preset.colors.bg, preset.colors.accent, preset.colors.text, preset.colors.orbCore]) {
+            const dot = document.createElement('div');
+            dot.className = 'preset-swatch';
+            dot.style.background = color;
+            swatches.appendChild(dot);
+        }
+        card.appendChild(swatches);
+
+        const name = document.createElement('span');
+        name.className = 'preset-name';
+        name.textContent = preset.name;
+        card.appendChild(name);
+
+        const badge = document.createElement('span');
+        badge.className = 'preset-badge';
+        badge.textContent = 'Customized';
+        card.appendChild(badge);
+
+        card.addEventListener('click', () => selectPreset(key));
+        grid.appendChild(card);
+    }
+
+    // Customize toggle
+    const toggle = document.getElementById('customize-colors-toggle');
+    const pickerGrid = document.getElementById('color-picker-grid');
+    if (toggle && pickerGrid) {
+        toggle.addEventListener('change', () => {
+            pickerGrid.style.display = toggle.checked ? '' : 'none';
+        });
+    }
+
+    // Color picker live preview — every change updates the ENTIRE APP
+    document.querySelectorAll('.color-picker-control input[type="color"]').forEach(picker => {
+        picker.addEventListener('input', (e) => {
+            const key = e.target.dataset.key;
+            const hexSpan = document.getElementById(`color-${key}-hex`);
+            if (hexSpan) hexSpan.textContent = e.target.value;
+            applyLiveTheme();
+            markCustomized();
+        });
+    });
+
+    // Font selects — live preview
+    document.getElementById('font-family-select')?.addEventListener('change', applyLiveTheme);
+    document.getElementById('font-mono-select')?.addEventListener('change', applyLiveTheme);
+
+    // Import/Export buttons
+    document.getElementById('theme-import-btn')?.addEventListener('click', importTheme);
+    document.getElementById('theme-export-btn')?.addEventListener('click', exportTheme);
+
+    // Start orb preview animation
+    startOrbPreview();
 }
 
 /**

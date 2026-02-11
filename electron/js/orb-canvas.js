@@ -7,6 +7,7 @@
  */
 
 import { getAmplitudeHistory } from './chat-input.js';
+import { onOrbColorsChanged } from './theme-engine.js';
 
 // --- State enum ---
 const OrbState = Object.freeze({
@@ -23,6 +24,7 @@ let ctx = null;
 let animFrame = null;
 let currentState = OrbState.Idle;
 let phaseStart = performance.now();
+let currentOrbColors = null;  // Set by theme-engine via setOrbColors()
 
 // Animation durations per state (ms)
 const DURATIONS = {
@@ -96,7 +98,7 @@ function blendOver(data, offset, sr, sg, sb, sa) {
 }
 
 // --- Icon renderers ---
-function drawHumanIcon(imageData, width, height, cx, cy, innerRadius, state) {
+function drawHumanIcon(imageData, width, height, cx, cy, innerRadius, state, colors = null) {
     const data = imageData.data;
     const iconScale = innerRadius * 0.55;
     const headCy = cy - iconScale * 0.3;
@@ -136,7 +138,8 @@ function drawHumanIcon(imageData, width, height, cx, cy, innerRadius, state) {
 
             if (iconAlpha > 0) {
                 const offset = (y * width + x) * 4;
-                const [ir, ig, ib] = applyStateColor(220, 220, 240, 1, state);
+                const ic = colors ? colors.iconRgb : [220, 220, 240];
+                const [ir, ig, ib] = applyStateColor(ic[0], ic[1], ic[2], 1, state);
                 const a = iconAlpha * 0.85;
                 blendOver(data, offset, ir, ig, ib, a);
             }
@@ -144,7 +147,7 @@ function drawHumanIcon(imageData, width, height, cx, cy, innerRadius, state) {
     }
 }
 
-function drawRobotIcon(imageData, width, height, cx, cy, innerRadius, state) {
+function drawRobotIcon(imageData, width, height, cx, cy, innerRadius, state, colors = null) {
     const data = imageData.data;
     const iconScale = innerRadius * 0.5;
     const headW = iconScale * 0.7;
@@ -215,10 +218,12 @@ function drawRobotIcon(imageData, width, height, cx, cy, innerRadius, state) {
             if (iconAlpha > 0) {
                 const offset = (y * width + x) * 4;
                 if (isEye) {
-                    const [ir, ig, ib] = applyStateColor(20, 15, 40, 1, state);
+                    const ec = colors ? colors.eyeRgb : [20, 15, 40];
+                    const [ir, ig, ib] = applyStateColor(ec[0], ec[1], ec[2], 1, state);
                     blendOver(data, offset, ir, ig, ib, 0.9);
                 } else {
-                    const [ir, ig, ib] = applyStateColor(220, 220, 240, 1, state);
+                    const ic = colors ? colors.iconRgb : [220, 220, 240];
+                    const [ir, ig, ib] = applyStateColor(ic[0], ic[1], ic[2], 1, state);
                     blendOver(data, offset, ir, ig, ib, iconAlpha * 0.85);
                 }
             }
@@ -267,7 +272,7 @@ function drawWaveformBars(imageData, width, height, cx, cy, innerRadius) {
 }
 
 // --- Main orb render ---
-function renderOrb(imageData, width, height, state, phase) {
+function renderOrb(imageData, width, height, state, phase, colors = null) {
     const data = imageData.data;
     const cx = width / 2;
     const cy = height / 2;
@@ -327,13 +332,16 @@ function renderOrb(imageData, width, height, state, phase) {
             if (dist > innerRadius) {
                 // Border ring
                 const borderAlpha = edgeAlpha * 0.5;
-                [rf, gf, bf, af] = applyStateColor(102, 126, 234, borderAlpha, state);
+                const br = colors ? colors.borderRgb : [102, 126, 234];
+                [rf, gf, bf, af] = applyStateColor(br[0], br[1], br[2], borderAlpha, state);
             } else {
                 // Inner gradient
                 const t = dist / innerRadius;
-                const rv = lerp(0x2d, 0x0d, t);
-                const gv = lerp(0x1b, 0x0d, t);
-                const bv = lerp(0x4e, 0x1a, t);
+                const cc = colors ? colors.centerRgb : [0x2d, 0x1b, 0x4e];
+                const ec = colors ? colors.edgeRgb : [0x0d, 0x0d, 0x1a];
+                const rv = lerp(cc[0], ec[0], t);
+                const gv = lerp(cc[1], ec[1], t);
+                const bv = lerp(cc[2], ec[2], t);
                 [rf, gf, bf, af] = applyStateColor(rv, gv, bv, edgeAlpha * 0.95, state);
             }
 
@@ -347,9 +355,9 @@ function renderOrb(imageData, width, height, state, phase) {
 
     // Icons / overlays
     if (state === OrbState.Recording) {
-        drawHumanIcon(imageData, width, height, cx, cy, innerRadius, state);
+        drawHumanIcon(imageData, width, height, cx, cy, innerRadius, state, colors);
     } else if (state === OrbState.Speaking) {
-        drawRobotIcon(imageData, width, height, cx, cy, innerRadius, state);
+        drawRobotIcon(imageData, width, height, cx, cy, innerRadius, state, colors);
     } else if (state === OrbState.Dictating) {
         drawWaveformBars(imageData, width, height, cx, cy, innerRadius);
     }
@@ -366,7 +374,7 @@ function tick() {
     const w = canvas.width;
     const h = canvas.height;
     const imageData = ctx.createImageData(w, h);
-    renderOrb(imageData, w, h, currentState, phase);
+    renderOrb(imageData, w, h, currentState, phase, currentOrbColors);
     ctx.putImageData(imageData, 0, 0);
 
     animFrame = requestAnimationFrame(tick);
@@ -406,3 +414,16 @@ export function destroyOrbCanvas() {
     canvas = null;
     ctx = null;
 }
+
+/**
+ * Set the orb color palette. Pass null to revert to defaults.
+ * @param {object|null} colors - Color config with borderRgb, centerRgb, edgeRgb, iconRgb, eyeRgb
+ */
+export function setOrbColors(colors) {
+    currentOrbColors = colors;
+}
+
+export { renderOrb, DURATIONS };
+
+// Wire theme-engine callback at module level
+onOrbColorsChanged((colors) => { currentOrbColors = colors; });

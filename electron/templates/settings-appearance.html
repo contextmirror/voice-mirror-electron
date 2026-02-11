@@ -1,0 +1,169 @@
+<!-- Icon Cards -->
+<div class="settings-card-grid">
+    <div class="settings-card" data-scroll-to="section-presets">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12.5" r="2.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+        <span>Presets</span>
+    </div>
+    <div class="settings-card" data-scroll-to="section-dashboard-colors">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18.37 2.63 14 7l-1.59-1.59a2 2 0 0 0-2.82 0L8 7l9 9 1.59-1.59a2 2 0 0 0 0-2.82L17 10l4.37-4.37a2.12 2.12 0 1 0-3-3Z"/><path d="M9 8c-2 3-4 3.5-7 4l8 10c2-1 6-5 6-7"/><path d="M14.5 17.5 4.5 15"/></svg>
+        <span>Dashboard</span>
+    </div>
+    <div class="settings-card" data-scroll-to="section-orb-colors">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>
+        <span>Orb</span>
+    </div>
+    <div class="settings-card" data-scroll-to="section-fonts">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+        <span>Fonts</span>
+    </div>
+</div>
+
+<!-- Theme Presets -->
+<div class="settings-section" id="section-presets">
+    <h3>Theme Presets</h3>
+    <div class="settings-group">
+        <div class="theme-preset-grid" id="theme-preset-grid">
+            <!-- JS will populate preset cards here -->
+        </div>
+        <div class="theme-actions">
+            <button class="btn-secondary" id="theme-import-btn">Import Theme</button>
+            <button class="btn-secondary" id="theme-export-btn">Export Theme</button>
+        </div>
+    </div>
+</div>
+
+<!-- Dashboard Colors -->
+<div class="settings-section" id="section-dashboard-colors">
+    <h3>Dashboard Colors</h3>
+    <div class="settings-group">
+        <div class="setting-row">
+            <label>Customize Colors</label>
+            <label class="toggle-switch">
+                <input type="checkbox" id="customize-colors-toggle">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <div class="color-picker-grid" id="color-picker-grid" style="display: none;">
+            <h4 class="color-group-label">Backgrounds</h4>
+            <div class="color-picker-row">
+                <label>Background</label>
+                <div class="color-picker-control">
+                    <input type="color" id="color-bg" data-key="bg" value="#0c0d10">
+                    <span class="color-hex" id="color-bg-hex">#0c0d10</span>
+                </div>
+            </div>
+            <div class="color-picker-row">
+                <label>Surface</label>
+                <div class="color-picker-control">
+                    <input type="color" id="color-bgElevated" data-key="bgElevated" value="#14161c">
+                    <span class="color-hex" id="color-bgElevated-hex">#14161c</span>
+                </div>
+            </div>
+            <h4 class="color-group-label">Text</h4>
+            <div class="color-picker-row">
+                <label>Primary Text</label>
+                <div class="color-picker-control">
+                    <input type="color" id="color-text" data-key="text" value="#e4e4e7">
+                    <span class="color-hex" id="color-text-hex">#e4e4e7</span>
+                </div>
+            </div>
+            <div class="color-picker-row">
+                <label>Strong Text</label>
+                <div class="color-picker-control">
+                    <input type="color" id="color-textStrong" data-key="textStrong" value="#fafafa">
+                    <span class="color-hex" id="color-textStrong-hex">#fafafa</span>
+                </div>
+            </div>
+            <div class="color-picker-row">
+                <label>Muted Text</label>
+                <div class="color-picker-control">
+                    <input type="color" id="color-muted" data-key="muted" value="#71717a">
+                    <span class="color-hex" id="color-muted-hex">#71717a</span>
+                </div>
+            </div>
+            <h4 class="color-group-label">Accent</h4>
+            <div class="color-picker-row">
+                <label>Accent Color</label>
+                <div class="color-picker-control">
+                    <input type="color" id="color-accent" data-key="accent" value="#667eea">
+                    <span class="color-hex" id="color-accent-hex">#667eea</span>
+                </div>
+            </div>
+            <h4 class="color-group-label">Status</h4>
+            <div class="color-picker-row">
+                <label>Success</label>
+                <div class="color-picker-control">
+                    <input type="color" id="color-ok" data-key="ok" value="#4ade80">
+                    <span class="color-hex" id="color-ok-hex">#4ade80</span>
+                </div>
+            </div>
+            <div class="color-picker-row">
+                <label>Warning</label>
+                <div class="color-picker-control">
+                    <input type="color" id="color-warn" data-key="warn" value="#fbbf24">
+                    <span class="color-hex" id="color-warn-hex">#fbbf24</span>
+                </div>
+            </div>
+            <div class="color-picker-row">
+                <label>Danger</label>
+                <div class="color-picker-control">
+                    <input type="color" id="color-danger" data-key="danger" value="#ef4444">
+                    <span class="color-hex" id="color-danger-hex">#ef4444</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Orb -->
+<div class="settings-section" id="section-orb-colors">
+    <h3>Orb</h3>
+    <div class="settings-group">
+        <div class="orb-preview-area">
+            <canvas id="orb-preview-canvas" width="128" height="128"></canvas>
+            <span class="orb-preview-state" id="orb-preview-state">Idle</span>
+        </div>
+        <div class="color-picker-row">
+            <label>Orb Core Color</label>
+            <div class="color-picker-control">
+                <input type="color" id="color-orbCore" data-key="orbCore" value="#2d1b4e">
+                <span class="color-hex" id="color-orbCore-hex">#2d1b4e</span>
+            </div>
+        </div>
+        <div class="setting-row">
+            <label>Orb Size</label>
+            <div class="slider-container">
+                <input type="range" id="orb-size" min="32" max="256" value="64">
+                <span id="orb-size-value">64px</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Fonts -->
+<div class="settings-section" id="section-fonts">
+    <h3>Fonts</h3>
+    <div class="settings-group">
+        <div class="setting-row">
+            <label>UI Font</label>
+            <select id="font-family-select">
+                <option value="'Segoe UI', system-ui, -apple-system, sans-serif">System Default</option>
+                <option value="'Inter', sans-serif">Inter</option>
+                <option value="'Roboto', sans-serif">Roboto</option>
+                <option value="'Open Sans', sans-serif">Open Sans</option>
+                <option value="'Poppins', sans-serif">Poppins</option>
+                <option value="'Ubuntu', sans-serif">Ubuntu</option>
+            </select>
+        </div>
+        <div class="setting-row">
+            <label>Code Font</label>
+            <select id="font-mono-select">
+                <option value="'Cascadia Code', 'Fira Code', monospace">Cascadia Code</option>
+                <option value="'Fira Code', monospace">Fira Code</option>
+                <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
+                <option value="'Source Code Pro', monospace">Source Code Pro</option>
+                <option value="'Consolas', monospace">Consolas</option>
+            </select>
+        </div>
+    </div>
+</div>

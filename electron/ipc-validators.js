@@ -153,6 +153,39 @@ const validators = {
           errors.push('appearance.panelHeight must be an integer 200-4000');
         }
       }
+      if (s.appearance.theme !== undefined) {
+        const VALID_THEMES = ['dark', 'midnight', 'emerald', 'rose', 'slate', 'custom'];
+        if (typeof s.appearance.theme !== 'string' || !VALID_THEMES.includes(s.appearance.theme)) {
+          errors.push(`appearance.theme must be one of: ${VALID_THEMES.join(', ')}`);
+        }
+      }
+      if (s.appearance.colors !== undefined && s.appearance.colors !== null) {
+        if (!isPlainObject(s.appearance.colors)) {
+          errors.push('appearance.colors must be an object or null');
+        } else {
+          const COLOR_KEYS = ['bg', 'bgElevated', 'text', 'textStrong', 'muted', 'accent', 'ok', 'warn', 'danger', 'orbCore'];
+          const hexRe = /^#[0-9a-fA-F]{6}$/;
+          for (const [k, v] of Object.entries(s.appearance.colors)) {
+            if (!COLOR_KEYS.includes(k)) {
+              errors.push(`appearance.colors.${k} is not a valid color key`);
+            } else if (typeof v !== 'string' || !hexRe.test(v)) {
+              errors.push(`appearance.colors.${k} must be a hex color (#RRGGBB)`);
+            }
+          }
+        }
+      }
+      if (s.appearance.fonts !== undefined && s.appearance.fonts !== null) {
+        if (!isPlainObject(s.appearance.fonts)) {
+          errors.push('appearance.fonts must be an object or null');
+        } else {
+          if (s.appearance.fonts.fontFamily !== undefined && typeof s.appearance.fonts.fontFamily !== 'string') {
+            errors.push('appearance.fonts.fontFamily must be a string');
+          }
+          if (s.appearance.fonts.fontMono !== undefined && typeof s.appearance.fonts.fontMono !== 'string') {
+            errors.push('appearance.fonts.fontMono must be a string');
+          }
+        }
+      }
     }
 
     if (s.window) {

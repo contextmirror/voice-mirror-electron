@@ -45,7 +45,9 @@ const DEFAULT_CONFIG = {
         orbSize: 64,
         theme: 'dark',
         panelWidth: 500,
-        panelHeight: 700
+        panelHeight: 700,
+        colors: null,    // null = use preset from theme, object = custom { bg, bgElevated, ... }
+        fonts: null      // null = use preset defaults, object = { fontFamily, fontMono }
     },
 
     // Behavior

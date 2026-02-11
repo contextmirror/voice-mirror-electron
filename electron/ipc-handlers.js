@@ -3,7 +3,7 @@
  * Extracted from main.js to reduce file size and improve testability.
  */
 
-const { app, ipcMain, desktopCapturer, screen, shell, nativeImage } = require('electron');
+const { app, ipcMain, dialog, desktopCapturer, screen, shell, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
@@ -753,6 +753,43 @@ function registerIpcHandlers(ctx) {
     ipcMain.handle('app-relaunch', () => {
         app.relaunch();
         app.exit(0);
+    });
+
+    // Theme export — save theme JSON to file
+    ipcMain.handle('theme-export', async (_event, themeData) => {
+        try {
+            const win = ctx.getWindow?.();
+            const { canceled, filePath } = await dialog.showSaveDialog(win, {
+                title: 'Export Theme',
+                defaultPath: `${(themeData.name || 'theme').replace(/[^a-zA-Z0-9_-]/g, '_')}.json`,
+                filters: [{ name: 'Theme Files', extensions: ['json'] }]
+            });
+            if (canceled || !filePath) return { success: false, error: 'Cancelled' };
+            fs.writeFileSync(filePath, JSON.stringify(themeData, null, 2), 'utf-8');
+            return { success: true, filePath };
+        } catch (err) {
+            console.error('[Theme] Export failed:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    // Theme import — read theme JSON from file
+    ipcMain.handle('theme-import', async () => {
+        try {
+            const win = ctx.getWindow?.();
+            const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+                title: 'Import Theme',
+                filters: [{ name: 'Theme Files', extensions: ['json'] }],
+                properties: ['openFile']
+            });
+            if (canceled || !filePaths || filePaths.length === 0) return { success: false, error: 'Cancelled' };
+            const raw = fs.readFileSync(filePaths[0], 'utf-8');
+            const data = JSON.parse(raw);
+            return { success: true, data };
+        } catch (err) {
+            console.error('[Theme] Import failed:', err);
+            return { success: false, error: err.message };
+        }
     });
 }
 

@@ -57,6 +57,12 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         listOutputs: () => ipcRenderer.invoke('list-overlay-outputs'),
     },
 
+    // Theme import/export
+    theme: {
+        export: (data) => ipcRenderer.invoke('theme-export', data),
+        import: () => ipcRenderer.invoke('theme-import'),
+    },
+
     // Send image to Python backend for Claude vision
     sendImageToBackend: (imageData) => ipcRenderer.invoke('send-image', imageData),
 
