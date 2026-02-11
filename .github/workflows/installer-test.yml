@@ -142,12 +142,16 @@ jobs:
         with:
           path: source
 
-      # NO actions/setup-python — let the installer's ensure_python find it.
-      # Ubuntu runners have Python 3.x pre-installed on PATH, which is what
-      # real users on Ubuntu/Debian will also have.
+      # tflite-runtime (openwakeword dep) has no wheels for Python 3.12+.
+      # Pin to 3.11 so pip can resolve all dependencies.
+      # The setup wizard still creates its own venv + runs pip install.
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Install setuptools for node-gyp
-        run: pip install setuptools || pip3 install setuptools
+        run: pip install setuptools
 
       - name: Run install.sh (fresh clone, full setup)
         run: |
@@ -199,7 +203,7 @@ jobs:
           echo "=== Checking key packages ==="
           $VENV_PYTHON -c "import numpy; print(f'numpy {numpy.__version__}')"
           $VENV_PYTHON -c "import onnxruntime; print(f'onnxruntime {onnxruntime.__version__}')"
-          $VENV_PYTHON -c "import websockets; print(f'websockets {websockets.__version__}')"
+          $VENV_PYTHON -c "import sounddevice; print(f'sounddevice {sounddevice.__version__}')"
 
       - name: Run unit tests
         working-directory: ${{ runner.temp }}/voice-mirror-full
@@ -215,9 +219,12 @@ jobs:
         with:
           path: source
 
-      # NO actions/setup-python — let install.ps1's Ensure-Python find it.
-      # Windows runners have Python on PATH (via chocolatey), same as real users
-      # who install Python from python.org or winget.
+      # tflite-runtime (openwakeword dep) has no wheels for Python 3.12+.
+      # Pin to 3.11 so pip can resolve all dependencies.
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Run install.ps1 (fresh clone, full setup)
         shell: pwsh
@@ -268,8 +275,8 @@ jobs:
           & $venvPython -c "import onnxruntime; print(f'onnxruntime {onnxruntime.__version__}')"
           if ($LASTEXITCODE -ne 0) { throw "onnxruntime import failed" }
 
-          & $venvPython -c "import websockets; print(f'websockets {websockets.__version__}')"
-          if ($LASTEXITCODE -ne 0) { throw "websockets import failed" }
+          & $venvPython -c "import sounddevice; print(f'sounddevice {sounddevice.__version__}')"
+          if ($LASTEXITCODE -ne 0) { throw "sounddevice import failed" }
 
       - name: Run unit tests
         working-directory: ${{ runner.temp }}\voice-mirror-full
@@ -285,8 +292,12 @@ jobs:
         with:
           path: source
 
-      # NO actions/setup-python — let install.sh's ensure_python find it.
-      # macOS runners have Python 3 via Homebrew.
+      # tflite-runtime (openwakeword dep) has no wheels for Python 3.12+.
+      # Pin to 3.11 so pip can resolve all dependencies.
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Run install.sh (fresh clone, full setup)
         run: |
@@ -324,7 +335,7 @@ jobs:
           echo "=== Checking key packages ==="
           $VENV_PYTHON -c "import numpy; print(f'numpy {numpy.__version__}')"
           $VENV_PYTHON -c "import onnxruntime; print(f'onnxruntime {onnxruntime.__version__}')"
-          $VENV_PYTHON -c "import websockets; print(f'websockets {websockets.__version__}')"
+          $VENV_PYTHON -c "import sounddevice; print(f'sounddevice {sounddevice.__version__}')"
 
       - name: Run unit tests
         working-directory: ${{ runner.temp }}/voice-mirror-full
