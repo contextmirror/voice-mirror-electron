@@ -809,10 +809,14 @@ function handleVoiceEvent(data) {
             }, 2000);
             break;
         case 'dictation_start':
+            setOrbState('dictating');
             setRecordingVisual(true);
+            setAIStatus('Dictating...', true, 0, 'voice');
             break;
         case 'dictation_stop':
+            setOrbState('idle');
             setRecordingVisual(false);
+            setAIStatus(null, true, 0, 'voice');
             break;
         case 'mode_change':
             console.log('Mode changed to:', data.mode);

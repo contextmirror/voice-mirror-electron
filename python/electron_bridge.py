@@ -278,6 +278,12 @@ class ElectronOutputCapture:
         elif "Recording..." in text and "speak now" in text:
             emit_event("recording_start", {"type": "wake-word"})
 
+        # Dictation recording (separate from PTT — transcribes to text, no AI)
+        elif "Recording (dictation)" in text:
+            emit_event("dictation_start", {})
+        elif "Dictation recording stopped" in text or "Dictation recording timeout" in text:
+            emit_event("dictation_stop", {})
+
         elif "Silence detected" in text or "PTT released" in text:
             emit_event("recording_stop", {})
 

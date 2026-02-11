@@ -6,12 +6,15 @@
  * Uses ImageData for per-pixel rendering matching the Rust implementation.
  */
 
+import { getAmplitudeHistory } from './chat-input.js';
+
 // --- State enum ---
 const OrbState = Object.freeze({
     Idle: 'idle',
     Recording: 'recording',
     Speaking: 'speaking',
     Thinking: 'thinking',
+    Dictating: 'dictating',
 });
 
 // --- Module state ---
@@ -27,6 +30,7 @@ const DURATIONS = {
     [OrbState.Recording]: 500,
     [OrbState.Speaking]: 1000,
     [OrbState.Thinking]: 2000,
+    [OrbState.Dictating]: 800,
 };
 
 // --- Math helpers ---
@@ -70,6 +74,10 @@ function applyStateColor(r, g, b, alpha, state) {
             gf = Math.min(gf * 1.2 + 0.1, 1);
             bf = Math.min(bf * 1.1, 1);
             rf *= 0.6;
+            break;
+        case OrbState.Dictating:
+            bf = Math.min(bf * 1.3 + 0.1, 1);
+            gf = Math.min(gf * 1.1, 1);
             break;
     }
     return [rf, gf, bf, alpha];
@@ -218,6 +226,46 @@ function drawRobotIcon(imageData, width, height, cx, cy, innerRadius, state) {
     }
 }
 
+// --- Waveform bar renderer for dictation ---
+function drawWaveformBars(imageData, width, height, cx, cy, innerRadius) {
+    const data = imageData.data;
+    const history = getAmplitudeHistory();
+    if (!history || history.length === 0) return;
+
+    const barCount = 7;
+    const barWidth = 3;
+    const barGap = 2;
+    const totalWidth = barCount * barWidth + (barCount - 1) * barGap;
+    const startX = Math.round(cx - totalWidth / 2);
+    const maxBarHeight = Math.round(innerRadius * 1.4); // ~70% of diameter
+    const minBarHeight = 4;
+
+    // Sample evenly from amplitude history
+    const step = Math.max(1, Math.floor(history.length / barCount));
+    const offset = Math.max(0, history.length - step * barCount);
+
+    for (let i = 0; i < barCount; i++) {
+        const idx = offset + i * step;
+        const amplitude = idx < history.length ? history[idx] : 0;
+        const barHeight = Math.round(minBarHeight + amplitude * (maxBarHeight - minBarHeight));
+        const bx = startX + i * (barWidth + barGap);
+        const byTop = Math.round(cy - barHeight / 2);
+        const byBottom = byTop + barHeight;
+
+        for (let y = byTop; y < byBottom; y++) {
+            if (y < 0 || y >= height) continue;
+            for (let x = bx; x < bx + barWidth; x++) {
+                if (x < 0 || x >= width) continue;
+                // Only draw inside the orb circle
+                const dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+                if (Math.sqrt(dx * dx + dy * dy) > innerRadius) continue;
+                const off = (y * width + x) * 4;
+                blendOver(data, off, 0.71, 0.86, 1.0, 0.85); // cyan/white (180, 220, 255)
+            }
+        }
+    }
+}
+
 // --- Main orb render ---
 function renderOrb(imageData, width, height, state, phase) {
     const data = imageData.data;
@@ -241,6 +289,9 @@ function renderOrb(imageData, width, height, state, phase) {
             break;
         case OrbState.Thinking:
             scale = 1;
+            break;
+        case OrbState.Dictating:
+            scale = 1 + 0.05 * Math.sin(phase * TAU);
             break;
         default:
             scale = 1;
@@ -294,11 +345,13 @@ function renderOrb(imageData, width, height, state, phase) {
         }
     }
 
-    // Icons
+    // Icons / overlays
     if (state === OrbState.Recording) {
         drawHumanIcon(imageData, width, height, cx, cy, innerRadius, state);
     } else if (state === OrbState.Speaking) {
         drawRobotIcon(imageData, width, height, cx, cy, innerRadius, state);
+    } else if (state === OrbState.Dictating) {
+        drawWaveformBars(imageData, width, height, cx, cy, innerRadius);
     }
 }
 

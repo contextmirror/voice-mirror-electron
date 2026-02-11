@@ -586,6 +586,7 @@ class VoiceMirror:
             self.audio_state.is_recording = False
             self.audio_state.is_processing = True
             self.audio_state.dictation_process_pending = True
+            print('Dictation recording stopped')
 
         # Safety: force-stop dictation recording after 120s
         if (self.audio_state.is_recording

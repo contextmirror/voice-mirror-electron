@@ -201,6 +201,14 @@ function stopAudioVisualizer() {
     timeDomainData = null;
 }
 
+/**
+ * Get the live amplitude history array for external consumers (e.g. orb waveform).
+ * @returns {number[]} Current amplitude values (0-1)
+ */
+export function getAmplitudeHistory() {
+    return amplitudeHistory;
+}
+
 export function setRecordingVisual(active) {
     if (!waveformEl) waveformEl = document.getElementById('voice-waveform');
     if (!waveformEl) return;
