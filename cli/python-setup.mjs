@@ -68,6 +68,19 @@ export function installRequirements(venvPython, projectDir, spinner) {
             cwd: join(projectDir, 'python'),
         });
 
+        // Install openwakeword WITHOUT its dependencies — tflite-runtime
+        // has no wheels for Python 3.12+, Windows, or macOS.  All real
+        // deps (tqdm, scipy, scikit-learn, etc.) are already in requirements.txt;
+        // onnxruntime is provided by onnx-asr.
+        spinner.update('Installing openwakeword (no-deps)...');
+        execFileSync(venvPython, [
+            '-m', 'pip', 'install', '--no-deps', 'openwakeword>=0.6.0,<1.0.0',
+        ], {
+            stdio: 'pipe',
+            timeout: 120000,
+            cwd: join(projectDir, 'python'),
+        });
+
         return { ok: true };
     } catch (err) {
         return { ok: false, error: `pip install failed: ${err.message}` };
