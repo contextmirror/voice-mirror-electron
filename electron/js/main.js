@@ -544,8 +544,8 @@ function stripAnsi(str) {
  * Uses debouncing to prevent flickering between rapid state changes.
  */
 let ptyActivityTimer = null;
-let ptyBuffer = '';
-const PTY_BUFFER_MAX = 3000;
+let ptyRawBuffer = '';        // Accumulates RAW PTY data (with ANSI codes intact)
+const PTY_BUFFER_MAX = 4000;
 let lastPtyStatus = '';
 let ptyDebounceTimer = null;
 let _lastPtyDiag = 0; // Throttle for PTY diagnostic logging
@@ -564,29 +564,31 @@ function setPtyStatus(text, active = true, autoClearMs = 0) {
 }
 
 function parsePtyActivity(rawText) {
-    const text = stripAnsi(rawText);
-    ptyBuffer += text;
-    if (ptyBuffer.length > PTY_BUFFER_MAX) {
-        ptyBuffer = ptyBuffer.slice(-PTY_BUFFER_MAX);
+    // Accumulate RAW PTY data, then strip ANSI from the full buffer.
+    // This handles escape sequences split across chunk boundaries —
+    // e.g. \x1b[21 in one chunk and ;33H in the next.
+    ptyRawBuffer += rawText;
+    if (ptyRawBuffer.length > PTY_BUFFER_MAX) {
+        ptyRawBuffer = ptyRawBuffer.slice(-PTY_BUFFER_MAX);
     }
+    const text = stripAnsi(ptyRawBuffer);
 
     // --- MCP tool calls ---
     // Patterns: "• voice-mirror-electron - tool_name (MCP)" or "tool_name (MCP)"
-    const mcpMatch = ptyBuffer.match(/[•●]\s*\S+\s*[-–]\s*(\w+)\s*\(?MCP\)?/);
+    const mcpMatch = text.match(/[•●]\s*\S+\s*[-–]\s*(\w+)\s*\(?MCP\)?/);
     if (mcpMatch) {
         const tool = mcpMatch[1];
         const displayName = TOOL_DISPLAY_NAMES[tool] || formatToolName(tool);
         setPtyStatus(displayName, true);
-        ptyBuffer = '';
+        ptyRawBuffer = '';
         if (ptyActivityTimer) clearTimeout(ptyActivityTimer);
         ptyActivityTimer = setTimeout(() => setAIStatus(null), 15000);
         return;
     }
 
     // --- Claude Code built-in tools ---
-    // Match tool names with flexible prefix — covers all Claude Code TUI versions:
-    //   "⏺ Read(...)" / "+ Read file.js" / "● Edit(...)" / just "Read(" at line start
-    const builtinMatch = ptyBuffer.match(/(?:[⏺+●•]\s*|\n\s*)(Read|Edit|Write|Bash|Glob|Grep|WebSearch|WebFetch|Task|NotebookEdit|TodoWrite|TodoRead)\s*[(\[]/);
+    // Match tool names — flexible: "⏺ Read(" / "Read(" / any prefix before tool name
+    const builtinMatch = text.match(/(Read|Edit|Write|Bash|Glob|Grep|WebSearch|WebFetch|Task|NotebookEdit|TodoWrite|TodoRead)\s*\(/);
     if (builtinMatch) {
         const names = {
             Read: 'Reading file', Edit: 'Editing file', Write: 'Writing file',
@@ -595,85 +597,95 @@ function parsePtyActivity(rawText) {
             NotebookEdit: 'Editing notebook', TodoWrite: 'Updating todos', TodoRead: 'Reading todos'
         };
         setPtyStatus(names[builtinMatch[1]] || builtinMatch[1], true);
-        ptyBuffer = '';
+        ptyRawBuffer = '';
         if (ptyActivityTimer) clearTimeout(ptyActivityTimer);
         ptyActivityTimer = setTimeout(() => setAIStatus(null), 10000);
         return;
     }
 
     // --- Search/glob result counts ---
-    const searchMatch = text.match(/Searched for (\d+) pattern/i);
+    const searchMatch = text.match(/[Ss]earch\w*\s+(?:for\s+)?(\d+)\s*pattern/);
     if (searchMatch) {
         setPtyStatus(`Searched ${searchMatch[1]} patterns`, false, 3000);
-        ptyBuffer = '';
+        ptyRawBuffer = '';
         return;
     }
 
     // --- Thinking / running states ---
-    // Match Claude Code spinners: "Running…", "Thinking…", "Ionizing…", etc.
-    const stateMatch = text.match(/(Running|Ionizing|Thinking|Boondoggling|Crystallizing|Percolating|Synthesizing|Generating|Analyzing|Compiling|Processing|Evaluating|Reasoning|Planning|Reflecting)[….…]/i);
-    if (stateMatch) {
-        setPtyStatus(`${stateMatch[1]}...`, true);
+    // Match Claude Code spinners — use loose matching since TUI garbles text.
+    // Just detect the keyword anywhere in the stripped buffer.
+    const lowerText = text.toLowerCase();
+    const thinkingKeywords = ['thinking', 'ionizing', 'boondoggling', 'crystallizing',
+        'percolating', 'synthesizing', 'reasoning', 'planning', 'reflecting'];
+    const runningKeywords = ['running', 'generating', 'analyzing', 'compiling',
+        'processing', 'evaluating'];
+    const matchedThinking = thinkingKeywords.find(kw => lowerText.includes(kw));
+    const matchedRunning = runningKeywords.find(kw => lowerText.includes(kw));
+
+    if (matchedThinking) {
+        const label = matchedThinking.charAt(0).toUpperCase() + matchedThinking.slice(1);
+        setPtyStatus(`${label}...`, true);
+        ptyRawBuffer = '';
         if (ptyActivityTimer) clearTimeout(ptyActivityTimer);
         ptyActivityTimer = setTimeout(() => setAIStatus(null), 15000);
+        return;
+    }
+    if (matchedRunning) {
+        const label = matchedRunning.charAt(0).toUpperCase() + matchedRunning.slice(1);
+        setPtyStatus(`${label}...`, true);
+        ptyRawBuffer = '';
+        if (ptyActivityTimer) clearTimeout(ptyActivityTimer);
+        ptyActivityTimer = setTimeout(() => setAIStatus(null), 10000);
         return;
     }
 
     // "thought for X seconds" / "thought for Xs"
-    if (text.match(/thought for \d+/i)) {
+    if (lowerText.includes('thought for')) {
         setPtyStatus('Thinking...', true);
+        ptyRawBuffer = '';
         if (ptyActivityTimer) clearTimeout(ptyActivityTimer);
         ptyActivityTimer = setTimeout(() => setAIStatus(null), 15000);
-        return;
-    }
-
-    // --- Streaming response indicator ---
-    // Only show "Responding..." for substantial text output with no tool markers.
-    // High threshold avoids false positives from tool result summaries.
-    if (text.length > 300 && !text.includes('⏺') && !text.includes('●') && !text.includes('MCP') && !text.includes('•')) {
-        setPtyStatus('Responding...', true);
-        if (ptyActivityTimer) clearTimeout(ptyActivityTimer);
-        ptyActivityTimer = setTimeout(() => setAIStatus(null), 5000);
         return;
     }
 
     // --- Specific events ---
     if (text.includes('Message sent in thread')) {
         setPtyStatus('Message sent', false, 2000);
-        ptyBuffer = '';
+        ptyRawBuffer = '';
         return;
     }
 
-    if (text.includes('Listening for your voice') || text.includes('listening for voice')) {
+    if (lowerText.includes('listening for your voice') || lowerText.includes('listening for voice')) {
         setPtyStatus('Listening for voice...', true);
         if (ptyActivityTimer) clearTimeout(ptyActivityTimer);
-        ptyActivityTimer = setTimeout(() => setAIStatus(null), 600000); // Long timeout for listen
+        ptyActivityTimer = setTimeout(() => setAIStatus(null), 600000);
         return;
     }
 
     // --- Prompt / waiting for input detection ---
-    if (text.includes('❯') || (text.includes('$') && text.trim().endsWith('$'))) {
+    if (text.includes('❯')) {
         // Claude Code returned to prompt — force clear, bypass hold timer
         if (ptyActivityTimer) clearTimeout(ptyActivityTimer);
         statusHoldUntil = 0;
         setAIStatus(null);
         lastPtyStatus = '';
-        ptyBuffer = '';
+        ptyRawBuffer = '';
         return;
     }
 
     // --- Generic activity fallback ---
     // Show "Working..." when idle and receiving substantial PTY data.
-    // Skip status-line noise (short chunks with tokens/cost/context stats).
-    const isStatusLineNoise = text.length < 80 && /tokens|cost|context|model|%|\d+k/i.test(text);
-    if (text.length > 20 && !isStatusLineNoise) {
+    // Use raw chunk length to gauge real activity (stripped buffer is cumulative).
+    const chunkLen = stripAnsi(rawText).length;
+    const isStatusLineNoise = chunkLen < 80 && /tokens|cost|context|model|%|\d+k/i.test(rawText);
+    if (chunkLen > 20 && !isStatusLineNoise) {
         if (currentStatusSource === 'idle') {
             setPtyStatus('Working...', true);
             // Diagnostic: log buffer when fallback triggers (once per 10s)
             const now = Date.now();
             if (now - _lastPtyDiag > 10000 && window.voiceMirror?.devlog) {
                 _lastPtyDiag = now;
-                window.voiceMirror.devlog('STATUS', 'pty-no-match', { text: ptyBuffer.slice(-400) });
+                window.voiceMirror.devlog('STATUS', 'pty-no-match', { text: text.slice(-400) });
             }
         }
         // Refresh auto-clear timer — keeps status alive while real data flows
