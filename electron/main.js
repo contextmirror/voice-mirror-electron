@@ -162,12 +162,9 @@ function createWindow() {
     mainWindow = windowManager.create();
     isExpanded = false;
 
-    // Intercept close to hide to tray instead of quitting
-    mainWindow.on('close', (e) => {
-        if (!app.isQuitting) {
-            e.preventDefault();
-            mainWindow.hide();
-        }
+    // X button quits the app (minimize/orb buttons handle hide behavior)
+    mainWindow.on('close', () => {
+        app.isQuitting = true;
     });
 }
 

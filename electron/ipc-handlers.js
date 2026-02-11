@@ -104,8 +104,10 @@ function registerIpcHandlers(ctx) {
         ctx.getMainWindow()?.minimize();
     });
 
-    ipcMain.handle('hide-to-tray', () => {
-        ctx.getMainWindow()?.hide();
+    ipcMain.handle('quit-app', () => {
+        const { app } = require('electron');
+        app.isQuitting = true;
+        app.quit();
     });
 
     // Window dragging handlers (for custom orb drag without -webkit-app-region)
