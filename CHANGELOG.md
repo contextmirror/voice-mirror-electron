@@ -5,6 +5,23 @@ Format inspired by game dev patch notes — grouped by release, categorized by i
 
 ---
 
+## Patch 0.6.2 — "Bulletproof" (2026-02-11)
+
+### Improved
+- **Python 3.12+ compatibility** — Installer now works with any Python 3.9–3.13+ by eliminating the `tflite-runtime` dependency (no wheels existed for Python 3.12+, Windows, or macOS)
+- **Linux audio library detection** — Installer auto-installs `libportaudio2` on Debian/Fedora/Arch if missing (fixes `sounddevice` import failure)
+- **onnx-asr dependency conflict resolved** — Removed `[gpu]` extra that pulled `onnxruntime-gpu` conflicting with `onnxruntime`
+
+### Technical
+- `openwakeword` installed with `--no-deps` to skip `tflite-runtime`; its real dependencies (tqdm, scipy, scikit-learn, requests, mutagen) listed explicitly in `requirements.txt`
+- New `ensure_audio_libs()` in `install.sh` for PortAudio detection and installation on Linux
+- Comprehensive installer CI: 6 jobs across Linux, macOS, Windows testing both quick (--skip-setup) and full setup paths
+- CI verifies Python venv creation, pip install, 6 key package imports (numpy, onnxruntime, openwakeword, psutil, sounddevice, pynput), doctor health checks, and CLI linking
+- Nightly cron schedule catches upstream pip/node-gyp breakage
+- Fixed flaky `perf-monitor` test timing on slow CI runners
+
+---
+
 ## Patch 0.6.1 — "The Stylist" (2026-02-11)
 
 ### New Features
