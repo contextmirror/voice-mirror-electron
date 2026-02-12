@@ -667,28 +667,37 @@ export async function stopAI() {
     }
 }
 
+// Generation counter for the currently accepted provider session.
+// Output from older generations is silently dropped.
+let acceptedGeneration = 0;
+
 /**
  * Handle terminal output from AI provider
  */
 export function handleAIOutput(data) {
     if (!term) return;
 
-    // During provider switch, drop output from the old provider.
-    // pendingProviderClear is set when the user changes provider in settings;
-    // only the new provider's 'start' event clears it. Without this gate,
-    // the old PTY's buffered output (TUI chrome, exit messages) bleeds through
-    // after the terminal is cleared for the new provider.
-    if (state.pendingProviderClear && data.type !== 'start') {
+    // Generation-based output gating for provider switches.
+    // When the user changes provider, providerGeneration is bumped and
+    // pendingProviderClear is set. ALL output is dropped until the new
+    // provider's 'start' event arrives and stamps acceptedGeneration.
+    // After that, any stale output from an older generation is still dropped.
+    if (state.pendingProviderClear) {
+        if (data.type !== 'start') return;
+        // 'start' from the new provider — accept this generation
+        acceptedGeneration = state.providerGeneration;
+        state.pendingProviderClear = false;
+        clearTerminal();
+        // Reset tracked PTY size so the resize below always fires
+        lastPtyCols = 0;
+        lastPtyRows = 0;
+    } else if (state.providerGeneration !== acceptedGeneration) {
+        // Late-arriving output from an old provider after flag was cleared
         return;
     }
 
     switch (data.type) {
         case 'start':
-            // Clear terminal on provider switch BEFORE writing new output
-            if (state.pendingProviderClear) {
-                state.pendingProviderClear = false;
-                clearTerminal();
-            }
             term.writeln(`\x1b[34m${data.text}\x1b[0m`);
             updateAIStatus(true);
             // Fit terminal after provider starts - wait for layout

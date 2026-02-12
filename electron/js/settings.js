@@ -581,8 +581,9 @@ export async function saveSettings() {
         state.currentModel = aiModel;
         state.currentContextLength = aiContextLength;
 
-        // Flag: clear terminal when new provider connects
+        // Flag: clear terminal when new provider connects + bump generation
         state.pendingProviderClear = true;
+        state.providerGeneration++;
     }
 
     try {
