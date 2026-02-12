@@ -673,6 +673,15 @@ export async function stopAI() {
 export function handleAIOutput(data) {
     if (!term) return;
 
+    // During provider switch, drop output from the old provider.
+    // pendingProviderClear is set when the user changes provider in settings;
+    // only the new provider's 'start' event clears it. Without this gate,
+    // the old PTY's buffered output (TUI chrome, exit messages) bleeds through
+    // after the terminal is cleared for the new provider.
+    if (state.pendingProviderClear && data.type !== 'start') {
+        return;
+    }
+
     switch (data.type) {
         case 'start':
             // Clear terminal on provider switch BEFORE writing new output
