@@ -542,6 +542,8 @@ class GlobalHotkeyListener:
                         self._write_trigger(b["trigger_path"], "stop")
                 self._kb_listener.suppress_event()
                 return
+        # Let non-matching keyboard events pass through (implicit None = suppress!)
+        return True
 
     def _win32_mouse_filter(self, msg, data):
         """Suppress registered mouse buttons on Windows.
@@ -589,6 +591,8 @@ class GlobalHotkeyListener:
                         b["active"] = False
                         self._write_trigger(b["trigger_path"], "stop")
                 return
+        # Let non-matching mouse events pass through (implicit None = suppress!)
+        return True
 
     # ── Trigger file ────────────────────────────────────────────
 

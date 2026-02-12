@@ -523,7 +523,8 @@ export async function saveSettings() {
     const updates = {
         behavior: {
             activationMode: activationMode,
-            hotkey: document.getElementById('keybind-toggle').textContent
+            hotkey: (document.getElementById('keybind-toggle').dataset.rawKey ||
+                document.getElementById('keybind-toggle').textContent)
                 .replace(/ \+ /g, '+')
                 .replace('Ctrl', 'CommandOrControl'),
             pttKey: document.getElementById('keybind-ptt').dataset.rawKey ||
