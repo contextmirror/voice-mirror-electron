@@ -86,6 +86,10 @@ export function updateToast(toast, message, type) {
     toast.querySelector('.toast-icon').innerHTML = toastIcons[type] || toastIcons.info;
     toast.querySelector('.toast-message').textContent = message;
 
+    // Remove action button on state transition (e.g. install -> loading)
+    const actionBtn = toast.querySelector('.toast-action');
+    if (actionBtn) actionBtn.remove();
+
     // Auto-dismiss after update (loading/error toasts stay until manually closed)
     if (type !== 'loading' && type !== 'error') {
         setTimeout(() => dismissToast(toast), 3000);

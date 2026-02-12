@@ -463,6 +463,44 @@ function registerIpcHandlers(ctx) {
         return Object.keys(detected).filter(k => !k.startsWith('_'));
     });
 
+    // CLI availability check
+    ipcMain.handle('check-cli-available', (_event, command) => {
+        if (typeof command !== 'string' || command.length > 50) {
+            return { available: false, error: 'Invalid command' };
+        }
+        const { isCLIAvailable } = require('./cli-spawner');
+        return { available: isCLIAvailable(command) };
+    });
+
+    // CLI install via npm global
+    ipcMain.handle('install-cli', async (_event, packageName) => {
+        const ALLOWED_PACKAGES = { opencode: 'opencode-ai' };
+
+        if (typeof packageName !== 'string' || !ALLOWED_PACKAGES[packageName]) {
+            return { success: false, error: `Package "${packageName}" is not allowed` };
+        }
+
+        const npmPackage = ALLOWED_PACKAGES[packageName];
+        const { execFile } = require('child_process');
+        const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+
+        return new Promise((resolve) => {
+            execFile(npmCmd, ['install', '-g', npmPackage], {
+                timeout: 120000,
+                windowsHide: true,
+                env: { ...process.env }
+            }, (err, _stdout, stderr) => {
+                if (err) {
+                    console.error(`[CLI Install] Failed to install ${npmPackage}:`, err.message);
+                    resolve({ success: false, error: err.message, stderr: stderr?.slice(0, 500) });
+                } else {
+                    console.log(`[CLI Install] Successfully installed ${npmPackage}`);
+                    resolve({ success: true });
+                }
+            });
+        });
+    });
+
     // Image handling - send to Python backend
     ipcMain.handle('send-image', async (event, imageData) => {
         const v = validators['send-image'](imageData);

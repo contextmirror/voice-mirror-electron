@@ -7,7 +7,12 @@ Format inspired by game dev patch notes — grouped by release, categorized by i
 
 ## Patch 0.7.1 — "The Streamline" (2026-02-12)
 
-Simplifies the AI provider picker by consolidating redundant options. OpenCode covers 75+ cloud providers with full MCP support, making individual cloud API entries unnecessary. The settings page now offers a clean three-category layout: CLI Agents (Claude Code, OpenCode), Local (Ollama, LM Studio, Jan), done. Also fixes hardcoded user name in voice prompts and replaces the placeholder OpenCode icon with the official logo.
+Simplifies the AI provider picker by consolidating redundant options. OpenCode covers 75+ cloud providers with full MCP support, making individual cloud API entries unnecessary. The settings page now offers a clean three-category layout: CLI Agents (Claude Code, OpenCode), Local (Ollama, LM Studio, Jan), done. Also adds auto-install prompting for OpenCode, fixes hardcoded user name in voice prompts, and replaces the placeholder OpenCode icon with the official logo.
+
+### New Features
+- **Auto-install OpenCode prompt** — When a user selects OpenCode in the provider dropdown but it's not installed, a toast notification appears with an "Install" button. Clicking it runs `npm install -g opencode-ai` in the background with progress feedback. Works cross-platform (Windows: `npm.cmd`, Unix: `npm`). Falls back to manual install instructions on permission errors
+  - New IPC handlers: `check-cli-available` (PATH detection) and `install-cli` (npm global install with allowlist)
+  - 2-minute timeout for slow networks; no sudo/elevation required
 
 ### Improved
 - **Streamlined provider picker** — Removed 11 redundant provider entries (Codex, Gemini CLI, Kimi CLI, OpenAI, Gemini, Grok, Groq, Mistral, OpenRouter, DeepSeek, Kimi API) from the settings dropdown. Cloud model access now goes through OpenCode; local models stay as direct options
@@ -19,12 +24,14 @@ Simplifies the AI provider picker by consolidating redundant options. OpenCode c
 - **Hardcoded "nathan" in ConversationLogger** — `ConversationLogger.js` matched `msg.from === 'nathan'` to identify user messages; now matches any non-assistant sender
 
 ### Technical
-- 12 files changed across frontend, backend, and MCP server
+- 16 files changed across frontend, backend, and MCP server
 - Removed provider entries from: `settings-ai.html`, `settings.js`, `providers/index.js`, `ai-manager.js`, `ipc-handlers.js`, `ipc-validators.js`, `main.js`, `js/main.js`
 - `CLOUD_PROVIDERS_WITH_APIKEY` and `CLOUD_PROVIDERS` arrays emptied — API key UI hidden for all remaining providers
 - `VALID_PROVIDERS` reduced from 16 entries to 5 (`claude`, `opencode`, `ollama`, `lmstudio`, `jan`)
 - `cli-spawner.js` retains fallback configs for removed CLI providers in case existing user configs reference them
-- Roadmap updated: provider simplification and hardcoded name items marked done
+- New IPC handlers in `ipc-handlers.js`: `check-cli-available` uses `isCLIAvailable()` from cli-spawner; `install-cli` uses allowlist pattern (`{ opencode: 'opencode-ai' }`) to prevent arbitrary npm installs
+- `notifications.js` `updateToast()` now removes action buttons on state transitions (prevents stale Install button during loading)
+- Roadmap updated: provider simplification, auto-install, and hardcoded name items marked done
 
 ---
 

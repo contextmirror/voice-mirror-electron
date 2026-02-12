@@ -162,7 +162,13 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         setProvider: (providerId, model) => ipcRenderer.invoke('ai-set-provider', providerId, model),
 
         // Get current provider info
-        getProvider: () => ipcRenderer.invoke('ai-get-provider')
+        getProvider: () => ipcRenderer.invoke('ai-get-provider'),
+
+        // Check if a CLI tool is available on PATH
+        checkCLIAvailable: (command) => ipcRenderer.invoke('check-cli-available', command),
+
+        // Install a CLI tool via npm global install
+        installCLI: (packageName) => ipcRenderer.invoke('install-cli', packageName)
     },
 
     // Tool events (for local LLM tool system)

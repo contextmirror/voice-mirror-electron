@@ -8,6 +8,7 @@ import { navigateTo } from './navigation.js';
 import { updateProviderDisplay } from './terminal.js';
 import { PRESETS, deriveOrbColors, applyTheme, resolveTheme, buildExportData, validateImportData, applyMessageCardOverrides, hexToRgb } from './theme-engine.js';
 import { renderOrb, DURATIONS } from './orb-canvas.js';
+import { showToast, updateToast } from './notifications.js';
 
 // Provider display names
 const PROVIDER_NAMES = {
@@ -806,6 +807,11 @@ function initProviderSelector() {
         // Trigger change behavior
         updateAIProviderUI(value);
 
+        // Check if CLI provider is installed, prompt to install if not
+        if (CLI_PROVIDERS.includes(value)) {
+            checkAndPromptCLIInstall(value);
+        }
+
         // Populate models from detected providers
         const providerData = state.detectedProviders?.find(p => p.type === value);
         const modelSelect = document.getElementById('ai-model');
@@ -837,6 +843,55 @@ function initProviderSelector() {
             selector.classList.remove('open');
         }
     });
+}
+
+/**
+ * Check if a CLI provider is installed and prompt to install if not.
+ * Currently only supports auto-install for OpenCode.
+ */
+async function checkAndPromptCLIInstall(providerId) {
+    if (providerId !== 'opencode') return;
+
+    try {
+        const result = await window.voiceMirror.ai.checkCLIAvailable('opencode');
+        if (result.available) return;
+
+        showToast(
+            'OpenCode is not installed.',
+            'warning',
+            0,
+            {
+                actionText: 'Install',
+                onAction: async (toastEl) => {
+                    updateToast(toastEl, 'Installing OpenCode...', 'loading');
+
+                    try {
+                        const installResult = await window.voiceMirror.ai.installCLI('opencode');
+
+                        if (installResult.success) {
+                            updateToast(toastEl, 'OpenCode installed successfully!', 'success');
+                        } else {
+                            updateToast(
+                                toastEl,
+                                `Install failed. Run "npm install -g opencode-ai" manually.`,
+                                'error'
+                            );
+                            console.error('[Settings] OpenCode install failed:', installResult.error);
+                        }
+                    } catch (err) {
+                        updateToast(
+                            toastEl,
+                            `Install failed. Run "npm install -g opencode-ai" manually.`,
+                            'error'
+                        );
+                        console.error('[Settings] OpenCode install error:', err);
+                    }
+                }
+            }
+        );
+    } catch (err) {
+        console.error('[Settings] CLI availability check failed:', err);
+    }
 }
 
 /**
