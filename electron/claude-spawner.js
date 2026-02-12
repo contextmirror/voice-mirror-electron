@@ -56,6 +56,7 @@ let ptyProcess = null;
 let outputCallback = null;
 let readyCallbacks = [];
 let isReady = false;
+let spawnGeneration = 0;  // Monotonic counter — bumped on spawn and stop to gate stale callbacks
 
 // Debug logging to file
 const DEBUG_LOG_PATH = path.join(_getDataDir(), '..', 'claude-spawner-debug.log');
@@ -287,9 +288,11 @@ async function spawnClaude(options = {}) {
     onOutput('[Claude] Starting interactive session...\n');
 
     try {
-        // Reset ready state
+        // Reset ready state and bump generation for this spawn session
         isReady = false;
         readyCallbacks = [];
+        spawnGeneration++;
+        const myGen = spawnGeneration;
 
         ptyProcess = pty.spawn(claudeCmd, claudeArgs, {
             name: 'xterm-256color',
@@ -308,7 +311,10 @@ async function spawnClaude(options = {}) {
         let outputBuffer = '';
 
         ptyProcess.onData((data) => {
-            // Send raw data to xterm.js (preserves ANSI codes for proper rendering)
+            // Drop output from a stale PTY session (killed but still flushing buffers)
+            if (myGen !== spawnGeneration) return;
+
+            // Send raw data to terminal (preserves ANSI codes for proper rendering)
             onOutput(data);
 
             // Accumulate output to detect ready state
@@ -346,8 +352,11 @@ async function spawnClaude(options = {}) {
 
         ptyProcess.onExit(({ exitCode, signal }) => {
             console.log(`[Claude Spawner] Exited with code ${exitCode}, signal ${signal}`);
-            onOutput(`\n[Claude] Process exited (code: ${exitCode})\n`);
+            // Always clean up internal state
             ptyProcess = null;
+            // Only forward output/exit events if this is still the active session
+            if (myGen !== spawnGeneration) return;
+            onOutput(`\n[Claude] Process exited (code: ${exitCode})\n`);
             onExit(exitCode);
         });
 
@@ -362,7 +371,7 @@ async function spawnClaude(options = {}) {
 }
 
 /**
- * Send raw input to the Claude PTY (for xterm.js keyboard input)
+ * Send raw input to the Claude PTY (keyboard passthrough from terminal)
  * Passes through keystrokes directly without modification
  */
 function sendRawInput(data) {
@@ -461,11 +470,15 @@ function isClaudeReady() {
  * Stop the Claude PTY process
  */
 function stopClaude() {
+    // Bump generation FIRST — invalidates onData/onExit callbacks from the dying PTY
+    spawnGeneration++;
     if (ptyProcess) {
         console.log('[Claude Spawner] Stopping...');
         ptyProcess.kill();
         ptyProcess = null;
     }
+    readyCallbacks = [];
+    isReady = false;
 }
 
 /**

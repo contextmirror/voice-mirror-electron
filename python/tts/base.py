@@ -99,20 +99,29 @@ class TTSAdapter(ABC):
             cmd.extend(["-af", f"volume={self.volume:.1f}"])
         cmd.append(audio_file)
         self._playback_process = subprocess.Popen(cmd)
+        # Local copy for thread-safe polling — another thread (stop_speaking)
+        # can set self._playback_process = None at any time
+        proc = self._playback_process
         # Poll instead of blocking .wait() so stop_speaking() can interrupt
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
-            if self._playback_process.poll() is not None:
+            if proc.poll() is not None:
                 break  # Process finished naturally
             if self._interrupted:
-                self._playback_process.kill()
-                self._playback_process.wait(timeout=2)
+                try:
+                    proc.kill()
+                except OSError:
+                    pass  # Already terminated (race with stop_speaking)
+                proc.wait(timeout=2)
                 break
             time.sleep(0.05)  # 50ms poll interval
         else:
             # Timed out after 60s
-            self._playback_process.kill()
-            self._playback_process.wait(timeout=2)
+            try:
+                proc.kill()
+            except OSError:
+                pass
+            proc.wait(timeout=2)
 
     def unload(self) -> None:
         """Unload the model to free memory."""

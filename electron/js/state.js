@@ -26,7 +26,8 @@ export const state = {
     // Navigation state
     currentPage: 'chat',            // 'chat' | 'terminal' | 'settings'
     sidebarCollapsed: false,        // Whether sidebar is collapsed to icons
-    pendingProviderClear: false     // Flag: clear terminal when new provider connects
+    pendingProviderClear: false,    // Flag: clear terminal when new provider connects
+    providerGeneration: 0           // Monotonic counter — incremented on each provider switch
 };
 
 // Deduplication: track recent messages to prevent duplicates

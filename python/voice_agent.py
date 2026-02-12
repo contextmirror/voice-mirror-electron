@@ -155,6 +155,11 @@ class VoiceMirror:
         # If adapter type changed, rebuild the entire TTS adapter
         if self.tts and new_adapter != self.tts.adapter_type:
             print(f"🔄 TTS adapter changed: {self.tts.adapter_type} -> {new_adapter}")
+            # Stop any in-progress playback before replacing the adapter
+            try:
+                self.tts.stop_speaking()
+            except Exception:
+                pass
             try:
                 self.tts = create_tts_adapter(new_adapter, voice=new_voice, model_size=new_model_size)
                 self.tts.volume = float(settings.get("tts_volume", 1.0))

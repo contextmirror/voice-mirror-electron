@@ -94,6 +94,7 @@ function createCLISpawner(cliType) {
     let ptyProcess = null;
     let isReady = false;
     let readyCallbacks = [];
+    let spawnGeneration = 0;  // Monotonic counter — bumped on spawn and stop to gate stale callbacks
 
     function spawn(options = {}) {
         const {
@@ -141,6 +142,8 @@ function createCLISpawner(cliType) {
         try {
             isReady = false;
             readyCallbacks = [];
+            spawnGeneration++;
+            const myGen = spawnGeneration;
 
             ptyProcess = pty.spawn(command, config.args, {
                 name: 'xterm-256color',
@@ -157,6 +160,9 @@ function createCLISpawner(cliType) {
             let outputBuffer = '';
 
             ptyProcess.onData((data) => {
+                // Drop output from a stale PTY session (killed but still flushing buffers)
+                if (myGen !== spawnGeneration) return;
+
                 onOutput(data);
                 outputBuffer += data;
 
@@ -178,9 +184,12 @@ function createCLISpawner(cliType) {
 
             ptyProcess.onExit(({ exitCode, signal }) => {
                 debugLog(label, `Exited code=${exitCode} signal=${signal}`);
-                onOutput(`\n[${config.displayName}] Process exited (code: ${exitCode})\n`);
+                // Always clean up internal state
                 ptyProcess = null;
                 isReady = false;
+                // Only forward output/exit events if this is still the active session
+                if (myGen !== spawnGeneration) return;
+                onOutput(`\n[${config.displayName}] Process exited (code: ${exitCode})\n`);
                 onExit(exitCode);
             });
 
@@ -194,12 +203,15 @@ function createCLISpawner(cliType) {
     }
 
     function stop() {
+        // Bump generation FIRST — invalidates onData/onExit callbacks from the dying PTY
+        spawnGeneration++;
         if (ptyProcess) {
             debugLog(label, 'Stopping...');
             ptyProcess.kill();
             ptyProcess = null;
             isReady = false;
         }
+        readyCallbacks = [];
     }
 
     function sendRawInput(data) {

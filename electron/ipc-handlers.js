@@ -80,6 +80,10 @@ function registerIpcHandlers(ctx) {
     // Local state for drag capture
     let preDragBounds = null;
 
+    // Track last known terminal dimensions for PTY spawning on provider switch
+    let lastTermCols = 120;
+    let lastTermRows = 30;
+
     // Dev logging from renderer -> vmr.log
     ipcMain.on('devlog', (_event, category, action, data) => {
         ctx.logger.devlog(category, action, data || {});
@@ -336,8 +340,10 @@ function registerIpcHandlers(ctx) {
                             const isCLI = CLI_PROVIDERS.includes(oldProvider);
                             await new Promise(resolve => setTimeout(resolve, isCLI ? 1500 : 500));
                         }
-                        ctx.startAIProvider();
-                        console.log(`[Config] New provider started: ${newProvider}`);
+                        // Pass last known terminal dimensions so the PTY spawns
+                        // at the correct size (avoids garbled TUI on first render)
+                        ctx.startAIProvider(lastTermCols, lastTermRows);
+                        console.log(`[Config] New provider started: ${newProvider} (${lastTermCols}x${lastTermRows})`);
                     } catch (err) {
                         console.error(`[Config] Provider switch error:`, err.message);
                     }
@@ -589,7 +595,7 @@ function registerIpcHandlers(ctx) {
         };
     });
 
-    // PTY input/resize handlers for xterm.js
+    // PTY input/resize handlers for terminal
     // Routes to Claude PTY or OpenAI-compatible provider based on config
     ipcMain.handle('claude-pty-input', (event, data) => {
         const v = validators['claude-pty-input'](data);
@@ -642,6 +648,11 @@ function registerIpcHandlers(ctx) {
     ipcMain.handle('claude-pty-resize', (event, cols, rows) => {
         const v = validators['claude-pty-resize'](cols, rows);
         if (!v.valid) return { resized: false, error: v.error };
+
+        // Always track dimensions so provider switches can use correct size
+        lastTermCols = v.value.cols;
+        lastTermRows = v.value.rows;
+
         const providerType = ctx.getAppConfig()?.ai?.provider || 'claude';
         const aiManager = ctx.getAIManager();
 

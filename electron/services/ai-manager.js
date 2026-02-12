@@ -83,11 +83,20 @@ function createAIManager(options = {}) {
     let activeProvider = null;  // Current OpenAI-compatible provider instance
     let hasStartedOnce = false; // Track initial startup vs provider switch
     let cliSpawner = null;      // CLI spawner for non-Claude PTY providers (OpenCode, etc.)
+    let outputGated = false;    // When true, sendOutput drops all events (set during provider switch)
 
     /**
      * Send output to the terminal UI.
+     * Gated during provider switches to prevent stale PTY output from reaching the renderer.
      */
     function sendOutput(type, text) {
+        if (outputGated && type !== 'start') {
+            // During provider switch, only allow 'start' events through (from new provider)
+            return;
+        }
+        if (type === 'start') {
+            outputGated = false;  // New provider started — re-enable output
+        }
         if (onOutput) {
             onOutput({ type, text });
         }
@@ -441,6 +450,10 @@ function createAIManager(options = {}) {
      * @returns {boolean} True if something was stopped
      */
     function stop() {
+        // Gate output FIRST — prevents any stale PTY data from reaching the renderer
+        // while the old provider is dying and before the new one starts.
+        outputGated = true;
+
         let stopped = false;
 
         // Always try to stop Claude PTY if it's running
