@@ -683,8 +683,12 @@ export function handleAIOutput(data) {
     // provider's 'start' event arrives and stamps acceptedGeneration.
     // After that, any stale output from an older generation is still dropped.
     if (state.pendingProviderClear) {
-        if (data.type !== 'start') return;
+        if (data.type !== 'start') {
+            console.log(`[Terminal] GATED (pendingClear): type=${data.type} len=${(data.text || '').length}`);
+            return;
+        }
         // 'start' from the new provider — accept this generation
+        console.log(`[Terminal] Accepting gen ${state.providerGeneration}: ${(data.text || '').substring(0, 60)}`);
         acceptedGeneration = state.providerGeneration;
         state.pendingProviderClear = false;
         clearTerminal();
@@ -693,6 +697,7 @@ export function handleAIOutput(data) {
         lastPtyRows = 0;
     } else if (state.providerGeneration !== acceptedGeneration) {
         // Late-arriving output from an old provider after flag was cleared
+        console.log(`[Terminal] GATED (stale gen): type=${data.type} provGen=${state.providerGeneration} accepted=${acceptedGeneration}`);
         return;
     }
 
@@ -732,8 +737,31 @@ export function handleAIOutput(data) {
 export function clearTerminal() {
     if (!term) return;
 
-    // Full reset: clear screen, scrollback, and cursor position
+    // Full reset: creates a fresh WASM terminal and clears the renderer canvas.
+    // This discards all state including alternate screen buffers and scrollback.
     term.reset();
+
+    // Belt-and-suspenders: write ANSI clear sequences to the NEW terminal
+    // in case reset() didn't fully wipe the display state.
+    // \x1b[2J = clear screen, \x1b[3J = clear scrollback, \x1b[H = cursor home
+    term.write('\x1b[2J\x1b[3J\x1b[H');
+
+    // Explicitly clear the renderer canvas to remove any stale pixels.
+    // After our DPI resize monkey-patch, ctx has scale(dpr, dpr) applied,
+    // so we save/restore to get clean untransformed coordinates for the fill.
+    if (term.renderer && term.renderer.ctx && term.canvas) {
+        const ctx = term.renderer.ctx;
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);  // Reset to identity (physical pixels)
+        ctx.fillStyle = term.renderer.theme?.background || '#0c0d10';
+        ctx.fillRect(0, 0, term.canvas.width, term.canvas.height);
+        ctx.restore();
+    }
+
+    // Reset viewport scroll position to top
+    if (typeof term.viewportY !== 'undefined') {
+        term.viewportY = 0;
+    }
 
     // Show welcome banner again
     const providerName = state.currentProviderName || 'AI Provider';
