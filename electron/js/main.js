@@ -869,19 +869,11 @@ async function init() {
             ollama: 'Ollama',
             lmstudio: 'LM Studio',
             jan: 'Jan',
-            openai: 'OpenAI',
-            gemini: 'Gemini',
-            grok: 'Grok',
-            groq: 'Groq',
-            mistral: 'Mistral',
-            openrouter: 'OpenRouter',
-            deepseek: 'DeepSeek',
-            opencode: 'OpenCode',
-            'kimi-cli': 'Kimi CLI'
+            opencode: 'OpenCode'
         };
         let displayName = providerNames[provider] || provider;
         // Only append model name for non-CLI providers (CLI tools manage their own model)
-        const cliProviders = ['claude', 'opencode', 'kimi-cli'];
+        const cliProviders = ['claude', 'opencode'];
         if (model && !cliProviders.includes(provider)) {
             const shortModel = model.split(':')[0];
             displayName = `${displayName} (${shortModel})`;

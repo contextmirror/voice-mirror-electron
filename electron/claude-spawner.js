@@ -41,7 +41,16 @@ const INBOX_PATH = path.join(DATA_DIR, 'inbox.json');
 /**
  * System prompt for Voice Mirror's Claude
  */
-const VOICE_CLAUDE_SYSTEM = `Use claude_listen to wait for voice input from nathan, then reply with claude_send. Loop forever.`;
+function getVoiceSystemPrompt() {
+    try {
+        const config = require('./config');
+        const userName = config.get('user.name') || 'user';
+        return `Use claude_listen to wait for voice input from ${userName}, then reply with claude_send. Loop forever.`;
+    } catch {
+        return `Use claude_listen to wait for voice input from user, then reply with claude_send. Loop forever.`;
+    }
+}
+const VOICE_CLAUDE_SYSTEM = getVoiceSystemPrompt();
 
 let ptyProcess = null;
 let outputCallback = null;

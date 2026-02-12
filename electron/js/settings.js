@@ -12,45 +12,23 @@ import { renderOrb, DURATIONS } from './orb-canvas.js';
 // Provider display names
 const PROVIDER_NAMES = {
     claude: 'Claude Code',
-    codex: 'OpenAI Codex',
-    'gemini-cli': 'Gemini CLI',
     ollama: 'Ollama',
     lmstudio: 'LM Studio',
     jan: 'Jan',
-    openai: 'OpenAI',
-    gemini: 'Google Gemini',
-    grok: 'Grok (xAI)',
-    groq: 'Groq',
-    mistral: 'Mistral',
-    openrouter: 'OpenRouter',
-    deepseek: 'DeepSeek',
-    kimi: 'Kimi (Moonshot)',
-    'kimi-cli': 'Kimi CLI',
     opencode: 'OpenCode'
 };
 
 // Provider icon CSS classes (exported for sidebar provider display)
 export const PROVIDER_ICON_CLASSES = {
     claude: 'provider-icon-claude',
-    codex: 'provider-icon-codex',
-    'gemini-cli': 'provider-icon-gemini-cli',
     ollama: 'provider-icon-ollama',
     lmstudio: 'provider-icon-lmstudio',
     jan: 'provider-icon-jan',
-    openai: 'provider-icon-openai',
-    gemini: 'provider-icon-gemini',
-    grok: 'provider-icon-grok',
-    groq: 'provider-icon-groq',
-    mistral: 'provider-icon-mistral',
-    openrouter: 'provider-icon-openrouter',
-    deepseek: 'provider-icon-deepseek',
-    kimi: 'provider-icon-kimi',
-    'kimi-cli': 'provider-icon-kimi',
     opencode: 'provider-icon-opencode'
 };
 
 // CLI agent providers (PTY-based, full terminal access)
-const CLI_PROVIDERS = ['claude', 'codex', 'gemini-cli', 'kimi-cli', 'opencode'];
+const CLI_PROVIDERS = ['claude', 'opencode'];
 
 // Local providers that can be auto-detected
 const LOCAL_PROVIDERS = ['ollama', 'lmstudio', 'jan'];
@@ -79,8 +57,8 @@ const TTS_VOICES = {
     ]
 };
 
-// Cloud providers that need API keys
-const CLOUD_PROVIDERS_WITH_APIKEY = ['openai', 'gemini', 'grok', 'groq', 'mistral', 'openrouter', 'deepseek', 'kimi'];
+// Cloud providers that need API keys (none — cloud access now goes through OpenCode)
+const CLOUD_PROVIDERS_WITH_APIKEY = [];
 
 // ========== Modular Tab System ==========
 // Add new tabs by adding an entry here + a matching data-tab div in overlay.html
@@ -331,8 +309,8 @@ export function updateAIProviderUI(provider) {
     // Show/hide endpoint row for local providers
     endpointRow.style.display = LOCAL_PROVIDERS.includes(provider) ? 'flex' : 'none';
 
-    // Show/hide API key row for cloud providers and CLI agents that need keys (codex, gemini-cli)
-    const needsApiKey = CLOUD_PROVIDERS_WITH_APIKEY.includes(provider) || (isCLI && provider !== 'claude');
+    // Show/hide API key row for providers that need keys
+    const needsApiKey = CLOUD_PROVIDERS_WITH_APIKEY.includes(provider);
     apikeyRow.style.display = needsApiKey ? 'flex' : 'none';
 
     // Populate API key field with masked value + detected hint

@@ -9,7 +9,7 @@ const fs = require('fs');
 const { execFile } = require('child_process');
 const { validators } = require('./ipc-validators');
 const fontManager = require('./font-manager');
-const CLI_PROVIDERS = ['claude', 'codex', 'gemini-cli', 'kimi-cli', 'opencode'];
+const CLI_PROVIDERS = ['claude', 'opencode'];
 
 /**
  * Capture a specific display on Windows using PowerShell + .NET GDI+.

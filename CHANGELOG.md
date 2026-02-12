@@ -5,6 +5,29 @@ Format inspired by game dev patch notes — grouped by release, categorized by i
 
 ---
 
+## Patch 0.7.1 — "The Streamline" (2026-02-12)
+
+Simplifies the AI provider picker by consolidating redundant options. OpenCode covers 75+ cloud providers with full MCP support, making individual cloud API entries unnecessary. The settings page now offers a clean three-category layout: CLI Agents (Claude Code, OpenCode), Local (Ollama, LM Studio, Jan), done. Also fixes hardcoded user name in voice prompts and replaces the placeholder OpenCode icon with the official logo.
+
+### Improved
+- **Streamlined provider picker** — Removed 11 redundant provider entries (Codex, Gemini CLI, Kimi CLI, OpenAI, Gemini, Grok, Groq, Mistral, OpenRouter, DeepSeek, Kimi API) from the settings dropdown. Cloud model access now goes through OpenCode; local models stay as direct options
+- **Official OpenCode icon** — Replaced the generic code brackets placeholder with OpenCode's actual logo (pixel-art terminal window from their favicon), updated the background gradient from orange to their brand dark color
+- **Dynamic user name in voice prompts** — The voice assistant system prompt now reads `config.user.name` instead of a hardcoded name. Falls back to "user" if not set. Configurable in Settings > General
+
+### Fixed
+- **Hardcoded "nathan" in system prompt** — `claude-spawner.js` had the user name hardcoded in the voice assistant prompt passed to Claude Code / OpenCode
+- **Hardcoded "nathan" in ConversationLogger** — `ConversationLogger.js` matched `msg.from === 'nathan'` to identify user messages; now matches any non-assistant sender
+
+### Technical
+- 12 files changed across frontend, backend, and MCP server
+- Removed provider entries from: `settings-ai.html`, `settings.js`, `providers/index.js`, `ai-manager.js`, `ipc-handlers.js`, `ipc-validators.js`, `main.js`, `js/main.js`
+- `CLOUD_PROVIDERS_WITH_APIKEY` and `CLOUD_PROVIDERS` arrays emptied — API key UI hidden for all remaining providers
+- `VALID_PROVIDERS` reduced from 16 entries to 5 (`claude`, `opencode`, `ollama`, `lmstudio`, `jan`)
+- `cli-spawner.js` retains fallback configs for removed CLI providers in case existing user configs reference them
+- Roadmap updated: provider simplification and hardcoded name items marked done
+
+---
+
 ## Patch 0.7.0 — "The Gateway" (2026-02-12)
 
 Voice Mirror can now talk to **any AI model** — not just Claude. This release adds [OpenCode](https://opencode.ai) as a PTY-based AI provider, unlocking 75+ models (Kimi K2.5 Free, Gemini, GPT-4o, Ollama local models, and more) for voice interaction through a single integration. OpenCode supports MCP natively, so the full Voice Mirror tool suite (screen capture, memory, browser automation, n8n workflows) works out of the box with every model that supports tool calling.

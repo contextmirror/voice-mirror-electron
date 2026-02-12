@@ -12,49 +12,27 @@ const { OpenAIProvider, createOpenAIProvider } = require('./openai-provider');
 // Provider type constants
 const PROVIDER_TYPES = {
     CLAUDE: 'claude',
-    CODEX: 'codex',
-    GEMINI_CLI: 'gemini-cli',
+    OPENCODE: 'opencode',
     OLLAMA: 'ollama',
     LMSTUDIO: 'lmstudio',
-    JAN: 'jan',
-    OPENAI: 'openai',
-    GEMINI: 'gemini',
-    GROQ: 'groq',
-    GROK: 'grok',
-    MISTRAL: 'mistral',
-    OPENROUTER: 'openrouter',
-    DEEPSEEK: 'deepseek',
-    KIMI: 'kimi',
-    KIMI_CLI: 'kimi-cli',
-    OPENCODE: 'opencode'
+    JAN: 'jan'
 };
 
 // CLI agent providers (full terminal access, PTY-based)
-const CLI_PROVIDERS = ['claude', 'codex', 'gemini-cli', 'kimi-cli', 'opencode'];
+const CLI_PROVIDERS = ['claude', 'opencode'];
 
 // Local providers (don't require API key)
 const LOCAL_PROVIDERS = ['ollama', 'lmstudio', 'jan'];
 
-// Cloud providers (require API key)
-const CLOUD_PROVIDERS = ['openai', 'gemini', 'groq', 'grok', 'mistral', 'openrouter', 'deepseek', 'kimi'];
+// Cloud providers (require API key) — cloud access now goes through OpenCode
+const CLOUD_PROVIDERS = [];
 
 // Provider display names
 const PROVIDER_NAMES = {
     claude: 'Claude Code',
-    codex: 'OpenAI Codex',
-    'gemini-cli': 'Gemini CLI',
     ollama: 'Ollama',
     lmstudio: 'LM Studio',
     jan: 'Jan',
-    openai: 'OpenAI',
-    gemini: 'Gemini',
-    groq: 'Groq',
-    grok: 'Grok (xAI)',
-    mistral: 'Mistral',
-    openrouter: 'OpenRouter',
-    deepseek: 'DeepSeek',
-    kimi: 'Kimi (Moonshot)',
-    'kimi-cli': 'Kimi CLI',
     opencode: 'OpenCode'
 };
 
@@ -69,8 +47,8 @@ function createProvider(type, config = {}) {
         return new ClaudeProvider(config);
     }
 
-    // CLI agent providers (Codex, Gemini CLI, Kimi CLI, OpenCode)
-    if (type === PROVIDER_TYPES.CODEX || type === PROVIDER_TYPES.GEMINI_CLI || type === PROVIDER_TYPES.KIMI_CLI || type === PROVIDER_TYPES.OPENCODE) {
+    // CLI agent providers (OpenCode)
+    if (type === PROVIDER_TYPES.OPENCODE) {
         return new CLIProvider(type, config);
     }
 
@@ -148,36 +126,6 @@ function getProviderList() {
             supportsMCP: true
         },
         {
-            type: 'codex',
-            name: 'OpenAI Codex',
-            description: 'OpenAI Codex CLI agent',
-            isLocal: false,
-            isPTY: true,
-            requiresApiKey: false,
-            supportsVision: false,
-            supportsMCP: false
-        },
-        {
-            type: 'gemini-cli',
-            name: 'Gemini CLI',
-            description: 'Google Gemini CLI agent',
-            isLocal: false,
-            isPTY: true,
-            requiresApiKey: false,
-            supportsVision: false,
-            supportsMCP: false
-        },
-        {
-            type: 'kimi-cli',
-            name: 'Kimi CLI',
-            description: 'Moonshot AI CLI agent with MCP',
-            isLocal: false,
-            isPTY: true,
-            requiresApiKey: false,
-            supportsVision: true,
-            supportsMCP: true
-        },
-        {
             type: 'opencode',
             name: 'OpenCode',
             description: '75+ models via OpenCode CLI with MCP',
@@ -217,94 +165,6 @@ function getProviderList() {
             supportsVision: false,
             supportsMCP: false
         },
-        {
-            type: 'openai',
-            name: 'OpenAI',
-            description: 'GPT-4, GPT-3.5',
-            isLocal: false,
-            isPTY: false,
-            requiresApiKey: true,
-            apiKeyEnv: 'OPENAI_API_KEY',
-            supportsVision: true,
-            supportsMCP: false
-        },
-        {
-            type: 'gemini',
-            name: 'Gemini',
-            description: 'Google Gemini models',
-            isLocal: false,
-            isPTY: false,
-            requiresApiKey: true,
-            apiKeyEnv: 'GOOGLE_API_KEY',
-            supportsVision: true,
-            supportsMCP: false
-        },
-        {
-            type: 'groq',
-            name: 'Groq',
-            description: 'Fast inference',
-            isLocal: false,
-            isPTY: false,
-            requiresApiKey: true,
-            apiKeyEnv: 'GROQ_API_KEY',
-            supportsVision: false,
-            supportsMCP: false
-        },
-        {
-            type: 'grok',
-            name: 'Grok (xAI)',
-            description: 'xAI Grok models',
-            isLocal: false,
-            isPTY: false,
-            requiresApiKey: true,
-            apiKeyEnv: 'XAI_API_KEY',
-            supportsVision: true,
-            supportsMCP: false
-        },
-        {
-            type: 'mistral',
-            name: 'Mistral',
-            description: 'Mistral AI models',
-            isLocal: false,
-            isPTY: false,
-            requiresApiKey: true,
-            apiKeyEnv: 'MISTRAL_API_KEY',
-            supportsVision: false,
-            supportsMCP: false
-        },
-        {
-            type: 'openrouter',
-            name: 'OpenRouter',
-            description: 'Multi-model aggregator',
-            isLocal: false,
-            isPTY: false,
-            requiresApiKey: true,
-            apiKeyEnv: 'OPENROUTER_API_KEY',
-            supportsVision: true,
-            supportsMCP: false
-        },
-        {
-            type: 'deepseek',
-            name: 'DeepSeek',
-            description: 'DeepSeek models',
-            isLocal: false,
-            isPTY: false,
-            requiresApiKey: true,
-            apiKeyEnv: 'DEEPSEEK_API_KEY',
-            supportsVision: false,
-            supportsMCP: false
-        },
-        {
-            type: 'kimi',
-            name: 'Kimi (Moonshot)',
-            description: 'Moonshot AI multimodal models',
-            isLocal: false,
-            isPTY: false,
-            requiresApiKey: true,
-            apiKeyEnv: 'MOONSHOT_API_KEY',
-            supportsVision: true,
-            supportsMCP: false
-        }
     ];
 }
 

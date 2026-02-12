@@ -120,7 +120,7 @@ class ConversationLogger {
                     if (msgTime <= lastProcessedTime) continue;
 
                     // Look for user-assistant pairs
-                    if (msg.from === 'nathan' || msg.from === 'user') {
+                    if (msg.from !== 'claude' && msg.from !== 'assistant') {
                         // This is a user message, find the corresponding response
                         const response = data.messages.find(m =>
                             (m.from === 'claude' || m.from === 'assistant') &&

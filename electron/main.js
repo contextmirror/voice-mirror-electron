@@ -20,7 +20,7 @@ const fs = require('fs');
 const config = require('./config');
 const { registerIpcHandlers } = require('./ipc-handlers');
 // CLI agent providers that use PTY mode (terminal-based)
-const CLI_PROVIDERS = ['claude', 'codex', 'gemini-cli'];
+const CLI_PROVIDERS = ['claude', 'opencode'];
 // Note: claude-spawner and providers are now used via ai-manager service
 const { createLogger } = require('./services/logger');
 const { createPushToTalk } = require('./services/push-to-talk');

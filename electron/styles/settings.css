@@ -884,7 +884,7 @@
 }
 
 .provider-icon-opencode {
-    background: linear-gradient(135deg, #f97316, #ea580c);
+    background: linear-gradient(135deg, #1a1717, #131010);
 }
 .provider-icon-opencode::before {
     background-image: url(../assets/icons/providers/opencode.svg);

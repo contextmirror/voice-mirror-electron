@@ -2,8 +2,7 @@
 // Pure JavaScript, no external dependencies
 
 const VALID_PROVIDERS = [
-  'claude', 'codex', 'gemini-cli', 'kimi-cli', 'opencode', 'ollama', 'lmstudio', 'jan',
-  'openai', 'gemini', 'groq', 'grok', 'mistral', 'openrouter', 'deepseek', 'kimi'
+  'claude', 'opencode', 'ollama', 'lmstudio', 'jan'
 ];
 
 const VALID_ACTIVATION_MODES = ['wakeWord', 'pushToTalk'];

@@ -15,7 +15,7 @@ const {
 } = require('../claude-spawner');
 
 // CLI agent providers that use PTY mode
-const CLI_PROVIDERS = ['claude', 'codex', 'gemini-cli', 'kimi-cli', 'opencode'];
+const CLI_PROVIDERS = ['claude', 'opencode'];
 const { createProvider } = require('../providers');
 
 const path = require('path');
