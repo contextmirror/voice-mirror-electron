@@ -6,6 +6,8 @@
 const path = require('path');
 const fs = require('fs');
 const { spawn, execFileSync } = require('child_process');
+const { createLogger } = require('./logger');
+const logger = createLogger();
 
 /**
  * Get the Python executable path for the virtual environment.
@@ -114,15 +116,15 @@ function createPythonBackend(options = {}) {
         // Map Python events to UI events
         const eventMapping = {
             'starting': () => {
-                console.log('[Python] Bridge starting...');
+                logger.info('[Python]', 'Bridge starting...');
                 return { type: 'starting' };
             },
             'loading': () => {
-                console.log('[Python] Loading:', data.step || '...');
+                logger.info('[Python]', 'Loading:', data.step || '...');
                 return { type: 'loading', message: data.step };
             },
             'ready': () => {
-                console.log('[Python] Backend ready');
+                logger.info('[Python]', 'Backend ready');
                 restartAttempts = 0;  // Reset on successful start
                 isStarting = false;   // Process fully started, allow new start attempts
                 // Pre-fetch audio devices on ready so they're cached for settings
@@ -187,14 +189,14 @@ function createPythonBackend(options = {}) {
                 success: data.success
             }),
             'error': () => {
-                console.error('[Python] Error:', data.message);
+                logger.error('[Python]', 'Error:', data.message);
                 return {
                     type: 'error',
                     message: data.message
                 };
             },
             'pong': () => {
-                console.log('[Python] Pong received');
+                logger.info('[Python]', 'Pong received');
                 return null;  // No UI event needed
             },
             'sent_to_inbox': () => null  // No UI event needed
@@ -212,7 +214,7 @@ function createPythonBackend(options = {}) {
         } else if (eventType === 'config_updated') {
             // Config sync acknowledgment - no action needed
         } else {
-            console.log('[Python] Unknown event:', eventType);
+            logger.info('[Python]', 'Unknown event:', eventType);
         }
     }
 
@@ -222,11 +224,11 @@ function createPythonBackend(options = {}) {
      */
     function start() {
         if (pythonProcess) {
-            console.log('[Python] Already running');
+            logger.info('[Python]', 'Already running');
             return false;
         }
         if (isStarting) {
-            console.log('[Python] Start already in progress');
+            logger.info('[Python]', 'Start already in progress');
             return false;
         }
         isStarting = true;
@@ -236,11 +238,11 @@ function createPythonBackend(options = {}) {
 
         // Verify Python executable exists before spawning
         if (!fileExists(venvPython)) {
-            console.error('[Python] Executable not found:', venvPython);
+            logger.error('[Python]', 'Executable not found:', venvPython);
             const activateCmd = process.platform === 'win32'
                 ? '.venv\\Scripts\\activate'
                 : 'source .venv/bin/activate';
-            console.error(`[Python] Please run: cd python && python -m venv .venv && ${activateCmd} && pip install -r requirements.txt`);
+            logger.error('[Python]', `Please run: cd python && python -m venv .venv && ${activateCmd} && pip install -r requirements.txt`);
             if (onEventCallback) {
                 onEventCallback({
                     type: 'error',
@@ -302,7 +304,7 @@ function createPythonBackend(options = {}) {
 
             // Prevent unbounded buffer growth (cap at 1MB)
             if (stdoutBuffer.length > 1024 * 1024) {
-                console.warn('[Python] stdout buffer exceeded 1MB, truncating');
+                logger.warn('[Python]', 'stdout buffer exceeded 1MB, truncating');
                 stdoutBuffer = stdoutBuffer.slice(-1024 * 512); // Keep last 512KB
             }
 
@@ -325,7 +327,7 @@ function createPythonBackend(options = {}) {
                 }
 
                 // Legacy text parsing (for voice_agent.py without bridge)
-                console.log('[Python]', line);
+                logger.info('[Python]', line);
                 if (onEventCallback) {
                     if (line.includes('Wake word detected')) {
                         onEventCallback({ type: 'wake' });
@@ -342,19 +344,19 @@ function createPythonBackend(options = {}) {
 
         pythonProcess.stderr.on('data', (data) => {
             const msg = data.toString().trim();
-            console.error('[Python Error]', msg);
+            logger.error('[Python]', 'stderr:', msg);
             if (log) log('PYTHON', `stderr: ${msg}`);
         });
 
         pythonProcess.on('error', (err) => {
-            console.error(`[Python] Spawn error:`, err);
+            logger.error('[Python]', 'Spawn error:', err);
             if (log) log('PYTHON', `Spawn error: ${err.message}`);
             isStarting = false; // Reset guard on spawn failure
             if (onEventCallback) onEventCallback({ type: "error", message: `Python spawn failed: ${err.message}` });
         });
 
         pythonProcess.on('close', (code) => {
-            console.log(`[Python] Process exited with code ${code}`);
+            logger.info('[Python]', `Process exited with code ${code}`);
             if (log) log('PYTHON', `Process exited with code ${code}`);
             pythonProcess = null;
             isStarting = false; // Allow new start attempts
@@ -369,7 +371,7 @@ function createPythonBackend(options = {}) {
             // Attempt auto-restart on crash
             if (code !== 0 && restartAttempts < MAX_RESTARTS) {
                 restartAttempts++;
-                console.log(`[Python] Attempting restart ${restartAttempts}/${MAX_RESTARTS}...`);
+                logger.info('[Python]', `Attempting restart ${restartAttempts}/${MAX_RESTARTS}...`);
                 if (log) log('PYTHON', `Attempting restart ${restartAttempts}/${MAX_RESTARTS}`);
                 if (onEventCallback) {
                     onEventCallback({
@@ -380,7 +382,7 @@ function createPythonBackend(options = {}) {
                 }
                 setTimeout(() => start(), RESTART_DELAY);
             } else if (code !== 0 && restartAttempts >= MAX_RESTARTS) {
-                console.error('[Python] Max restart attempts reached');
+                logger.error('[Python]', 'Max restart attempts reached');
                 if (log) log('PYTHON', 'Max restart attempts reached');
                 if (onEventCallback) {
                     onEventCallback({ type: 'error', message: 'Voice backend failed after 3 restart attempts' });
@@ -440,7 +442,7 @@ function createPythonBackend(options = {}) {
                 // SIGKILL not available on Windows; process.kill() uses TerminateProcess
                 pythonProcess.kill(process.platform === 'win32' ? undefined : 'SIGKILL');
             } catch (err) {
-                console.error('[Python] Kill error:', err.message);
+                logger.error('[Python]', 'Kill error:', err.message);
             }
             pythonProcess = null;
         }
@@ -455,10 +457,10 @@ function createPythonBackend(options = {}) {
         if (pythonProcess && pythonProcess.stdin) {
             const json = JSON.stringify(command);
             pythonProcess.stdin.write(json + '\n');
-            console.log('[Python] Sent command:', command.command || command.type);
+            logger.info('[Python]', 'Sent command:', command.command || command.type);
             return true;
         } else {
-            console.error('[Python] Cannot send command - not running');
+            logger.error('[Python]', 'Cannot send command - not running');
             return false;
         }
     }
@@ -486,7 +488,7 @@ function createPythonBackend(options = {}) {
 
             pythonProcess.stdin.write(command + '\n');
 
-            console.log('[Python] Image sent to backend');
+            logger.info('[Python]', 'Image sent to backend');
             return { sent: true };
         } else {
             // Save image and create proper MCP inbox message
@@ -505,7 +507,7 @@ function createPythonBackend(options = {}) {
                 const imageBuffer = Buffer.from(base64Data, 'base64');
                 fs.writeFileSync(imagePath, imageBuffer);
 
-                console.log('[Python] Image saved to:', imagePath);
+                logger.info('[Python]', 'Image saved to:', imagePath);
 
                 // Create proper MCP inbox message (matching Context Mirror format)
                 const inboxPath = path.join(contextMirrorDir, 'inbox.json');
@@ -551,14 +553,14 @@ function createPythonBackend(options = {}) {
                     image_path: imagePath
                 }, null, 2));
 
-                console.log('[Python] Image message sent to inbox');
+                logger.info('[Python]', 'Image message sent to inbox');
 
                 return {
                     text: `Screenshot sent to Claude for analysis`,
                     imagePath: imagePath
                 };
             } catch (err) {
-                console.error('[Python] Failed to save image:', err);
+                logger.error('[Python]', 'Failed to save image:', err);
                 return { text: 'Failed to process image.', error: err.message };
             }
         }
@@ -632,6 +634,38 @@ function createPythonBackend(options = {}) {
         });
     }
 
+    /**
+     * Write Electron's voice config to voice_settings.json so Python reads correct settings on startup.
+     * @param {Object} cfg - Application config
+     */
+    async function syncVoiceSettings(cfg) {
+        try {
+            const fsP = fs.promises;
+            await fsP.mkdir(dataDir, { recursive: true });
+            const settingsPath = path.join(dataDir, 'voice_settings.json');
+
+            // Read existing settings to preserve location/timezone
+            let existing = {};
+            try {
+                existing = JSON.parse(await fsP.readFile(settingsPath, 'utf-8'));
+            } catch { /* ignore parse errors or missing file */ }
+
+            // Merge Electron voice config into settings
+            const voice = cfg?.voice || {};
+            const updates = {};
+            if (voice.ttsAdapter) updates.tts_adapter = voice.ttsAdapter;
+            if (voice.ttsVoice) updates.tts_voice = voice.ttsVoice;
+            if (voice.ttsModelSize) updates.tts_model_size = voice.ttsModelSize;
+            if (voice.sttModel) updates.stt_adapter = voice.sttModel;
+
+            const merged = { ...existing, ...updates };
+            await fsP.writeFile(settingsPath, JSON.stringify(merged, null, 2), 'utf-8');
+            logger.info('[Python]', 'Synced voice settings to', settingsPath);
+        } catch (err) {
+            logger.error('[Python]', 'Failed to sync voice settings:', err.message);
+        }
+    }
+
     return {
         start,
         stop,
@@ -641,6 +675,7 @@ function createPythonBackend(options = {}) {
         sendImage,
         systemSpeak,
         listAudioDevices,
+        syncVoiceSettings,
         isRunning,
         getProcess,
         onEvent,
@@ -687,9 +722,9 @@ function startDockerServices() {
                 const running = runningContainers.split('\n').includes(containerName);
 
                 if (!running) {
-                    console.log(`[Docker] Starting ${description}...`);
+                    logger.info('[Docker]', `Starting ${description}...`);
                     dockerExec('docker', ['start', containerName], { timeout: 10000 });
-                    console.log(`[Docker] ✓ ${description} started`);
+                    logger.info('[Docker]', `${description} started`);
                 }
             }
         } catch (err) {

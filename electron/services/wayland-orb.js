@@ -8,6 +8,8 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const readline = require('readline');
+const { createLogger } = require('./logger');
+const logger = createLogger();
 
 /**
  * Create a Wayland Orb service instance.
@@ -60,13 +62,13 @@ function createWaylandOrb(options = {}) {
     function start(outputName) {
         const binPath = findBinary();
         if (!binPath) {
-            console.log('[WaylandOrb] Binary not found, skipping');
+            logger.info('[WaylandOrb]', 'Binary not found, skipping');
             return false;
         }
 
         // Only start on Wayland
         if (!process.env.WAYLAND_DISPLAY) {
-            console.log('[WaylandOrb] Not running on Wayland, skipping');
+            logger.info('[WaylandOrb]', 'Not running on Wayland, skipping');
             return false;
         }
 
@@ -93,21 +95,21 @@ function createWaylandOrb(options = {}) {
                     const msg = JSON.parse(line);
                     handleMessage(msg);
                 } catch (e) {
-                    console.log('[WaylandOrb] Invalid JSON:', line);
+                    logger.info('[WaylandOrb]', 'Invalid JSON:', line);
                 }
             });
 
             proc.stderr.on('data', (data) => {
-                console.log('[WaylandOrb]', data.toString().trim());
+                logger.info('[WaylandOrb]', data.toString().trim());
             });
 
             proc.on('close', (code) => {
-                console.log('[WaylandOrb] Exited with code', code);
+                logger.info('[WaylandOrb]', 'Exited with code', code);
                 proc = null;
                 ready = false;
                 if (intentionalRestart) {
                     intentionalRestart = false;
-                    console.log('[WaylandOrb] Restarting on output:', currentOutputName || 'default');
+                    logger.info('[WaylandOrb]', 'Restarting on output:', currentOutputName || 'default');
                     start();
                 } else {
                     if (onExit) onExit(code);
@@ -115,15 +117,15 @@ function createWaylandOrb(options = {}) {
             });
 
             proc.on('error', (err) => {
-                console.log('[WaylandOrb] Spawn error:', err.message);
+                logger.info('[WaylandOrb]', 'Spawn error:', err.message);
                 proc = null;
                 ready = false;
             });
 
-            console.log('[WaylandOrb] Started:', binPath);
+            logger.info('[WaylandOrb]', 'Started:', binPath);
             return true;
         } catch (e) {
-            console.log('[WaylandOrb] Failed to start:', e.message);
+            logger.info('[WaylandOrb]', 'Failed to start:', e.message);
             return false;
         }
     }
@@ -136,7 +138,7 @@ function createWaylandOrb(options = {}) {
         switch (msg.type) {
             case 'Ready':
                 ready = true;
-                console.log('[WaylandOrb] Ready');
+                logger.info('[WaylandOrb]', 'Ready');
                 if (onReady) onReady();
                 break;
             case 'ExpandRequested':
@@ -152,7 +154,7 @@ function createWaylandOrb(options = {}) {
                 }
                 break;
             case 'Error':
-                console.log('[WaylandOrb] Error:', msg.message);
+                logger.info('[WaylandOrb]', 'Error:', msg.message);
                 break;
         }
     }
@@ -200,7 +202,7 @@ function createWaylandOrb(options = {}) {
      * @param {string} name - Output name (e.g. 'DP-1', 'HDMI-A-1')
      */
     function setOutput(name) {
-        console.log('[WaylandOrb] Switching to output:', name);
+        logger.info('[WaylandOrb]', 'Switching to output:', name);
         currentOutputName = name || null;
         if (proc) {
             intentionalRestart = true;

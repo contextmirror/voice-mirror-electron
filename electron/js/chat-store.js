@@ -5,6 +5,8 @@
 
 import { addMessage } from './messages.js';
 import { getAllMessages, clearChat } from './chat-input.js';
+import { createLog } from './log.js';
+const log = createLog('[ChatStore]');
 
 let currentChatId = null;
 let contextMenuEl = null;
@@ -32,9 +34,10 @@ export async function loadChatList() {
 
     let chats = [];
     try {
-        chats = await window.voiceMirror.chat.list();
+        const result = await window.voiceMirror.chat.list();
+        chats = result.data || [];
     } catch (err) {
-        console.error('[ChatStore] Failed to load chat list:', err);
+        log.error('Failed to load chat list:', err);
         return;
     }
 
@@ -99,7 +102,7 @@ export async function newChat() {
     try {
         await window.voiceMirror.chat.save(chat);
     } catch (err) {
-        console.error('[ChatStore] Failed to save new chat:', err);
+        log.error('Failed to save new chat:', err);
         return;
     }
 
@@ -122,9 +125,10 @@ export async function switchChat(id) {
 
     let chat;
     try {
-        chat = await window.voiceMirror.chat.load(id);
+        const result = await window.voiceMirror.chat.load(id);
+        chat = result.success ? result.data : null;
     } catch (err) {
-        console.error('[ChatStore] Failed to load chat:', err);
+        log.error('Failed to load chat:', err);
         return;
     }
 
@@ -163,7 +167,7 @@ export async function deleteChat(id) {
     try {
         await window.voiceMirror.chat.delete(id);
     } catch (err) {
-        console.error('[ChatStore] Failed to delete chat:', err);
+        log.error('Failed to delete chat:', err);
         return;
     }
 
@@ -172,7 +176,8 @@ export async function deleteChat(id) {
 
         let chats = [];
         try {
-            chats = await window.voiceMirror.chat.list();
+            const result = await window.voiceMirror.chat.list();
+            chats = result.data || [];
         } catch { /* empty */ }
 
         if (chats.length > 0) {
@@ -200,7 +205,8 @@ export async function autoSave() {
     // Auto-name from first user message if still "New Chat"
     let name = null;
     try {
-        const existing = await window.voiceMirror.chat.load(currentChatId);
+        const result = await window.voiceMirror.chat.load(currentChatId);
+        const existing = result.success ? result.data : null;
         name = existing?.name || 'New Chat';
     } catch { /* empty */ }
 
@@ -223,7 +229,7 @@ export async function autoSave() {
     try {
         await window.voiceMirror.chat.save(chat);
     } catch (err) {
-        console.error('[ChatStore] Auto-save failed:', err);
+        log.error('Auto-save failed:', err);
     }
 }
 
@@ -366,7 +372,7 @@ function startInlineRename(chatId) {
             try {
                 await window.voiceMirror.chat.rename(chatId, newName);
             } catch (err) {
-                console.error('[ChatStore] Rename failed:', err);
+                log.error('Rename failed:', err);
             }
         }
         await loadChatList();

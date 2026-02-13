@@ -13,6 +13,9 @@
 const { BaseProvider } = require('./base-provider');
 const { ToolExecutor } = require('../tools');
 const { toOpenAITools, accumulateToolCalls, parseCompletedToolCalls } = require('../tools/openai-schema');
+const { DEFAULT_ENDPOINTS } = require('../constants');
+const { createLogger } = require('../services/logger');
+const logger = createLogger();
 
 // Limit conversation history to prevent context overflow in local LLMs
 const MAX_HISTORY_MESSAGES = 20;
@@ -22,7 +25,7 @@ class OpenAIProvider extends BaseProvider {
         super(config);
         this.providerType = config.type || 'ollama';
         this.providerName = config.name || 'Ollama';
-        this.baseUrl = config.baseUrl || 'http://127.0.0.1:11434';
+        this.baseUrl = config.baseUrl || DEFAULT_ENDPOINTS.ollama;
         this.chatEndpoint = config.chatEndpoint || '/v1/chat/completions';
         this.apiKey = config.apiKey || null;
         this.model = config.model || null;
@@ -99,7 +102,7 @@ class OpenAIProvider extends BaseProvider {
      */
     async spawn(options = {}) {
         if (this.running) {
-            console.log(`[OpenAIProvider] ${this.providerName} already running`);
+            logger.info('[OpenAIProvider]', `${this.providerName} already running`);
             return true;
         }
 
@@ -119,13 +122,13 @@ class OpenAIProvider extends BaseProvider {
                     location: options.location,
                     customInstructions: options.customInstructions
                 });
-                console.log(`[OpenAIProvider] Using basic prompt (native tool calling)`);
+                logger.info('[OpenAIProvider]', 'Using basic prompt (native tool calling)');
             } else {
                 systemPrompt = this.toolExecutor.getSystemPrompt({
                     location: options.location,
                     customInstructions: options.customInstructions
                 });
-                console.log(`[OpenAIProvider] Using tool-enabled system prompt (text-parsing)`);
+                logger.info('[OpenAIProvider]', 'Using tool-enabled system prompt (text-parsing)');
             }
         }
 
@@ -137,7 +140,7 @@ class OpenAIProvider extends BaseProvider {
         }
 
         this.emitOutput('start', `${this.getDisplayName()} ready\n`);
-        console.log(`[OpenAIProvider] ${this.providerName} started with model: ${this.model}`);
+        logger.info('[OpenAIProvider]', `${this.providerName} started with model: ${this.model}`);
 
         return true;
     }
@@ -152,7 +155,7 @@ class OpenAIProvider extends BaseProvider {
         }
         this.running = false;
         this.messages = [];
-        console.log(`[OpenAIProvider] ${this.providerName} stopped`);
+        logger.info('[OpenAIProvider]', `${this.providerName} stopped`);
     }
 
     /**
@@ -162,7 +165,7 @@ class OpenAIProvider extends BaseProvider {
      */
     interrupt() {
         if (this.abortController) {
-            console.log(`[OpenAIProvider] ${this.providerName} request interrupted`);
+            logger.info('[OpenAIProvider]', `${this.providerName} request interrupted`);
             this.abortController.abort();
             // sendInput()'s catch block handles AbortError → emits [Cancelled]
             return true;
@@ -202,7 +205,7 @@ class OpenAIProvider extends BaseProvider {
                         ]
                     });
                 }
-                console.log(`[OpenAIProvider] Sending user image via ${this.providerType} format (${Math.round(rawBase64.length / 1024)}KB)`);
+                logger.info('[OpenAIProvider]', `Sending user image via ${this.providerType} format (${Math.round(rawBase64.length / 1024)}KB)`);
             } else {
                 this.messages.push({
                     role: 'user',
@@ -275,7 +278,7 @@ class OpenAIProvider extends BaseProvider {
                 return;
             }
 
-            console.log(`[OpenAIProvider] Sending request to ${url}`);
+            logger.info('[OpenAIProvider]', `Sending request to ${url}`);
 
             const response = await fetch(url, {
                 method: 'POST',
@@ -359,7 +362,7 @@ class OpenAIProvider extends BaseProvider {
 
                 // Check iteration limit
                 if (this.currentToolIteration >= this.maxToolIterations) {
-                    console.log(`[OpenAIProvider] Max tool iterations (${this.maxToolIterations}) reached`);
+                    logger.info('[OpenAIProvider]', `Max tool iterations (${this.maxToolIterations}) reached`);
                     this.emitOutput('stdout', '\n[Max tool iterations reached]\n');
                     this.emitOutput('context-usage', JSON.stringify(this.estimateTokenUsage()));
                     return;
@@ -374,7 +377,7 @@ class OpenAIProvider extends BaseProvider {
                         this.onToolCall({ tool: tc.name, args: tc.args, iteration: this.currentToolIteration });
                     }
 
-                    console.log(`[OpenAIProvider] Native tool call: ${tc.name}`);
+                    logger.info('[OpenAIProvider]', `Native tool call: ${tc.name}`);
                     this.emitOutput('stdout', `\n[Executing tool: ${tc.name}...]\n`);
 
                     // Diagnostic trace
@@ -423,7 +426,7 @@ class OpenAIProvider extends BaseProvider {
                         }
                     } catch { /* diagnostic not available */ }
 
-                    console.log(`[OpenAIProvider] Tool result: ${result.success ? 'success' : 'failed'}`);
+                    logger.info('[OpenAIProvider]', `Tool result: ${result.success ? 'success' : 'failed'}`);
                     this.emitOutput('stdout', `[Tool ${result.success ? 'succeeded' : 'failed'}]\n\n`);
                 }
 
@@ -453,7 +456,7 @@ class OpenAIProvider extends BaseProvider {
                 if (toolCall && toolCall.isToolCall) {
                     // Check iteration limit
                     if (this.currentToolIteration >= this.maxToolIterations) {
-                        console.log(`[OpenAIProvider] Max tool iterations (${this.maxToolIterations}) reached`);
+                        logger.info('[OpenAIProvider]', `Max tool iterations (${this.maxToolIterations}) reached`);
                         this.emitOutput('stdout', '\n[Max tool iterations reached]\n');
                         return;
                     }
@@ -475,7 +478,7 @@ class OpenAIProvider extends BaseProvider {
                         });
                     }
 
-                    console.log(`[OpenAIProvider] Tool call detected: ${toolCall.tool}`);
+                    logger.info('[OpenAIProvider]', `Tool call detected: ${toolCall.tool}`);
                     this.emitOutput('stdout', `\n[Executing tool: ${toolCall.tool}...]\n`);
 
                     // Diagnostic trace: tool call detected
@@ -520,7 +523,7 @@ class OpenAIProvider extends BaseProvider {
                                 content: resultMessage.text + instruction,
                                 images: [rawBase64]
                             });
-                            console.log(`[OpenAIProvider] Sending image via Ollama native format (${Math.round(rawBase64.length / 1024)}KB)`);
+                            logger.info('[OpenAIProvider]', `Sending image via Ollama native format (${Math.round(rawBase64.length / 1024)}KB)`);
                         } else {
                             // OpenAI-compatible format: multimodal content array
                             this.messages.push({
@@ -563,7 +566,7 @@ class OpenAIProvider extends BaseProvider {
                         }
                     } catch { /* diagnostic not available */ }
 
-                    console.log(`[OpenAIProvider] Tool result: ${result.success ? 'success' : 'failed'}`);
+                    logger.info('[OpenAIProvider]', `Tool result: ${result.success ? 'success' : 'failed'}`);
                     this.emitOutput('stdout', `[Tool ${result.success ? 'succeeded' : 'failed'}]\n\n`);
 
                     // Get follow-up response from model
@@ -578,7 +581,7 @@ class OpenAIProvider extends BaseProvider {
             if (err.name === 'AbortError') {
                 this.emitOutput('stdout', '\n[Cancelled]\n');
             } else {
-                console.error(`[OpenAIProvider] Error:`, err);
+                logger.error('[OpenAIProvider]', 'Error:', err);
                 this.emitOutput('stderr', `\n[Error] ${err.message}\n`);
             }
         } finally {
@@ -592,7 +595,7 @@ class OpenAIProvider extends BaseProvider {
     sendRawInput(data) {
         // For API providers, we could accumulate input until Enter is pressed
         // For now, just ignore raw input
-        console.log('[OpenAIProvider] Raw input not supported for API providers');
+        logger.info('[OpenAIProvider]', 'Raw input not supported for API providers');
     }
 
     /**
@@ -617,7 +620,7 @@ class OpenAIProvider extends BaseProvider {
         }
 
         this.messages = [...system, ...recent];
-        console.log(`[OpenAIProvider] Trimmed history to ${this.messages.length} messages`);
+        logger.info('[OpenAIProvider]', `Trimmed history to ${this.messages.length} messages`);
     }
 
     /**
@@ -661,19 +664,19 @@ function createOpenAIProvider(type, config = {}) {
     const providers = {
         ollama: {
             name: 'Ollama',
-            baseUrl: 'http://127.0.0.1:11434',
+            baseUrl: DEFAULT_ENDPOINTS.ollama,
             chatEndpoint: '/v1/chat/completions',
             defaultModel: null  // Auto-detect from Ollama
         },
         lmstudio: {
             name: 'LM Studio',
-            baseUrl: 'http://127.0.0.1:1234',
+            baseUrl: DEFAULT_ENDPOINTS.lmstudio,
             chatEndpoint: '/v1/chat/completions',
             defaultModel: null  // Auto-detect from LM Studio
         },
         jan: {
             name: 'Jan',
-            baseUrl: 'http://127.0.0.1:1337',
+            baseUrl: DEFAULT_ENDPOINTS.jan,
             chatEndpoint: '/v1/chat/completions',
             defaultModel: null  // Auto-detect from Jan
         },

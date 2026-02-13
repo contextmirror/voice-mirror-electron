@@ -6,6 +6,8 @@
  */
 
 const { getAllTools } = require('./definitions');
+const { createLogger } = require('../services/logger');
+const logger = createLogger();
 
 /**
  * Convert a single internal tool definition to OpenAI function-calling format.
@@ -114,7 +116,7 @@ function parseCompletedToolCalls(toolCalls) {
                 args = JSON.parse(tc.function.arguments);
             }
         } catch (err) {
-            console.error(`[openai-schema] Failed to parse tool call arguments for ${tc.function.name}:`, err.message);
+            logger.error('[openai-schema]', `Failed to parse tool call arguments for ${tc.function.name}:`, err.message);
         }
 
         return {

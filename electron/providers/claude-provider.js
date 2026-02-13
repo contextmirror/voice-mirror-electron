@@ -7,6 +7,8 @@
 
 const { BaseProvider } = require('./base-provider');
 const claudeSpawner = require('../claude-spawner');
+const { createLogger } = require('../services/logger');
+const logger = createLogger();
 
 class ClaudeProvider extends BaseProvider {
     constructor(config = {}) {
@@ -40,7 +42,7 @@ class ClaudeProvider extends BaseProvider {
         const { cols = 120, rows = 30 } = options;
 
         if (this.running) {
-            console.log('[ClaudeProvider] Already running');
+            logger.info('[ClaudeProvider]', 'Already running');
             return true;
         }
 

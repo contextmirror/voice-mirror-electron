@@ -5,6 +5,8 @@
  */
 
 const cdp = require('./webview-cdp');
+const { createLogger } = require('../services/logger');
+const logger = createLogger();
 
 const DEFAULT_MAX_CONTENT_LENGTH = 8000;
 
@@ -21,21 +23,21 @@ async function fetchUrl(args = {}) {
     const { url, max_length = DEFAULT_MAX_CONTENT_LENGTH, include_links = false } = args;
 
     if (!url) {
-        return { success: false, error: 'URL is required' };
+        return { ok: false, error: 'URL is required' };
     }
 
     try {
         new URL(url);
     } catch {
-        return { success: false, error: `Invalid URL: ${url}` };
+        return { ok: false, error: `Invalid URL: ${url}` };
     }
 
     if (!cdp.isAttached()) {
-        return { success: false, error: 'Browser not available. Open the Voice Mirror panel.' };
+        return { ok: false, error: 'Browser not available. Open the Voice Mirror panel.' };
     }
 
     try {
-        console.log(`[Browser Fetch] Loading: ${url}`);
+        logger.info('[Browser Fetch]', `Loading: ${url}`);
         await cdp.navigate(url);
         await new Promise(r => setTimeout(r, 2000));
 
@@ -114,10 +116,11 @@ async function fetchUrl(args = {}) {
             output += content.links.map(l => `- ${l.text}: ${l.href}`).join('\n');
         }
 
-        console.log(`[Browser Fetch] Extracted ${content.text.length} chars from ${finalUrl}`);
+        logger.info('[Browser Fetch]', `Extracted ${content.text.length} chars from ${finalUrl}`);
 
         return {
-            success: true,
+            ok: true,
+            action: 'fetch',
             result: output,
             title: content.title,
             url: finalUrl,
@@ -125,8 +128,8 @@ async function fetchUrl(args = {}) {
             truncated,
         };
     } catch (err) {
-        console.error('[Browser Fetch] Error:', err.message);
-        return { success: false, error: `Fetch failed: ${err.message}` };
+        logger.error('[Browser Fetch]', 'Error:', err.message);
+        return { ok: false, error: `Fetch failed: ${err.message}` };
     }
 }
 

@@ -4,6 +4,8 @@
  */
 
 import { state } from './state.js';
+import { createLog } from './log.js';
+const log = createLog('[Navigation]');
 
 // Context menu element
 let contextMenu = null;
@@ -65,7 +67,7 @@ export function navigateTo(page) {
     // Validate page
     const validPages = ['chat', 'terminal', 'browser', 'settings'];
     if (!validPages.includes(page)) {
-        console.warn('[Navigation] Invalid page:', page);
+        log.warn('Invalid page:', page);
         return;
     }
 
@@ -96,7 +98,7 @@ export function navigateTo(page) {
         window.loadSettingsUI();
     }
 
-    console.log('[Navigation] Navigated to:', page);
+    log.info('Navigated to:', page);
 }
 
 /**
@@ -132,7 +134,7 @@ async function loadSidebarState() {
             }
         }
     } catch (err) {
-        console.error('[Navigation] Failed to load sidebar state:', err);
+        log.error('Failed to load sidebar state:', err);
     }
 }
 
@@ -146,7 +148,7 @@ async function saveSidebarState() {
         config.sidebar.collapsed = state.sidebarCollapsed;
         await window.voiceMirror.config.set(config);
     } catch (err) {
-        console.error('[Navigation] Failed to save sidebar state:', err);
+        log.error('Failed to save sidebar state:', err);
     }
 }
 

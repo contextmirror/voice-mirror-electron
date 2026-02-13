@@ -4,6 +4,8 @@
  */
 
 const cdp = require('./webview-cdp');
+const { createLogger } = require('../services/logger');
+const logger = createLogger();
 
 // --- Helpers ---
 
@@ -73,7 +75,7 @@ async function resolveRef(ref) {
             return { objectId: vmResult.result.objectId };
         }
         // vmref element gone — fall through to role+name matching
-        console.log(`[webview-actions] vmref ${info.vmref} not found, falling back to role+name`);
+        logger.info('[webview-actions]', `vmref ${info.vmref} not found, falling back to role+name`);
     }
 
     // Fallback: find element by role + name in the DOM
@@ -820,22 +822,9 @@ async function executeAction(request) {
 }
 
 module.exports = {
-    clickAction,
-    typeAction,
-    fillFormAction,
-    hoverAction,
-    dragAction,
-    selectAction,
-    pressAction,
-    evaluateAction,
-    waitAction,
+    executeAction,
     screenshotAction,
-    navigateAction,
-    uploadAction,
-    resizeAction,
     dialogAcceptAction,
     dialogDismissAction,
-    executeAction,
     storeRefs,
-    resolveRef
 };

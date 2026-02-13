@@ -9,6 +9,8 @@ const { desktopCapturer } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
+const { createLogger } = require('../../services/logger');
+const logger = createLogger();
 
 /**
  * Capture the screen and save to a file.
@@ -59,7 +61,7 @@ async function captureScreen(args = {}) {
         };
 
     } catch (err) {
-        console.error('[CaptureScreen] Error:', err);
+        logger.error('[CaptureScreen]', 'Error:', err);
         return {
             success: false,
             error: `Failed to capture screen: ${err.message}`

@@ -7,6 +7,8 @@ const fs = require('fs');
 const fsPromises = fs.promises;
 const path = require('path');
 const collector = require('./diagnostic-collector');
+const { createLogger } = require('./logger');
+const logger = createLogger();
 
 let watcher = null;
 let dataDir = null;
@@ -47,7 +49,7 @@ function start(dir) {
             const message = request.message;
             const timeout = (request.timeout_seconds || 30) * 1000;
 
-            console.log(`[Diagnostic] Starting trace: ${traceId} — "${message}"`);
+            logger.info('[Diagnostic]', `Starting trace: ${traceId} — "${message}"`);
 
             // Start trace
             collector.startTrace(traceId, message);
@@ -110,13 +112,13 @@ function start(dir) {
             if (trace) {
                 const tracePath = path.join(dataDir, `diagnostic_trace_${traceId}.json`);
                 await fsPromises.writeFile(tracePath, JSON.stringify(trace, null, 2), 'utf-8');
-                console.log(`[Diagnostic] Trace complete: ${trace.stages.length} stages, ${trace.duration_ms}ms`);
+                logger.info('[Diagnostic]', `Trace complete: ${trace.stages.length} stages, ${trace.duration_ms}ms`);
             }
 
             collector.clearTrace(traceId);
 
         } catch (err) {
-            console.error('[Diagnostic] Error:', err.message);
+            logger.error('[Diagnostic]', 'Error:', err.message);
         } finally {
             processing = false;
         }
@@ -130,16 +132,16 @@ function start(dir) {
             }
         });
         fsWatcher.on('error', (err) => {
-            console.error('[Diagnostic] fs.watch error, falling back to polling:', err.message);
+            logger.error('[Diagnostic]', 'fs.watch error, falling back to polling:', err.message);
             watcher = setInterval(() => processRequest(), 2000);
         });
         watcher = fsWatcher;
     } catch (err) {
-        console.error('[Diagnostic] fs.watch unavailable, using polling fallback:', err.message);
+        logger.error('[Diagnostic]', 'fs.watch unavailable, using polling fallback:', err.message);
         watcher = setInterval(() => processRequest(), 2000);
     }
 
-    console.log('[Diagnostic] Watcher started');
+    logger.info('[Diagnostic]', 'Watcher started');
 }
 
 function stop() {

@@ -6,6 +6,8 @@
 const fs = require('fs');
 const fsPromises = fs.promises;
 const path = require('path');
+const { createLogger } = require('./logger');
+const logger = createLogger();
 
 /**
  * Create a performance monitor service instance.
@@ -41,7 +43,7 @@ function createPerfMonitor(options = {}) {
 
         interval = setInterval(() => sample(), 3000);
         sample(); // Immediate first sample so UI doesn't show "--"
-        console.log('[PerfMonitor] Started');
+        logger.info('[PerfMonitor]', 'Started');
     }
 
     function sample() {
@@ -97,7 +99,7 @@ function createPerfMonitor(options = {}) {
         if (interval) {
             clearInterval(interval);
             interval = null;
-            console.log('[PerfMonitor] Stopped');
+            logger.info('[PerfMonitor]', 'Stopped');
         }
     }
 

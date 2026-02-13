@@ -13,6 +13,8 @@
  */
 
 const controller = require('../../browser/browser-controller');
+const { createLogger } = require('../../services/logger');
+const logger = createLogger();
 
 /**
  * Execute a browser control action.
@@ -74,9 +76,9 @@ async function browserControl(args = {}) {
                 } catch { /* diagnostic not available */ }
 
                 const formatted = formatSnapshotForLLM(snap, query);
-                console.log('[BrowserControl] Full snapshot text:\n' + (snap.snapshot || '').substring(0, 3000));
-                console.log('[BrowserControl] Page text (' + (snap.pageText || '').length + ' chars):\n' + (snap.pageText || '').substring(0, 1500));
-                console.log('[BrowserControl] Formatted result length: ' + formatted.length);
+                logger.debug('[BrowserControl]', 'Full snapshot text:\n' + (snap.snapshot || '').substring(0, 3000));
+                logger.debug('[BrowserControl]', 'Page text (' + (snap.pageText || '').length + ' chars):\n' + (snap.pageText || '').substring(0, 1500));
+                logger.debug('[BrowserControl]', 'Formatted result length: ' + formatted.length);
 
                 // Diagnostic trace: formatted snapshot
                 try {
@@ -305,7 +307,7 @@ async function _dismissGoogleConsent() {
         const text = snap.snapshot;
         if (!text.includes('Before you continue') && !text.includes('consent')) return;
 
-        console.log('[BrowserControl] Google consent dialog detected, dismissing...');
+        logger.info('[BrowserControl]', 'Google consent dialog detected, dismissing...');
 
         const lines = text.split('\n');
         let rejectRef = null;
@@ -327,10 +329,10 @@ async function _dismissGoogleConsent() {
         if (clickRef) {
             await controller.actOnTab({ kind: 'click', ref: clickRef });
             await new Promise(r => setTimeout(r, 2000));
-            console.log('[BrowserControl] Consent dismissed via ref click');
+            logger.info('[BrowserControl]', 'Consent dismissed via ref click');
         }
     } catch (err) {
-        console.log('[BrowserControl] Consent dismiss failed (non-fatal):', err.message);
+        logger.info('[BrowserControl]', 'Consent dismiss failed (non-fatal):', err.message);
     }
 }
 

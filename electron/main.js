@@ -12,13 +12,12 @@
 const { app, BrowserWindow, ipcMain, desktopCapturer, globalShortcut, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
-
 // Note: --ozone-platform=x11 is passed via CLI (package.json/launch.sh)
 // to force XWayland on Linux. The Electron window is used for the expanded
 // panel; the collapsed orb is rendered by wayland-orb (native layer-shell)
 // when available, falling back to the Electron window on X11/non-Wayland.
 const config = require('./config');
-const { registerIpcHandlers } = require('./ipc-handlers');
+const { registerIpcHandlers } = require('./ipc');
 // Note: claude-spawner and providers are now used via ai-manager service
 const { createLogger } = require('./services/logger');
 const { createHotkeyManager } = require('./services/hotkey-manager');
@@ -73,11 +72,11 @@ let updateChecker = null;
 // Handle EPIPE errors gracefully (happens when terminal pipe breaks)
 process.stdout.on('error', (err) => {
     if (err.code === 'EPIPE') return; // Ignore broken pipe
-    console.error('stdout error:', err);
+    logger.error('[Main]', 'stdout error:', err);
 });
 process.stderr.on('error', (err) => {
     if (err.code === 'EPIPE') return;
-    console.error('stderr error:', err);
+    logger.error('[Main]', 'stderr error:', err);
 });
 
 // Platform detection (from config module)
@@ -196,118 +195,6 @@ function sendToPython(command) {
     }
 }
 
-/**
- * Ensure a local LLM server (Ollama) is running before the AI provider starts.
- * On Windows, Ollama may not auto-start if installed to a custom directory.
- */
-function ensureLocalLLMRunning(providerName, config) {
-    if (providerName !== 'ollama') return;
-
-    // Check if Ollama is already responding
-    try {
-        const endpoint = config?.ai?.endpoints?.ollama || 'http://127.0.0.1:11434';
-        // Quick sync check — just see if the port is open
-        require('net').createConnection({ port: new URL(endpoint).port || 11434, host: '127.0.0.1' })
-            .on('connect', function() { this.destroy(); })
-            .on('error', () => {
-                // Not running — try to start it
-                console.log('[Ollama] Not running, attempting to start...');
-                startOllamaServer(config);
-            });
-    } catch {
-        startOllamaServer(config);
-    }
-}
-
-async function startOllamaServer(config) {
-    const { spawn: spawnDetached, execFile } = require('child_process');
-    const { promisify } = require('util');
-    const execFileAsync = promisify(execFile);
-    const os = require('os');
-
-    // Find ollama executable (async to avoid blocking main thread)
-    let ollamaPath = null;
-    try {
-        const cmd = process.platform === 'win32' ? 'where' : 'which';
-        const { stdout } = await execFileAsync(cmd, ['ollama'], { encoding: 'utf8' });
-        ollamaPath = stdout.trim().split('\n')[0];
-    } catch {
-        // Not on PATH — check common locations
-        const candidates = [];
-        if (process.platform === 'win32') {
-            candidates.push(
-                path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Ollama', 'ollama.exe'),
-                path.join(path.dirname(path.dirname(__dirname)), 'Ollama', 'ollama.exe')
-            );
-            if (process.env.OLLAMA_MODELS) {
-                candidates.push(path.join(path.dirname(process.env.OLLAMA_MODELS), 'ollama.exe'));
-            }
-        } else if (process.platform === 'darwin') {
-            candidates.push(
-                '/usr/local/bin/ollama',
-                path.join(os.homedir(), '.ollama', 'ollama'),
-                '/Applications/Ollama.app/Contents/Resources/ollama'
-            );
-        } else {
-            candidates.push(
-                '/usr/local/bin/ollama',
-                '/usr/bin/ollama',
-                path.join(os.homedir(), '.ollama', 'ollama')
-            );
-        }
-        for (const c of candidates) {
-            if (fs.existsSync(c)) { ollamaPath = c; break; }
-        }
-    }
-
-    if (!ollamaPath) {
-        console.log('[Ollama] Could not find ollama executable');
-        return;
-    }
-
-    console.log(`[Ollama] Starting server: ${ollamaPath}`);
-    const env = { ...process.env };
-    // Preserve OLLAMA_MODELS if set (custom model directory)
-    const proc = spawnDetached(ollamaPath, ['serve'], {
-        detached: true,
-        stdio: 'ignore',
-        env
-    });
-    proc.unref();
-}
-
-/**
- * Write Electron's voice config to voice_settings.json so Python reads correct settings on startup.
- */
-async function syncVoiceSettingsToFile(cfg) {
-    try {
-        const fsP = fs.promises;
-        const dataDir = config.getDataDir();
-        await fsP.mkdir(dataDir, { recursive: true });
-        const settingsPath = path.join(dataDir, 'voice_settings.json');
-
-        // Read existing settings to preserve location/timezone
-        let existing = {};
-        try {
-            existing = JSON.parse(await fsP.readFile(settingsPath, 'utf-8'));
-        } catch { /* ignore parse errors or missing file */ }
-
-        // Merge Electron voice config into settings
-        const voice = cfg?.voice || {};
-        const updates = {};
-        if (voice.ttsAdapter) updates.tts_adapter = voice.ttsAdapter;
-        if (voice.ttsVoice) updates.tts_voice = voice.ttsVoice;
-        if (voice.ttsModelSize) updates.tts_model_size = voice.ttsModelSize;
-        if (voice.sttModel) updates.stt_adapter = voice.sttModel;
-
-        const merged = { ...existing, ...updates };
-        await fsP.writeFile(settingsPath, JSON.stringify(merged, null, 2), 'utf-8');
-        console.log('[Voice Mirror] Synced voice settings to', settingsPath);
-    } catch (err) {
-        console.error('[Voice Mirror] Failed to sync voice settings:', err.message);
-    }
-}
-
 function startPythonVoiceMirror() {
     if (pythonBackend) {
         pythonBackend.start();
@@ -323,7 +210,7 @@ function startPythonVoiceMirror() {
         pythonReadyTimeout = setTimeout(() => {
             clearInterval(startupPinger);
             startupPinger = null;
-            console.error('[Python] Backend failed to start within 30 seconds, killing process');
+            logger.error('[Python]', 'Backend failed to start within 30 seconds, killing process');
             // Kill the stuck Python process
             if (pythonBackend?.isRunning()) {
                 pythonBackend.kill();
@@ -390,7 +277,7 @@ function addDisplayedMessageId(id) {
 
 // Serper.dev API key for web search
 const SERPER_API_KEY = process.env.SERPER_API_KEY || '';
-if (!SERPER_API_KEY) console.warn('[Main] SERPER_API_KEY not set - web search will be unavailable');
+if (!SERPER_API_KEY) logger.warn('[Main]', 'SERPER_API_KEY not set - web search will be unavailable');
 
 // Screen capture and browser watcher helper functions
 function startScreenCaptureWatcher() {
@@ -455,7 +342,7 @@ app.whenReady().then(() => {
         }
         if (updated) {
             appConfig = config.updateConfig({ ai: { apiKeys: currentKeys } });
-            console.log('[Config] Auto-detected API keys:', realKeys.map(([k]) => k).join(', '));
+            logger.info('[Config]', 'Auto-detected API keys:', realKeys.map(([k]) => k).join(', '));
         }
     }
 
@@ -470,7 +357,7 @@ app.whenReady().then(() => {
             // Ensure uiohook is alive after window state change (for toggle hotkey)
             const uiohookShared = require('./services/uiohook-shared');
             if (uiohookShared.isAvailable() && !uiohookShared.isStarted()) {
-                console.log('[Voice Mirror] uiohook not running after window state change, restarting');
+                logger.info('[Voice Mirror]', 'uiohook not running after window state change, restarting');
                 uiohookShared.restart();
             }
         }
@@ -540,7 +427,7 @@ app.whenReady().then(() => {
         if (event.type === 'loading' && pythonReadyTimeout) {
             clearTimeout(pythonReadyTimeout);
             pythonReadyTimeout = setTimeout(() => {
-                console.error('[Python] Backend failed to start within 30 seconds, killing process');
+                logger.error('[Python]', 'Backend failed to start within 30 seconds, killing process');
                 if (pythonBackend?.isRunning()) {
                     pythonBackend.kill();
                 }
@@ -626,7 +513,7 @@ app.whenReady().then(() => {
             if (inboxWatcherService) {
                 inboxWatcherService.clearProcessedUserMessageIds();
             }
-            console.log('[Voice Mirror] Cleared processed user message IDs for provider switch');
+            logger.info('[Voice Mirror]', 'Cleared processed user message IDs for provider switch');
         }
     });
 
@@ -691,13 +578,13 @@ app.whenReady().then(() => {
                 }
             },
             onReady: () => {
-                console.log('[Voice Mirror] Wayland overlay orb active — hiding Electron orb');
+                logger.info('[Voice Mirror]', 'Wayland overlay orb active — hiding Electron orb');
                 if (!isExpanded && mainWindow) {
                     mainWindow.hide();
                 }
             },
             onExit: (code) => {
-                console.log('[Voice Mirror] Wayland orb exited (code:', code, ')');
+                logger.info('[Voice Mirror]', 'Wayland orb exited (code:', code, ')');
             }
         });
     }
@@ -709,13 +596,13 @@ app.whenReady().then(() => {
     const browserController = require('./browser/browser-controller');
 
     mainWindow.webContents.on('did-attach-webview', (event, guestWebContents) => {
-        console.log('[Voice Mirror] Webview attached, setting up CDP debugger');
+        logger.info('[Voice Mirror]', 'Webview attached, setting up CDP debugger');
         try {
             webviewCdp.attachDebugger(guestWebContents);
 
             // Set up dialog event listener for JS dialog handling
             browserController.setupDialogListener().catch(err => {
-                console.error('[Voice Mirror] Dialog listener setup failed:', err.message);
+                logger.error('[Voice Mirror]', 'Dialog listener setup failed:', err.message);
             });
 
             // Track console messages from the webview
@@ -733,7 +620,7 @@ app.whenReady().then(() => {
                 }
             });
         } catch (err) {
-            console.error('[Voice Mirror] Failed to attach webview debugger:', err.message);
+            logger.error('[Voice Mirror]', 'Failed to attach webview debugger:', err.message);
         }
     });
 
@@ -783,12 +670,12 @@ app.whenReady().then(() => {
         const diagnosticWatcher = require('./services/diagnostic-watcher');
         diagnosticWatcher.start();
     } catch (err) {
-        console.log('[Diagnostic] Watcher not started:', err.message);
+        logger.info('[Diagnostic]', 'Watcher not started:', err.message);
     }
 
     // Initialize dual-layer hotkey manager (uiohook + globalShortcut)
     hotkeyManager = createHotkeyManager({ log: (cat, msg) => logger.log(cat, msg) });
-    hotkeyManager.init();
+    hotkeyManager.start();
 
     const toggleHotkey = appConfig?.behavior?.hotkey || 'CommandOrControl+Shift+V';
     hotkeyManager.register('toggle-panel', toggleHotkey, () => {
@@ -829,15 +716,15 @@ app.whenReady().then(() => {
     // Auto-start Voice Mirror (Python + AI provider) on app launch
     try {
         const providerName = appConfig?.ai?.provider || 'claude';
-        console.log(`[Voice Mirror] Auto-starting Python and AI provider (${providerName})...`);
+        logger.info('[Voice Mirror]', `Auto-starting Python and AI provider (${providerName})...`);
 
         // Ensure Ollama is running if it's the selected provider
         if (['ollama', 'lmstudio', 'jan'].includes(providerName)) {
-            ensureLocalLLMRunning(providerName, appConfig);
+            aiManager.ensureLocalLLMRunning();
         }
 
         // Write voice_settings.json BEFORE spawning Python so it loads correct TTS/STT config
-        syncVoiceSettingsToFile(appConfig);
+        pythonBackend.syncVoiceSettings(appConfig);
 
         startPythonVoiceMirror();
 
@@ -850,7 +737,7 @@ app.whenReady().then(() => {
             try {
                 startAIProvider();
             } catch (err) {
-                console.error('[Voice Mirror] Failed to start AI provider:', err.message);
+                logger.error('[Voice Mirror]', 'Failed to start AI provider:', err.message);
             }
         };
 
@@ -867,7 +754,7 @@ app.whenReady().then(() => {
             }
         }, 300);
     } catch (err) {
-        console.error('[Voice Mirror] Auto-start failed:', err.message);
+        logger.error('[Voice Mirror]', 'Auto-start failed:', err.message);
     }
 });
 
@@ -895,7 +782,7 @@ app.on('before-quit', async () => {
 
     // Destroy hotkey manager (unregisters all shortcuts)
     if (hotkeyManager) {
-        hotkeyManager.destroy();
+        hotkeyManager.stop();
     }
     globalShortcut.unregisterAll();
 

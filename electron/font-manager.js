@@ -10,6 +10,8 @@ const path = require('path');
 const fs = require('fs');
 const fsPromises = fs.promises;
 const crypto = require('crypto');
+const { createLogger } = require('./services/logger');
+const logger = createLogger();
 
 // Magic bytes for font format validation
 const FONT_SIGNATURES = {
@@ -48,7 +50,7 @@ function loadManifest() {
             manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
         }
     } catch (error) {
-        console.error('[FontManager] Error loading manifest:', error.message);
+        logger.error('[FontManager]', 'Error loading manifest:', error.message);
         manifest = { version: 1, fonts: [] };
     }
 }
@@ -65,7 +67,7 @@ async function saveManifest() {
         await fsPromises.writeFile(tempPath, json, 'utf8');
         await fsPromises.rename(tempPath, manifestPath);
     } catch (error) {
-        console.error('[FontManager] Error saving manifest:', error.message);
+        logger.error('[FontManager]', 'Error saving manifest:', error.message);
         try { await fsPromises.unlink(tempPath); } catch { /* ignore */ }
     }
 }
@@ -186,7 +188,7 @@ async function addFont(sourcePath, type) {
     manifest.fonts.push(fontEntry);
     await saveManifest();
 
-    console.log(`[FontManager] Added font: ${displayName} (${id})`);
+    logger.info('[FontManager]', `Added font: ${displayName} (${id})`);
     return { success: true, font: fontEntry };
 }
 
@@ -215,7 +217,7 @@ async function removeFont(fontId) {
     manifest.fonts.splice(index, 1);
     await saveManifest();
 
-    console.log(`[FontManager] Removed font: ${entry.displayName} (${fontId})`);
+    logger.info('[FontManager]', `Removed font: ${entry.displayName} (${fontId})`);
     return { success: true };
 }
 

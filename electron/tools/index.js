@@ -8,6 +8,8 @@
 const { getToolNames, validateArgs } = require('./definitions');
 const { getToolSystemPrompt, getBasicSystemPrompt } = require('./prompts');
 const handlers = require('./handlers');
+const { createLogger } = require('../services/logger');
+const logger = createLogger();
 
 // Limits for tool results (prevent context overflow in local LLMs)
 const TOOL_RESULT_MAX_CHARS = 12000;
@@ -155,7 +157,7 @@ class ToolExecutor {
             // Check if it's a known tool
             const toolNames = getToolNames();
             if (!toolNames.includes(parsed.tool)) {
-                console.log(`[ToolExecutor] Unknown tool: ${parsed.tool}`);
+                logger.info('[ToolExecutor]', `Unknown tool: ${parsed.tool}`);
                 return {
                     isToolCall: true,
                     tool: parsed.tool,
@@ -172,7 +174,7 @@ class ToolExecutor {
 
         } catch (err) {
             // Not valid JSON or doesn't match expected format
-            console.log(`[ToolExecutor] JSON parse error:`, err.message);
+            logger.info('[ToolExecutor]', 'JSON parse error:', err.message);
             return null;
         }
     }
@@ -190,7 +192,7 @@ class ToolExecutor {
         if (!timeoutMs) {
             timeoutMs = toolName === 'browser_control' ? 60000 : TOOL_TIMEOUT_MS;
         }
-        console.log(`[ToolExecutor] Executing: ${toolName}`, args);
+        logger.info('[ToolExecutor]', `Executing: ${toolName}`, args);
 
         // Validate arguments
         const validation = validateArgs(toolName, args);
@@ -210,7 +212,7 @@ class ToolExecutor {
                 timeoutPromise
             ]);
         } catch (err) {
-            console.error(`[ToolExecutor] Error/timeout executing ${toolName}:`, err);
+            logger.error('[ToolExecutor]', `Error/timeout executing ${toolName}:`, err);
             return { success: false, error: err.message };
         }
     }

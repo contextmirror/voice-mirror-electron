@@ -8,6 +8,9 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { getDataDir: _getDataDir } = require('./services/platform-paths');
+const { createLogger } = require('./services/logger');
+const logger = createLogger();
 
 // Path to MCP server
 const MCP_SERVER_PATH = path.join(__dirname, '..', 'mcp-server', 'index.js');
@@ -26,15 +29,6 @@ const MCP_SETTINGS_PATH = path.join(CLAUDE_CONFIG_DIR, 'mcp_settings.json');
 // Voice Mirror working directory
 const VOICE_MIRROR_DIR = path.join(__dirname, '..', 'python');
 
-// Data directory (cross-platform)
-function _getDataDir() {
-    if (process.platform === 'win32') {
-        return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'voice-mirror-electron', 'data');
-    } else if (process.platform === 'darwin') {
-        return path.join(os.homedir(), 'Library', 'Application Support', 'voice-mirror-electron', 'data');
-    }
-    return path.join(os.homedir(), '.config', 'voice-mirror-electron', 'data');
-}
 const DATA_DIR = _getDataDir();
 const INBOX_PATH = path.join(DATA_DIR, 'inbox.json');
 
@@ -69,7 +63,7 @@ async function configureMCPServer(appConfig) {
     const groups = profiles[profileName]?.groups || ['core', 'meta', 'screen', 'memory'];
     const enabledGroups = groups.join(',');
 
-    console.log(`[Claude Spawner] Tool profile: "${profileName}" → groups: ${enabledGroups}`);
+    logger.info('[Claude Spawner]', `Tool profile: "${profileName}" → groups: ${enabledGroups}`);
 
     const serverEntry = {
         command: 'node',
@@ -123,7 +117,7 @@ async function configureMCPServer(appConfig) {
     );
 
     await Promise.all(writePromises);
-    console.log(`[Claude Spawner] MCP settings written to ${writtenCount} locations`);
+    logger.info('[Claude Spawner]', `MCP settings written to ${writtenCount} locations`);
 }
 
 /**
@@ -161,7 +155,7 @@ async function configureStatusLine() {
             refresh: 150
         };
         await fsPromises.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
-        console.log('[Claude Spawner] claude-pulse status line configured');
+        logger.info('[Claude Spawner]', 'claude-pulse status line configured');
     }
 
     // Install slash commands (if not already present)
@@ -236,7 +230,7 @@ async function spawnClaude(options = {}) {
     outputCallback = onOutput;
 
     if (ptyProcess) {
-        console.log('[Claude Spawner] Already running');
+        logger.info('[Claude Spawner]', 'Already running');
         return ptyProcess;
     }
 
@@ -270,7 +264,7 @@ async function spawnClaude(options = {}) {
         '--dangerously-skip-permissions'
     ];
 
-    console.log('[Claude Spawner] Spawning Claude Code PTY...');
+    logger.info('[Claude Spawner]', 'Spawning Claude Code PTY...');
     onOutput('[Claude] Starting interactive session...\n');
 
     try {
@@ -337,7 +331,7 @@ async function spawnClaude(options = {}) {
         });
 
         ptyProcess.onExit(({ exitCode, signal }) => {
-            console.log(`[Claude Spawner] Exited with code ${exitCode}, signal ${signal}`);
+            logger.info('[Claude Spawner]', `Exited with code ${exitCode}, signal ${signal}`);
             // Always clean up internal state
             ptyProcess = null;
             // Only forward output/exit events if this is still the active session
@@ -346,11 +340,11 @@ async function spawnClaude(options = {}) {
             onExit(exitCode);
         });
 
-        console.log('[Claude Spawner] PTY spawned successfully');
+        logger.info('[Claude Spawner]', 'PTY spawned successfully');
         return ptyProcess;
 
     } catch (err) {
-        console.error('[Claude Spawner] Failed to spawn:', err);
+        logger.error('[Claude Spawner]', 'Failed to spawn:', err);
         onOutput(`[Error] Failed to spawn Claude: ${err.message}\n`);
         return null;
     }
@@ -452,7 +446,7 @@ function stopClaude() {
     // Bump generation FIRST — invalidates onData/onExit callbacks from the dying PTY
     spawnGeneration++;
     if (ptyProcess) {
-        console.log('[Claude Spawner] Stopping...');
+        logger.info('[Claude Spawner]', 'Stopping...');
         ptyProcess.kill();
         ptyProcess = null;
     }

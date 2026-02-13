@@ -7,6 +7,8 @@
 const cdp = require('./webview-cdp');
 const { buildRoleSnapshotFromAriaSnapshot, getRoleSnapshotStats } = require('./role-refs');
 const { storeRefs } = require('./webview-actions');
+const { createLogger } = require('../services/logger');
+const logger = createLogger();
 
 const crypto = require('crypto');
 
@@ -43,7 +45,7 @@ async function takeSnapshot(opts = {}) {
             return await takeAriaSnapshot(opts);
         case 'ai':
             // AI snapshot was Playwright-internal, fall back to role
-            console.log('[webview-snapshot] AI format not available, using role format');
+            logger.info('[webview-snapshot]', 'AI format not available, using role format');
             return await takeRoleSnapshot(opts);
         case 'role':
         default:
@@ -83,11 +85,11 @@ async function takeRoleSnapshot(opts = {}) {
             const lineCount = ariaText.split('\n').filter(l => l.trim().startsWith('- ')).length;
             axTreeWorked = lineCount > 3;
             if (!axTreeWorked) {
-                console.log(`[webview-snapshot] AX tree returned only ${lineCount} lines, falling back to DOM`);
+                logger.info('[webview-snapshot]', `AX tree returned only ${lineCount} lines, falling back to DOM`);
             }
         }
     } catch (err) {
-        console.log('[webview-snapshot] AX tree failed:', err.message);
+        logger.info('[webview-snapshot]', 'AX tree failed:', err.message);
     }
 
     // If AX tree didn't produce useful results, use DOM-based extraction
@@ -136,7 +138,7 @@ async function takeRoleSnapshot(opts = {}) {
         try {
             pageText = await getPageText(maxPageText);
         } catch (err) {
-            console.log('[webview-snapshot] Page text extraction failed:', err.message);
+            logger.info('[webview-snapshot]', 'Page text extraction failed:', err.message);
         }
     }
 
@@ -540,11 +542,5 @@ function resetSnapshotHash() {
 
 module.exports = {
     takeSnapshot,
-    takeAriaSnapshot,
-    takeRoleSnapshot,
-    takeDomSnapshot,
-    getPageText,
-    formatAriaSnapshot,
-    formatAxTreeToAriaText,
-    resetSnapshotHash
+    resetSnapshotHash,
 };

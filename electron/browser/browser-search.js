@@ -8,6 +8,9 @@
 
 const cdp = require('./webview-cdp');
 const { searchSerper } = require('./serper-search');
+const { formatResults } = require('./search-utils');
+const { createLogger } = require('../services/logger');
+const logger = createLogger();
 
 // Serper API key
 let serperApiKey = process.env.SERPER_API_KEY || '';
@@ -19,7 +22,7 @@ let serperApiKey = process.env.SERPER_API_KEY || '';
 function setSerperApiKey(apiKey) {
     serperApiKey = apiKey;
     if (apiKey) {
-        console.log('[Browser Search] Serper API key configured');
+        logger.info('[Browser Search]', 'Serper API key configured');
     }
 }
 
@@ -38,14 +41,14 @@ async function webSearch(args = {}) {
     const { query, max_results = 5, timeout = 30000 } = args;
 
     if (!query) {
-        return { success: false, error: 'Search query is required' };
+        return { ok: false, error: 'Search query is required' };
     }
 
     const maxResults = Math.min(Math.max(1, max_results), 10);
 
     // Try Serper API first
     if (serperApiKey) {
-        console.log('[Browser Search] Using Serper API...');
+        logger.info('[Browser Search]', 'Using Serper API...');
         const serperResult = await searchSerper({
             query,
             apiKey: serperApiKey,
@@ -53,12 +56,12 @@ async function webSearch(args = {}) {
             timeout: Math.min(timeout, 10000),
         });
 
-        if (serperResult.success) {
+        if (serperResult.ok) {
             return serperResult;
         }
 
-        console.log('[Browser Search] Serper failed:', serperResult.error);
-        console.log('[Browser Search] Falling back to webview...');
+        logger.info('[Browser Search]', 'Serper failed:', serperResult.error);
+        logger.info('[Browser Search]', 'Falling back to webview...');
     }
 
     // Fallback: navigate webview to Google and scrape results
@@ -73,7 +76,7 @@ async function browserSearch(args = {}) {
     const { query, max_results = 5 } = args;
 
     if (!cdp.isAttached()) {
-        return { success: false, error: 'Browser not available. Open the Voice Mirror panel.' };
+        return { ok: false, error: 'Browser not available. Open the Voice Mirror panel.' };
     }
 
     const maxResults = Math.min(Math.max(1, max_results), 10);
@@ -116,37 +119,15 @@ async function browserSearch(args = {}) {
 
         const results = result?.value || [];
         if (results.length === 0) {
-            return { success: false, error: `No results from Google for "${query}"` };
+            return { ok: false, error: `No results from Google for "${query}"` };
         }
 
-        console.log(`[Browser Search] Google: Found ${results.length} results`);
+        logger.info('[Browser Search]', `Google: Found ${results.length} results`);
         return formatResults(query, results, 'Google');
     } catch (err) {
-        console.error('[Browser Search] Webview error:', err.message);
-        return { success: false, error: `Search failed: ${err.message}` };
+        logger.error('[Browser Search]', 'Webview error:', err.message);
+        return { ok: false, error: `Search failed: ${err.message}` };
     }
-}
-
-/**
- * Format search results for output.
- */
-function formatResults(query, results, engine = 'Web') {
-    const formatted = results.map((r, i) => {
-        let entry = `${i + 1}. ${r.title}`;
-        if (r.snippet) entry += `\n   ${r.snippet}`;
-        entry += `\n   URL: ${r.url}`;
-        return entry;
-    }).join('\n\n');
-
-    return {
-        success: true,
-        result: `${engine} results for "${query}":\n\n${formatted}`,
-        results: results.map(r => ({
-            title: r.title,
-            snippet: r.snippet,
-            url: r.url,
-        })),
-    };
 }
 
 module.exports = {

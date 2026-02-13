@@ -11,6 +11,8 @@
 
 const { globalShortcut, powerMonitor } = require('electron');
 const uiohookShared = require('./uiohook-shared');
+const { createLogger } = require('./logger');
+const _logger = createLogger();
 
 // uiohook scan codes for modifier keys (left and right variants)
 const MODIFIER_KEYCODES = {
@@ -102,7 +104,7 @@ function parseAccelerator(accelerator) {
  * @returns {Object} Hotkey manager API
  */
 function createHotkeyManager(options = {}) {
-    const log = options.log || ((cat, msg) => console.log(`[${cat}]`, msg));
+    const log = options.log || ((cat, msg) => _logger.info(`[${cat}]`, msg));
 
     // State: id → { accelerator, callback, parsed, uiohookActive, globalShortcutActive, lastTriggered }
     const bindings = new Map();
@@ -264,9 +266,9 @@ function createHotkeyManager(options = {}) {
     // --- Public API ---
 
     /**
-     * Initialize the hotkey manager. Call once after app is ready.
+     * Start the hotkey manager. Call once after app is ready.
      */
-    function init() {
+    function start() {
         if (initialized) return;
         initialized = true;
         setupUiohook();
@@ -352,9 +354,9 @@ function createHotkeyManager(options = {}) {
     }
 
     /**
-     * Destroy the hotkey manager. Call on app shutdown.
+     * Stop the hotkey manager. Call on app shutdown.
      */
-    function destroy() {
+    function stop() {
         stopHealthCheck();
         // Remove powerMonitor listeners to prevent leaks
         if (_onResume) { powerMonitor.removeListener('resume', _onResume); _onResume = null; }
@@ -364,17 +366,26 @@ function createHotkeyManager(options = {}) {
         }
         bindings.clear();
         initialized = false;
-        log('HOTKEY', 'Destroyed');
+        log('HOTKEY', 'Stopped');
+    }
+
+    /**
+     * Check if the hotkey manager is running.
+     * @returns {boolean}
+     */
+    function isRunning() {
+        return initialized;
     }
 
     return {
-        init,
+        start,
         register,
         unregister,
         updateBinding,
         reRegisterAll,
         getBinding,
-        destroy,
+        stop,
+        isRunning,
     };
 }
 

@@ -11,6 +11,9 @@ const { app } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const fsPromises = fs.promises;
+const { DEFAULT_ENDPOINTS } = require('./constants');
+const { createLogger } = require('./services/logger');
+const logger = createLogger();
 
 // Platform detection
 const isWindows = process.platform === 'win32';
@@ -112,9 +115,9 @@ const DEFAULT_CONFIG = {
             'voice-assistant-lite': { groups: ['core', 'meta', 'screen', 'memory-facade', 'browser-facade'] }
         },
         endpoints: {
-            ollama: 'http://127.0.0.1:11434',
-            lmstudio: 'http://127.0.0.1:1234',
-            jan: 'http://127.0.0.1:1337'
+            ollama: DEFAULT_ENDPOINTS.ollama,
+            lmstudio: DEFAULT_ENDPOINTS.lmstudio,
+            jan: DEFAULT_ENDPOINTS.jan,
         },
         apiKeys: {                    // API keys for cloud providers (stored locally)
             openai: null,
@@ -151,11 +154,9 @@ function getConfigPath(filename = 'config.json') {
 
 /**
  * Get the data directory path (cross-platform).
- * Stores runtime data: inbox, voice files, logs, etc.
+ * Delegates to platform-paths.js (canonical source for data dir).
  */
-function getDataDir() {
-    return path.join(getConfigDir(), 'data');
-}
+const { getDataDir } = require('./services/platform-paths');
 
 /**
  * Ensure the config directory exists.
@@ -182,12 +183,12 @@ function loadConfig() {
             if (fs.existsSync(tryPath)) {
                 const saved = JSON.parse(fs.readFileSync(tryPath, 'utf8'));
                 if (tryPath === backupPath) {
-                    console.warn('[Config] Main config corrupt, loaded from backup');
+                    logger.warn('[Config]', 'Main config corrupt, loaded from backup');
                 }
                 return deepMerge(DEFAULT_CONFIG, saved);
             }
         } catch (error) {
-            console.error(`[Config] Error loading ${path.basename(tryPath)}:`, error.message);
+            logger.error('[Config]', `Error loading ${path.basename(tryPath)}:`, error.message);
         }
     }
 
@@ -220,7 +221,7 @@ function saveConfig(config) {
         fs.renameSync(tempPath, configPath);
         return true;
     } catch (error) {
-        console.error('[Config] Error saving config:', error.message);
+        logger.error('[Config]', 'Error saving config:', error.message);
         // Clean up temp file if it exists
         try { fs.unlinkSync(tempPath); } catch { /* ignore */ }
         return false;
@@ -257,7 +258,7 @@ async function saveConfigAsync(config) {
         await fsPromises.rename(tempPath, configPath);
         return true;
     } catch (error) {
-        console.error('[Config] Error saving config (async):', error.message);
+        logger.error('[Config]', 'Error saving config (async):', error.message);
         try { await fsPromises.unlink(tempPath); } catch { /* ignore */ }
         return false;
     }

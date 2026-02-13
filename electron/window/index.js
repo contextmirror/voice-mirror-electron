@@ -6,6 +6,8 @@
 const { BrowserWindow, screen } = require('electron');
 const { execFileSync } = require('child_process');
 const path = require('path');
+const { createLogger } = require('../services/logger');
+const logger = createLogger();
 
 /**
  * Clamp window bounds so the window stays within the nearest display's work area.
@@ -160,7 +162,7 @@ function createWindowManager(options = {}) {
             }
         });
 
-        console.log('[Window] Main window created');
+        logger.info('[Window]', 'Main window created');
         return mainWindow;
     }
 
@@ -189,10 +191,10 @@ function createWindowManager(options = {}) {
                     '-id', windowId, '-f', '_NET_WM_STATE', '32a',
                     '-set', '_NET_WM_STATE', '_NET_WM_STATE_ABOVE'
                 ], { timeout: 3000 });
-                console.log('[Window] X11 overlay configured (id:', windowId, ')');
+                logger.info('[Window]', 'X11 overlay configured (id:', windowId, ')');
             }
         } catch (e) {
-            console.log('[Window] Could not configure X11 overlay:', e.message);
+            logger.info('[Window]', 'Could not configure X11 overlay:', e.message);
         }
     }
 
@@ -268,7 +270,7 @@ function createWindowManager(options = {}) {
             mainWindow.setSkipTaskbar(false);
             mainWindow.setAlwaysOnTop(false);  // Allow other windows to cover when expanded
             mainWindow.focus();
-            console.log('[Window] Expanded to panel:', panelWidth, 'x', panelHeight);
+            logger.info('[Window]', 'Expanded to panel:', panelWidth, 'x', panelHeight);
             // Re-register hotkeys after compositor settles
             if (onWindowStateChanged) setTimeout(onWindowStateChanged, 150);
         }, 50);
@@ -315,7 +317,7 @@ function createWindowManager(options = {}) {
             mainWindow.setPosition(restoreX, restoreY);
             mainWindow.setSkipTaskbar(true);
             mainWindow.setAlwaysOnTop(true, 'screen-saver');
-            console.log('[Window] Collapsed to orb:', orbSize, 'x', orbSize);
+            logger.info('[Window]', 'Collapsed to orb:', orbSize, 'x', orbSize);
             // Re-register hotkeys after compositor settles
             if (onWindowStateChanged) setTimeout(onWindowStateChanged, 150);
         }, 50);

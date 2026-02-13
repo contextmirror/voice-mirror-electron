@@ -7,6 +7,9 @@
 const fs = require('fs');
 const fsPromises = fs.promises;
 const path = require('path');
+const { createJsonFileWatcher } = require('../lib/json-file-watcher');
+const { createLogger } = require('./logger');
+const logger = createLogger();
 
 /**
  * Create an inbox watcher service instance.
@@ -41,7 +44,7 @@ function createInboxWatcher(options = {}) {
         ? (category, action, data) => log.devlog(category, action, data)
         : () => {};
 
-    let watcher = null;
+    let fileWatcher = null;
     let displayedMessageIds = new Set();  // Track messages already shown in UI
     let processedUserMessageIds = new Set();  // Track user messages already forwarded to non-Claude providers
 
@@ -49,8 +52,8 @@ function createInboxWatcher(options = {}) {
      * Start watching for inbox messages.
      */
     function start() {
-        if (watcher) {
-            console.log('[InboxWatcher] Already running');
+        if (fileWatcher) {
+            logger.info('[InboxWatcher]', 'Already running');
             return;
         }
 
@@ -78,15 +81,11 @@ function createInboxWatcher(options = {}) {
                         }
                     }
                 }
-                console.log(`[InboxWatcher] Seeded ${displayedMessageIds.size} display IDs, ${processedUserMessageIds.size} user message IDs`);
+                logger.info('[InboxWatcher]', `Seeded ${displayedMessageIds.size} display IDs, ${processedUserMessageIds.size} user message IDs`);
             }
         } catch (err) {
-            console.error('[InboxWatcher] Failed to seed message IDs:', err);
+            logger.error('[InboxWatcher]', 'Failed to seed message IDs:', err);
         }
-
-        // Debounce: coalesce rapid file changes into a single check
-        let debounceTimer = null;
-        let fsWatcher = null;
 
         async function checkInbox() {
             try {
@@ -122,7 +121,7 @@ function createInboxWatcher(options = {}) {
                         displayedMessageIds.delete(iterator.next().value);
                     }
 
-                    console.log('[InboxWatcher] New Claude message:', latestClaudeMessage.message?.slice(0, 50));
+                    logger.info('[InboxWatcher]', 'New Claude message:', latestClaudeMessage.message?.slice(0, 50));
 
                     if (onClaudeMessage) {
                         onClaudeMessage({
@@ -158,7 +157,7 @@ function createInboxWatcher(options = {}) {
                         }
 
                         const providerName = activeProvider.getDisplayName();
-                        console.log(`[InboxWatcher] Forwarding inbox message to ${providerName}: ${msg.message?.slice(0, 50)}...`);
+                        logger.info('[InboxWatcher]', `Forwarding inbox message to ${providerName}: ${msg.message?.slice(0, 50)}...`);
                         _devlog('BACKEND', 'forwarding', { text: msg.message, source: providerName, msgId: msg.id });
 
                         try {
@@ -195,14 +194,14 @@ function createInboxWatcher(options = {}) {
                                     });
                                 }
                             } else {
-                                console.log('[InboxWatcher] No response captured, sending idle event');
+                                logger.info('[InboxWatcher]', 'No response captured, sending idle event');
                                 _devlog('BACKEND', 'no-response', { reason: 'capture returned null/empty' });
                                 if (onVoiceEvent) {
                                     onVoiceEvent({ type: 'idle' });
                                 }
                             }
                         }).catch((err) => {
-                            console.error(`[InboxWatcher] Error forwarding to ${providerName}:`, err);
+                            logger.error('[InboxWatcher]', `Error forwarding to ${providerName}:`, err);
                             if (onVoiceEvent) {
                                 onVoiceEvent({ type: 'idle' });
                             }
@@ -212,61 +211,28 @@ function createInboxWatcher(options = {}) {
 
             } catch (err) {
                 if (!(err instanceof SyntaxError)) {
-                    console.error('[InboxWatcher] Check error:', err.message);
+                    logger.error('[InboxWatcher]', 'Check error:', err.message);
                 }
             }
         }
 
-        function debouncedCheck() {
-            if (debounceTimer) clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(() => checkInbox(), 100);
-        }
-
-        // Use fs.watch on the data directory for inbox changes
-        try {
-            fsWatcher = fs.watch(contextMirrorDir, (eventType, filename) => {
-                if (filename === 'inbox.json') {
-                    debouncedCheck();
-                }
-            });
-            fsWatcher.on('error', (err) => {
-                console.error('[InboxWatcher] fs.watch error, falling back to polling:', err.message);
-                fsWatcher = null;
-                // Fallback: poll at 2s instead of 500ms
-                watcher = setInterval(() => checkInbox(), 2000);
-            });
-        } catch (err) {
-            console.error('[InboxWatcher] fs.watch unavailable, using polling fallback:', err.message);
-            watcher = setInterval(() => checkInbox(), 2000);
-        }
-
-        // Store references for cleanup
-        watcher = {
-            fsWatcher,
-            debounceTimer: null,  // tracked via closure
-            _close() {
-                if (fsWatcher) { try { fsWatcher.close(); } catch {} }
-                if (debounceTimer) clearTimeout(debounceTimer);
-            }
-        };
-
-        console.log('[InboxWatcher] Started (fs.watch mode)');
+        fileWatcher = createJsonFileWatcher({
+            watchDir: contextMirrorDir,
+            filename: 'inbox.json',
+            debounceMs: 100,
+            onEvent: checkInbox,
+            label: 'InboxWatcher'
+        });
+        fileWatcher.start();
     }
 
     /**
      * Stop watching for inbox messages.
      */
     function stop() {
-        if (watcher) {
-            if (watcher._close) {
-                watcher._close(); // fs.watch mode
-            } else if (typeof watcher.close === 'function') {
-                watcher.close();
-            } else {
-                clearInterval(watcher); // polling fallback
-            }
-            watcher = null;
-            console.log('[InboxWatcher] Stopped');
+        if (fileWatcher) {
+            fileWatcher.stop();
+            fileWatcher = null;
         }
     }
 
@@ -275,7 +241,7 @@ function createInboxWatcher(options = {}) {
      * @returns {boolean} True if running
      */
     function isRunning() {
-        return watcher !== null;
+        return fileWatcher !== null && fileWatcher.isRunning();
     }
 
     /**
@@ -315,10 +281,10 @@ function createInboxWatcher(options = {}) {
                         }
                     }
                 }
-                console.log(`[InboxWatcher] Re-seeded ${displayedMessageIds.size} display IDs, ${processedUserMessageIds.size} user message IDs for provider switch`);
+                logger.info('[InboxWatcher]', `Re-seeded ${displayedMessageIds.size} display IDs, ${processedUserMessageIds.size} user message IDs for provider switch`);
             }
         } catch (err) {
-            console.error('[InboxWatcher] Failed to re-seed message IDs:', err);
+            logger.error('[InboxWatcher]', 'Failed to re-seed message IDs:', err);
         }
     }
 
@@ -375,14 +341,14 @@ async function captureProviderResponse(provider, message, _devlog = () => {}, im
             if (resolved) return;
             toolInProgress = true;
             toolCount++;
-            console.log(`[InboxWatcher] Tool call in progress: ${data.tool} (call #${toolCount})`);
+            logger.info('[InboxWatcher]', `Tool call in progress: ${data.tool} (call #${toolCount})`);
             _devlog('TOOL', 'call-started', { tool: data.tool, text: `call #${toolCount}` });
             if (originalOnToolCall) originalOnToolCall(data);
         };
 
         provider.onToolResult = (data) => {
             if (resolved) return;
-            console.log(`[InboxWatcher] Tool result received: ${data.tool} (success: ${data.success})`);
+            logger.info('[InboxWatcher]', `Tool result received: ${data.tool} (success: ${data.success})`);
             _devlog('TOOL', 'call-result', { tool: data.tool, success: data.success, text: `call #${toolCount}` });
             fullResponse = '';
             lastLength = 0;
@@ -429,7 +395,7 @@ async function captureProviderResponse(provider, message, _devlog = () => {}, im
                 if (stableCount >= 2) {  // 1 second grace period
                     // Use allOutput since fullResponse may have been reset
                     finalResponse = extractSpeakableResponse(allOutput);
-                    console.log(`[InboxWatcher] Max iterations reached, captured (${allOutput.length} chars) -> speakable: "${finalResponse?.slice(0, 100)}..."`);
+                    logger.info('[InboxWatcher]', `Max iterations reached, captured (${allOutput.length} chars) -> speakable: "${finalResponse?.slice(0, 100)}..."`);
                     _devlog('BACKEND', 'response-captured', { text: finalResponse, chars: allOutput.length, reason: 'max-iterations' });
                     finish(finalResponse, 'max-iterations');
                     return;
@@ -443,7 +409,7 @@ async function captureProviderResponse(provider, message, _devlog = () => {}, im
                 // After 5 seconds of nothing post-tool, extract from allOutput
                 if (emptyAfterToolChecks >= 10) {
                     finalResponse = extractSpeakableResponse(allOutput);
-                    console.log(`[InboxWatcher] No follow-up after tool, using full output (${allOutput.length} chars) -> speakable: "${finalResponse?.slice(0, 100)}..."`);
+                    logger.info('[InboxWatcher]', `No follow-up after tool, using full output (${allOutput.length} chars) -> speakable: "${finalResponse?.slice(0, 100)}..."`);
                     _devlog('BACKEND', 'response-captured', { text: finalResponse, chars: allOutput.length, reason: 'no-followup-after-tool' });
                     finish(finalResponse, 'no-followup-after-tool');
                     return;
@@ -504,7 +470,7 @@ async function captureProviderResponse(provider, message, _devlog = () => {}, im
                         }
                     } catch { /* diagnostic not available */ }
 
-                    console.log(`[InboxWatcher] Captured response (${fullResponse.length} chars) -> speakable: "${finalResponse?.slice(0, 100)}..."`);
+                    logger.info('[InboxWatcher]', `Captured response (${fullResponse.length} chars) -> speakable: "${finalResponse?.slice(0, 100)}..."`);
                     _devlog('BACKEND', 'response-captured', { text: finalResponse, chars: fullResponse.length, reason: 'stable' });
                     finish(finalResponse, 'stable');
                 }
@@ -527,10 +493,10 @@ async function captureProviderResponse(provider, message, _devlog = () => {}, im
             const source = fullResponse.length > 0 ? fullResponse : allOutput;
             finalResponse = extractSpeakableResponse(source);
             if (finalResponse) {
-                console.log(`[InboxWatcher] Timeout captured (${source.length} chars) -> speakable: "${finalResponse?.slice(0, 100)}..."`);
+                logger.info('[InboxWatcher]', `Timeout captured (${source.length} chars) -> speakable: "${finalResponse?.slice(0, 100)}..."`);
                 _devlog('BACKEND', 'response-captured', { text: finalResponse, chars: source.length, reason: 'timeout-fallback' });
             } else {
-                console.log(`[InboxWatcher] Timeout with no speakable content. fullResponse=${fullResponse.length} chars, allOutput=${allOutput.length} chars, toolCompleted=${toolCompleted}`);
+                logger.info('[InboxWatcher]', `Timeout with no speakable content. fullResponse=${fullResponse.length} chars, allOutput=${allOutput.length} chars, toolCompleted=${toolCompleted}`);
             }
             finish(finalResponse, 'timeout');
         }, 60000);
@@ -715,7 +681,7 @@ function writeResponseToInbox(dataDir, response, providerName, replyToId) {
     data.messages.push(newMessage);
     fs.writeFileSync(inboxPath, JSON.stringify(data));
 
-    console.log(`[InboxWatcher] Wrote response to inbox from ${senderId}`);
+    logger.info('[InboxWatcher]', `Wrote response to inbox from ${senderId}`);
 }
 
 module.exports = {

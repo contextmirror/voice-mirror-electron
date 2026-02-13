@@ -4,6 +4,8 @@
  */
 
 import { state } from './state.js';
+import { createLog } from './log.js';
+const log = createLog('[Main]');
 import { initMarkdown } from './markdown.js';
 import { addMessage, isDuplicate, copyMessage, initScrollButtons } from './messages.js';
 import { initTerminal, handleAIOutput, updateAIStatus, toggleTerminal, startAI, stopAI, updateProviderDisplay } from './terminal.js';
@@ -36,7 +38,7 @@ if (interruptBtn) {
         try {
             await window.voiceMirror.claude.interrupt();
         } catch (err) {
-            console.error('[Main] Failed to interrupt:', err);
+            log.error('Failed to interrupt:', err);
         }
     });
 }
@@ -73,7 +75,7 @@ export async function updateWelcomeMessage() {
         // Update bubble text while preserving copy button
         welcomeBubble.innerHTML = message + copyBtn.outerHTML;
     } catch (err) {
-        console.error('[Welcome] Failed to load config:', err);
+        log.error('Failed to load welcome config:', err);
         document.getElementById('welcome-bubble').textContent = 'Ready to assist.';
     }
 }
@@ -95,8 +97,8 @@ function updateUI() {
  * Collapse panel back to orb
  */
 function collapse() {
-    window.voiceMirror.toggleExpand().then(expanded => {
-        state.isExpanded = expanded;
+    window.voiceMirror.toggleExpand().then(result => {
+        state.isExpanded = result.data;
         updateUI();
     });
 }
@@ -155,7 +157,7 @@ async function startImageVoiceWorkflow() {
     state.awaitingVoiceForImage = true;
     state.imageVoicePrompt = null;
 
-    console.log('[Image] Starting voice workflow, mode:', mode);
+    log.info('Starting image voice workflow, mode:', mode);
 
     // Set timeout based on mode
     // For PTT: longer timeout (user needs to press button)
@@ -169,7 +171,7 @@ async function startImageVoiceWorkflow() {
     state.imageVoiceTimeout = setTimeout(() => {
         // Timeout reached - send image with default prompt
         if (state.awaitingVoiceForImage && state.pendingImageData) {
-            console.log('[Image] Voice timeout - sending with default prompt');
+            log.info('Image voice timeout - sending with default prompt');
             sendImageWithPrompt('Describe this image.');
         }
     }, timeoutMs);
@@ -184,7 +186,7 @@ function handleVoiceForImage(text) {
         return false; // Not awaiting voice for image
     }
 
-    console.log('[Image] Got voice prompt:', text);
+    log.info('Got image voice prompt:', text);
 
     // Clear timeout
     if (state.imageVoiceTimeout) {
@@ -228,7 +230,7 @@ async function sendImageWithPrompt(prompt) {
     // Send to backend (response comes via inbox watcher, not inline)
     window.voiceMirror.sendImageToBackend({ ...imageData, prompt })
         .catch(err => {
-            console.error('Failed to send image:', err);
+            log.error('Failed to send image:', err);
             addMessage('assistant', 'Sorry, I could not process that image.');
         });
     // Note: We don't show "waiting for response" - the inbox watcher handles responses
@@ -241,8 +243,9 @@ async function sendImageWithPrompt(prompt) {
 async function captureAndPreview(sourceId) {
     statusText.textContent = 'Capturing screen...';
     try {
-        const dataUrl = await window.voiceMirror.captureScreen(sourceId);
-        if (dataUrl) {
+        const captureResult = await window.voiceMirror.captureScreen(sourceId);
+        const dataUrl = captureResult.data;
+        if (captureResult.success && dataUrl) {
             const sizeEstimate = Math.round((dataUrl.length * 3) / 4);
 
             state.pendingImageData = {
@@ -261,7 +264,7 @@ async function captureAndPreview(sourceId) {
             startImageVoiceWorkflow();
         }
     } catch (err) {
-        console.error('Screen capture failed:', err);
+        log.error('Screen capture failed:', err);
         statusText.textContent = 'Capture failed';
         setTimeout(() => {
             statusText.textContent = 'Listening...';
@@ -351,7 +354,8 @@ function updateCaptureButtonState() {
  */
 async function captureScreen() {
     try {
-        const screens = await window.voiceMirror.getScreens();
+        const result = await window.voiceMirror.getScreens();
+        const screens = result.data;
         if (!screens || screens.length === 0) return;
         if (screens.length === 1) {
             await captureAndPreview(screens[0].id);
@@ -359,7 +363,7 @@ async function captureScreen() {
             showScreenPicker(screens);
         }
     } catch (err) {
-        console.error('Screen capture failed:', err);
+        log.error('Screen capture failed:', err);
     }
 }
 
@@ -718,7 +722,7 @@ function formatToolName(name) {
  * Handle voice events from Python backend
  */
 function handleVoiceEvent(data) {
-    console.log('[Voice Event]', data);
+    log.debug('Voice event:', data);
     switch (data.type) {
         case 'starting':
             statusText.textContent = 'Starting...';
@@ -816,7 +820,7 @@ function handleVoiceEvent(data) {
             setAIStatus(null, true, 0, 'voice');
             break;
         case 'mode_change':
-            console.log('Mode changed to:', data.mode);
+            log.info('Mode changed to:', data.mode);
             break;
         case 'claude_connected':
             // Note: terminal clear on provider switch is handled in handleAIOutput('start')
@@ -881,7 +885,8 @@ async function init() {
 
         // Inject custom fonts before theme application so CSS variables reference valid families
         try {
-            const customFonts = await window.voiceMirror.fonts.list();
+            const fontsResult = await window.voiceMirror.fonts.list();
+            const customFonts = fontsResult.data || [];
             for (const font of customFonts) {
                 const data = await window.voiceMirror.fonts.getDataUrl(font.id);
                 if (data.success) {
@@ -892,7 +897,7 @@ async function init() {
                 }
             }
         } catch (err) {
-            console.warn('[Fonts] Failed to load custom fonts at startup:', err);
+            log.warn('Failed to load custom fonts at startup:', err);
         }
 
         // Apply saved theme (colors, fonts, orb) before first paint
@@ -907,7 +912,7 @@ async function init() {
             document.getElementById('chat-container')?.classList.add('chat-hide-avatars');
         }
     } catch (err) {
-        console.warn('[Init] Failed to load provider config:', err);
+        log.warn('Failed to load provider config:', err);
     }
 
     // Load welcome message
@@ -926,7 +931,7 @@ async function init() {
             applyThemeEngine(c, f);
         } catch { /* theme already applied, terminal will use fallback */ }
     } catch (err) {
-        console.error('[terminal] Failed to initialize:', err);
+        log.error('Failed to initialize terminal:', err);
     }
 
     // Initialize browser panel
@@ -957,13 +962,13 @@ async function init() {
         orb.addEventListener('mousedown', async (e) => {
             if (e.button !== 0 || state.isExpanded) return;
             e.preventDefault();
-            dragStartCursor = await window.voiceMirror.getCursorPosition();
-            dragStartWin = await window.voiceMirror.getWindowPosition();
+            dragStartCursor = (await window.voiceMirror.getCursorPosition()).data;
+            dragStartWin = (await window.voiceMirror.getWindowPosition()).data;
             dragging = true;
             // Start polling immediately at ~60fps
             const poll = async () => {
                 if (!dragging) return;
-                const cursor = await window.voiceMirror.getCursorPosition();
+                const cursor = (await window.voiceMirror.getCursorPosition()).data;
                 const dx = cursor.x - dragStartCursor.x;
                 const dy = cursor.y - dragStartCursor.y;
                 await window.voiceMirror.setWindowPosition(dragStartWin.x + dx, dragStartWin.y + dy);
@@ -987,8 +992,9 @@ async function init() {
     // Right-click on orb to expand
     orb.addEventListener('contextmenu', async (e) => {
         e.preventDefault();
-        console.log('[Orb] Right-click, toggling expand');
-        state.isExpanded = await window.voiceMirror.toggleExpand();
+        log.info('Orb right-click, toggling expand');
+        const toggleResult = await window.voiceMirror.toggleExpand();
+        state.isExpanded = toggleResult.data;
         updateUI();
     });
 
@@ -1003,7 +1009,7 @@ async function init() {
 
     // Listen for chat messages from Python backend
     window.voiceMirror.onChatMessage((data) => {
-        console.log('[Chat Message]', data);
+        log.debug('Chat message:', data);
         window.voiceMirror.devlog('IPC', 'chat-message-received', {
             role: data.role,
             text: data.text?.slice(0, 200),
@@ -1040,14 +1046,14 @@ async function init() {
 
     // Listen for tool events (local LLM tool system) — status bar + existing logging
     window.voiceMirror.tools.onToolCall((data) => {
-        console.log('[Tool Call]', data);
+        log.debug('Tool call:', data);
         window.voiceMirror.devlog('TOOL', 'tool-call', { tool: data.tool, text: JSON.stringify(data.args)?.slice(0, 200) });
         const displayName = TOOL_DISPLAY_NAMES[data.tool] || `Running ${data.tool.replace(/_/g, ' ')}`;
         setAIStatus(`${displayName}...`, true, 8000, 'mcp');
     });
 
     window.voiceMirror.tools.onToolResult((data) => {
-        console.log('[Tool Result]', data);
+        log.debug('Tool result:', data);
         window.voiceMirror.devlog('TOOL', 'tool-result', { tool: data.tool, success: data.success, text: data.result?.slice(0, 200) });
         const displayName = TOOL_DISPLAY_NAMES[data.tool] || data.tool.replace(/_/g, ' ');
         setAIStatus(`${displayName} ${data.success ? 'done' : 'failed'}`, false, 2500, 'mcp');
@@ -1073,11 +1079,12 @@ async function init() {
 
     // Initialize state from main process
     const initialState = await window.voiceMirror.getState();
-    state.isExpanded = initialState.expanded;
+    state.isExpanded = initialState.data.expanded;
     updateUI();
 
     // Check Python status
-    const pythonStatus = await window.voiceMirror.python.getStatus();
+    const pythonStatusResult = await window.voiceMirror.python.getStatus();
+    const pythonStatus = pythonStatusResult.data;
     if (!pythonStatus.running) {
         statusText.textContent = 'Voice backend not running';
     }
@@ -1093,8 +1100,8 @@ async function init() {
     }
 
     // Check AI provider status
-    const claudeStatus = await window.voiceMirror.claude.getStatus();
-    updateAIStatus(claudeStatus.running);
+    const claudeStatusResult = await window.voiceMirror.claude.getStatus();
+    updateAIStatus(claudeStatusResult.data.running);
 
     // Paste handler for images
     document.addEventListener('paste', async (e) => {
@@ -1255,7 +1262,7 @@ async function init() {
         }
     });
 
-    console.log('[Voice Mirror] Initialized');
+    log.info('Voice Mirror initialized');
 }
 
 // Expose functions globally for onclick handlers in HTML

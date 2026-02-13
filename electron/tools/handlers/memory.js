@@ -8,6 +8,8 @@
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
+const { createLogger } = require('../../services/logger');
+const logger = createLogger();
 
 /**
  * Get the memory data directory.
@@ -82,7 +84,7 @@ async function memorySearch(args = {}) {
         };
 
     } catch (err) {
-        console.error('[MemorySearch] Error:', err);
+        logger.error('[MemorySearch]', 'Error:', err);
         return {
             success: false,
             error: `Memory search failed: ${err.message}`
@@ -181,7 +183,7 @@ async function memoryRemember(args = {}) {
         };
 
     } catch (err) {
-        console.error('[MemoryRemember] Error:', err);
+        logger.error('[MemoryRemember]', 'Error:', err);
         return {
             success: false,
             error: `Failed to store memory: ${err.message}`
@@ -235,7 +237,7 @@ async function memoryForget(args = {}) {
 
         return { success: true, result: `Forgot ${totalDeleted} memory(s) matching "${content}".` };
     } catch (err) {
-        console.error('[MemoryForget] Error:', err);
+        logger.error('[MemoryForget]', 'Error:', err);
         return { success: false, error: `Failed to forget: ${err.message}` };
     }
 }
@@ -277,7 +279,7 @@ async function memoryClear(args = {}) {
         const tierLabel = tier === 'all' ? 'all tiers' : `${tier} tier`;
         return { success: true, result: `Cleared ${totalCleared} memory(s) from ${tierLabel}.` };
     } catch (err) {
-        console.error('[MemoryClear] Error:', err);
+        logger.error('[MemoryClear]', 'Error:', err);
         return { success: false, error: `Failed to clear memories: ${err.message}` };
     }
 }

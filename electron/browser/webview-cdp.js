@@ -6,6 +6,9 @@
  * Replaces chrome-launcher + cdp-helpers + cdp-client for the embedded webview.
  */
 
+const { createLogger } = require('../services/logger');
+const logger = createLogger();
+
 /** @type {Electron.WebContents | null} */
 let guestContents = null;
 
@@ -32,9 +35,9 @@ function attachDebugger(webContents) {
     try {
         guestContents.debugger.attach('1.3');
         debuggerAttached = true;
-        console.log('[webview-cdp] Debugger attached');
+        logger.info('[webview-cdp]', 'Debugger attached');
     } catch (err) {
-        console.error('[webview-cdp] Failed to attach debugger:', err.message);
+        logger.error('[webview-cdp]', 'Failed to attach debugger:', err.message);
         debuggerAttached = false;
         throw err;
     }
@@ -45,14 +48,14 @@ function attachDebugger(webContents) {
         if (listeners) {
             for (const cb of listeners) {
                 try { cb(params); } catch (e) {
-                    console.error(`[webview-cdp] Event listener error for ${method}:`, e);
+                    logger.error('[webview-cdp]', `Event listener error for ${method}:`, e);
                 }
             }
         }
     });
 
     guestContents.debugger.on('detach', (_event, reason) => {
-        console.log('[webview-cdp] Debugger detached:', reason);
+        logger.info('[webview-cdp]', 'Debugger detached:', reason);
         debuggerAttached = false;
     });
 }
@@ -66,7 +69,7 @@ function detachDebugger() {
             guestContents.debugger.detach();
         } catch {}
         debuggerAttached = false;
-        console.log('[webview-cdp] Debugger detached');
+        logger.info('[webview-cdp]', 'Debugger detached');
     }
 }
 

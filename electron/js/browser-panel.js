@@ -4,6 +4,8 @@
  */
 
 import { navigateTo } from './navigation.js';
+import { createLog } from './log.js';
+const log = createLog('[BrowserPanel]');
 
 let webview = null;
 let urlBar = null;
@@ -27,7 +29,7 @@ export function initBrowserPanel() {
     popoutBtn = document.getElementById('browser-popout');
 
     if (!webview) {
-        console.warn('[BrowserPanel] No webview element found');
+        log.warn('No webview element found');
         return;
     }
 
@@ -63,12 +65,12 @@ export function initBrowserPanel() {
 
     webview.addEventListener('page-title-updated', (e) => {
         // Could update a title display if desired
-        console.log('[BrowserPanel] Title:', e.title);
+        log.info('Title:', e.title);
     });
 
     webview.addEventListener('did-fail-load', (e) => {
         if (e.errorCode !== -3) { // -3 = aborted (normal for navigations)
-            console.error('[BrowserPanel] Load failed:', e.errorDescription);
+            log.error('Load failed:', e.errorDescription);
         }
     });
 
@@ -85,7 +87,7 @@ export function initBrowserPanel() {
         });
     }
 
-    console.log('[BrowserPanel] Initialized');
+    log.info('Initialized');
 }
 
 /**

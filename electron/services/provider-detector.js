@@ -7,6 +7,10 @@
  * Ported from Context Mirror's providerDetector.ts
  */
 
+const { DEFAULT_ENDPOINTS } = require('../constants');
+const { createLogger } = require('./logger');
+const logger = createLogger();
+
 // Detection timeout in milliseconds
 const DETECTION_TIMEOUT = 5000;
 
@@ -18,21 +22,21 @@ const LOCAL_PROVIDERS = {
     ollama: {
         type: 'ollama',
         name: 'Ollama',
-        baseUrl: 'http://127.0.0.1:11434',
+        baseUrl: DEFAULT_ENDPOINTS.ollama,
         modelsEndpoint: '/v1/models',
         chatEndpoint: '/v1/chat/completions'
     },
     lmstudio: {
         type: 'lmstudio',
         name: 'LM Studio',
-        baseUrl: 'http://127.0.0.1:1234',
+        baseUrl: DEFAULT_ENDPOINTS.lmstudio,
         modelsEndpoint: '/v1/models',
         chatEndpoint: '/v1/chat/completions'
     },
     jan: {
         type: 'jan',
         name: 'Jan',
-        baseUrl: 'http://127.0.0.1:1337',
+        baseUrl: DEFAULT_ENDPOINTS.jan,
         modelsEndpoint: '/v1/models',
         chatEndpoint: '/v1/chat/completions'
     }
@@ -189,7 +193,7 @@ async function tryStartOllama() {
             // Check if the file exists (skip PATH-based 'ollama' — handled separately)
             if (exe !== 'ollama' && !fs.existsSync(exe)) continue;
 
-            console.log(`[ProviderDetector] Found Ollama at: ${exe}`);
+            logger.info('[ProviderDetector]', `Found Ollama at: ${exe}`);
 
             // Start detached so it survives if Voice Mirror exits
             const isApp = exe.endsWith('app.exe') || exe.endsWith('Ollama.app/Contents/MacOS/ollama');
@@ -205,17 +209,17 @@ async function tryStartOllama() {
             for (let i = 0; i < 20; i++) {
                 await new Promise(r => setTimeout(r, 500));
                 try {
-                    const resp = await fetch('http://127.0.0.1:11434/', {
+                    const resp = await fetch(DEFAULT_ENDPOINTS.ollama + '/', {
                         signal: AbortSignal.timeout(2000)
                     });
                     if (resp.ok || resp.status < 500) {
-                        console.log(`[ProviderDetector] Ollama started successfully`);
+                        logger.info('[ProviderDetector]', 'Ollama started successfully');
                         return true;
                     }
                 } catch { /* not ready yet */ }
             }
 
-            console.log(`[ProviderDetector] Ollama started but server not responding after 10s`);
+            logger.info('[ProviderDetector]', 'Ollama started but server not responding after 10s');
             return false;
         } catch (err) {
             // This candidate didn't work, try next
@@ -223,7 +227,7 @@ async function tryStartOllama() {
         }
     }
 
-    console.log(`[ProviderDetector] Ollama not found on this system`);
+    logger.info('[ProviderDetector]', 'Ollama not found on this system');
     return false;
 }
 
@@ -291,16 +295,16 @@ async function detectLocalProvider(type, customEndpoint = null) {
                 status.models = [];
             }
 
-            console.log(`[ProviderDetector] ${config.name}: ONLINE (${status.models.length} models)`);
+            logger.info('[ProviderDetector]', `${config.name}: ONLINE (${status.models.length} models)`);
         } else {
-            console.log(`[ProviderDetector] ${config.name}: HTTP ${response.status}`);
+            logger.info('[ProviderDetector]', `${config.name}: HTTP ${response.status}`);
         }
     } catch (err) {
         if (err.name === 'AbortError') {
-            console.log(`[ProviderDetector] ${config.name}: TIMEOUT`);
+            logger.info('[ProviderDetector]', `${config.name}: TIMEOUT`);
             status.error = 'timeout';
         } else {
-            console.log(`[ProviderDetector] ${config.name}: OFFLINE`);
+            logger.info('[ProviderDetector]', `${config.name}: OFFLINE`);
             status.error = 'offline';
 
             // Auto-start Ollama if it's installed but not running
@@ -332,7 +336,7 @@ class ProviderDetectorService {
      * @returns {Promise<Array>} List of provider statuses
      */
     async scanAll() {
-        console.log('[ProviderDetector] Scanning for local providers...');
+        logger.info('[ProviderDetector]', 'Scanning for local providers...');
 
         const providers = Object.keys(LOCAL_PROVIDERS);
         const results = await Promise.all(providers.map(type => detectLocalProvider(type)));
@@ -344,7 +348,7 @@ class ProviderDetectorService {
         });
 
         const online = results.filter(r => r.online);
-        console.log(`[ProviderDetector] Found ${online.length} provider(s) online:`,
+        logger.info('[ProviderDetector]', `Found ${online.length} provider(s) online:`,
             online.map(p => `${p.name} (${p.models.length} models)`).join(', ') || 'none'
         );
 

@@ -6,6 +6,9 @@
  */
 
 const https = require('https');
+const { formatResults } = require('./search-utils');
+const { createLogger } = require('../services/logger');
+const logger = createLogger();
 
 /**
  * Search using Serper.dev API.
@@ -27,14 +30,14 @@ async function searchSerper(args = {}) {
 
     if (!query) {
         return {
-            success: false,
+            ok: false,
             error: 'Search query is required',
         };
     }
 
     if (!apiKey) {
         return {
-            success: false,
+            ok: false,
             error: 'Serper API key is required',
         };
     }
@@ -42,7 +45,7 @@ async function searchSerper(args = {}) {
     const maxResults = Math.min(Math.max(1, max_results), 10);
 
     try {
-        console.log(`[Serper] Searching: "${query}"`);
+        logger.info('[Serper]', `Searching: "${query}"`);
 
         const response = await makeRequest({
             query,
@@ -52,9 +55,10 @@ async function searchSerper(args = {}) {
         });
 
         if (!response.organic || response.organic.length === 0) {
-            console.log('[Serper] No organic results');
+            logger.info('[Serper]', 'No organic results');
             return {
-                success: true,
+                ok: true,
+                action: 'search',
                 result: `No results found for "${query}".`,
                 results: [],
             };
@@ -66,13 +70,13 @@ async function searchSerper(args = {}) {
             url: item.link || '',
         }));
 
-        console.log(`[Serper] Found ${results.length} results`);
+        logger.info('[Serper]', `Found ${results.length} results`);
         return formatResults(query, results);
 
     } catch (err) {
-        console.error('[Serper] Error:', err.message);
+        logger.error('[Serper]', 'Error:', err.message);
         return {
-            success: false,
+            ok: false,
             error: `Search failed: ${err.message}`,
         };
     }
@@ -140,30 +144,6 @@ function makeRequest({ query, apiKey, num, timeout }) {
         req.write(postData);
         req.end();
     });
-}
-
-/**
- * Format search results for output.
- *
- * @param {string} query
- * @param {Array} results
- * @returns {Object}
- */
-function formatResults(query, results) {
-    const formatted = results.map((r, i) => {
-        let entry = `${i + 1}. ${r.title}`;
-        if (r.snippet) {
-            entry += `\n   ${r.snippet}`;
-        }
-        entry += `\n   URL: ${r.url}`;
-        return entry;
-    }).join('\n\n');
-
-    return {
-        success: true,
-        result: `Search results for "${query}":\n\n${formatted}`,
-        results: results,
-    };
 }
 
 module.exports = {

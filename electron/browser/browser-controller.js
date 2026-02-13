@@ -7,6 +7,8 @@
 const cdp = require('./webview-cdp');
 const { takeSnapshot } = require('./webview-snapshot');
 const { executeAction, screenshotAction } = require('./webview-actions');
+const { createLogger } = require('../services/logger');
+const logger = createLogger();
 
 /** @type {{ console: Array, errors: Array }} */
 const consoleState = { console: [], errors: [] };
@@ -69,7 +71,7 @@ async function setupDialogListener() {
             url: params.url || '',
             timestamp: Date.now()
         };
-        console.log(`[browser-controller] Dialog opened: ${params.type} "${(params.message || '').slice(0, 80)}"`);
+        logger.info('[browser-controller]', `Dialog opened: ${params.type} "${(params.message || '').slice(0, 80)}"`);
     });
 
     cdp.onEvent('Page.javascriptDialogClosed', () => {

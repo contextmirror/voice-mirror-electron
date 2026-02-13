@@ -5,6 +5,55 @@ Format inspired by game dev patch notes — grouped by release, categorized by i
 
 ---
 
+## v0.8.2 — "World-Class Standards" (2026-02-13)
+
+Comprehensive code quality refactor across 8 phases: architecture decomposition, logging standardisation, error consistency, shared pattern extraction, service lifecycle unification, security hardening, and new tests. Executed by a coordinated team of 10 agents.
+
+### Architecture
+- **Split `ipc-handlers.js`** (889 lines) into 6 focused modules under `electron/ipc/`: `window.js`, `config.js`, `screen.js`, `ai.js`, `misc.js`, and `index.js` — each handler group now lives in its own file
+- **Extracted `main.js` utilities**: `startOllamaServer()` → `electron/lib/ollama-launcher.js`, `syncVoiceSettingsToFile()` → python-backend service method, `ensureLocalLLMRunning()` → ai-manager service method (main.js reduced by ~160 lines)
+- **Created `electron/lib/` directory** with shared utilities: `json-file-watcher.js` (factory for 3 watchers), `windows-screen-capture.js` (deduplicated from 2 files), `ollama-launcher.js`, `safe-path.js`
+
+### Logging
+- **Structured logger**: Extended `electron/services/logger.js` with level methods — `info()`, `warn()`, `error()`, `debug()` — each accepting a `[Tag]` parameter
+- **Full migration**: All 336 `console.log/error/warn` calls replaced with structured logger calls (main process) and `createLog()` wrapper (renderer) — zero raw console calls remain
+- **Debug gating**: `debug()` level only emits when `VOICE_MIRROR_DEBUG=1` environment variable is set
+- **Renderer logger**: New `electron/js/log.js` provides `createLog('[Tag]')` for renderer-side modules
+
+### Consistency
+- **IPC response format**: All 57 IPC handlers now return `{ success: boolean, data?: any, error?: string }` — no more mixed `{ ok }`, plain values, or `null` returns
+- **Browser tool responses**: Unified to `{ ok: boolean, action: string, result?: any, error?: string }` across webview-actions, browser-fetch, browser-search, and serper-search
+- **Service lifecycle**: All services now expose `start()`, `stop()`, `isRunning()` — renamed hotkey-manager's `init()`/`destroy()` and added `isRunning()` to all watchers
+
+### Deduplication
+- **`electron/constants.js`**: Shared `CLI_PROVIDERS` and `DEFAULT_ENDPOINTS` — removed duplicate definitions from 6 files
+- **`electron/browser/search-utils.js`**: Extracted shared `formatResults()` from browser-search and serper-search
+- **`electron/lib/json-file-watcher.js`**: Factory replaces ~150 lines of duplicate watch-debounce-parse logic in each of the 3 watcher services
+- **Platform paths**: Consolidated `getDataDir()` to single source (`platform-paths.js`) — removed duplicate implementations from config.js and claude-spawner.js
+- **Trimmed over-exports**: webview-snapshot.js reduced from 8 to 2 exports, webview-actions.js from 17 to 5
+
+### Security
+- **Path traversal prevention**: New `electron/lib/safe-path.js` with `ensureWithin(base, userPath)` — applied to 4 chat IPC handlers that accepted user-supplied file IDs
+- **API key audit**: Verified no API key values are logged anywhere in the codebase (keys are passed to APIs but never appear in logs)
+
+### Tests
+- **42 new tests** across 6 files: `constants.test.js`, `safe-path.test.js`, `logger-levels.test.js`, `search-utils.test.js`, `json-file-watcher.test.js`, `service-lifecycle.test.js`
+- **Integration test scaffold**: New `test/integration/` directory with service lifecycle verification
+- **Test count**: 477 → 519 (0 failures, 2 skipped)
+
+### Documentation
+- **`docs/CODE-QUALITY-PLAN.md`**: Full 8-phase plan with rationale, dependencies, and verification steps
+- **`docs/FUTURE-IMPROVEMENTS.md`**: Out-of-scope items documented for future work (renderer framework, Python refactoring, secure credential storage, settings.js decomposition)
+
+### Technical
+- 45 files modified, 11 new files created
+- +634 / -1,611 lines (net -977 lines)
+- 519 tests passing, 0 failures
+- Structured logger calls: 6 → 338
+- Raw console calls: 336 → 0
+
+---
+
 ## v0.8.1 — "Spring Cleaning" (2026-02-13)
 
 Deep codebase audit and cleanup: 7 agents scanned every source file for dead code, unused exports, unreachable paths, and tightening opportunities. A second pass caught cascading dead code created by the first round of removals. Three runtime bugs were also discovered and fixed.

@@ -148,10 +148,65 @@ function createLogger(options = {}) {
         }
     }
 
+    const isDebugEnabled = process.env.VOICE_MIRROR_DEBUG === '1';
+
+    /**
+     * Log an info-level message with a tag prefix.
+     * @param {string} tag - Tag prefix (e.g., '[AI Manager]')
+     * @param {...any} args - Values to log
+     */
+    function info(tag, ...args) {
+        const message = `${tag} ${args.map(String).join(' ')}`;
+        log('LOG', message);
+    }
+
+    /**
+     * Log a warning-level message with a tag prefix.
+     * @param {string} tag - Tag prefix (e.g., '[Config]')
+     * @param {...any} args - Values to log
+     */
+    function warn(tag, ...args) {
+        const message = `${tag} ${args.map(String).join(' ')}`;
+        const now = new Date();
+        const timestamp = now.toTimeString().slice(0, 8);
+        const cat = `[WARN]`.padEnd(CAT_PAD);
+        const logLine = `${Colors.DIM}[${timestamp}]${Colors.RESET} ${Colors.YELLOW}${cat} ⚠ ${message}${Colors.RESET}`;
+        console.warn(logLine);
+        if (logFile) {
+            logFile.write(logLine + '\n');
+        }
+    }
+
+    /**
+     * Log an error-level message with a tag prefix.
+     * @param {string} tag - Tag prefix (e.g., '[Browser]')
+     * @param {...any} args - Values to log
+     */
+    function error(tag, ...args) {
+        const message = `${tag} ${args.map(String).join(' ')}`;
+        log('ERROR', message);
+    }
+
+    /**
+     * Log a debug-level message with a tag prefix.
+     * Only emits when VOICE_MIRROR_DEBUG=1 env var is set.
+     * @param {string} tag - Tag prefix
+     * @param {...any} args - Values to log
+     */
+    function debug(tag, ...args) {
+        if (!isDebugEnabled) return;
+        const message = `[DEBUG] ${tag} ${args.map(String).join(' ')}`;
+        log('LOG', message);
+    }
+
     return {
         init,
         log,
         devlog,
+        info,
+        warn,
+        error,
+        debug,
         close
     };
 }

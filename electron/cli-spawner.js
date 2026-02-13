@@ -9,6 +9,8 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { createLogger } = require('./services/logger');
+const logger = createLogger();
 
 // Cross-platform config dir
 function _getConfigBase() {
@@ -25,7 +27,7 @@ const DEBUG_LOG_PATH = path.join(_getConfigBase(), 'cli-spawner-debug.log');
 function debugLog(label, msg) {
     const timestamp = new Date().toISOString();
     const line = `[${timestamp}] [${label}] ${msg}\n`;
-    console.log(`[CLI Spawner:${label}]`, msg);
+    logger.debug(`[CLI Spawner:${label}]`, msg);
     try {
         fs.appendFileSync(DEBUG_LOG_PATH, line);
     } catch (e) {}

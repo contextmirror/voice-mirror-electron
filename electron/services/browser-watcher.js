@@ -7,6 +7,9 @@
 const fs = require('fs');
 const fsPromises = fs.promises;
 const path = require('path');
+const { createJsonFileWatcher } = require('../lib/json-file-watcher');
+const { createLogger } = require('./logger');
+const logger = createLogger();
 
 /**
  * Create a browser watcher service instance.
@@ -18,7 +21,7 @@ const path = require('path');
 function createBrowserWatcher(options = {}) {
     const { dataDir, serperApiKey, onActivity } = options;
 
-    let watcher = null;
+    let fileWatcher = null;
     let browserModule = null;
     let controllerModule = null;
 
@@ -40,8 +43,8 @@ function createBrowserWatcher(options = {}) {
     }
 
     function start() {
-        if (watcher) {
-            console.log('[BrowserWatcher] Already running');
+        if (fileWatcher) {
+            logger.info('[BrowserWatcher]', 'Already running');
             return;
         }
 
@@ -72,7 +75,7 @@ function createBrowserWatcher(options = {}) {
 
                 if (now - requestTime > 5000) return;
 
-                console.log(`[BrowserWatcher] Request: ${request.action}`);
+                logger.info('[BrowserWatcher]', `Request: ${request.action}`);
                 if (onActivity) {
                     const toolMap = { search: 'browser_search', fetch: 'browser_fetch', navigate: 'browser_navigate', screenshot: 'browser_screenshot' };
                     onActivity(toolMap[request.action] || `browser_${request.action}`);
@@ -167,43 +170,27 @@ function createBrowserWatcher(options = {}) {
                     timestamp: new Date().toISOString()
                 }));
 
-                console.log(`[BrowserWatcher] Response written for ${request.action}`);
+                logger.info('[BrowserWatcher]', `Response written for ${request.action}`);
             } catch (err) {
-                console.error('[BrowserWatcher] Error:', err);
+                logger.error('[BrowserWatcher]', 'Error:', err);
             } finally {
                 processing = false;
             }
         }
 
-        // Use fs.watch on the data directory instead of polling
-        try {
-            watcher = fs.watch(contextMirrorDir, (eventType, filename) => {
-                if (filename === 'browser_request.json') {
-                    processRequest();
-                }
-            });
-            watcher.on('error', (err) => {
-                console.error('[BrowserWatcher] fs.watch error, falling back to polling:', err.message);
-                watcher = null;
-                watcher = setInterval(() => processRequest(), 2000);
-            });
-        } catch (err) {
-            console.error('[BrowserWatcher] fs.watch unavailable, using polling fallback:', err.message);
-            watcher = setInterval(() => processRequest(), 2000);
-        }
-
-        console.log('[BrowserWatcher] Started');
+        fileWatcher = createJsonFileWatcher({
+            watchDir: contextMirrorDir,
+            filename: 'browser_request.json',
+            onEvent: processRequest,
+            label: 'BrowserWatcher'
+        });
+        fileWatcher.start();
     }
 
     function stop() {
-        if (watcher) {
-            if (typeof watcher.close === 'function') {
-                watcher.close(); // fs.watch
-            } else {
-                clearInterval(watcher); // polling fallback
-            }
-            watcher = null;
-            console.log('[BrowserWatcher] Stopped');
+        if (fileWatcher) {
+            fileWatcher.stop();
+            fileWatcher = null;
         }
     }
 
@@ -211,14 +198,14 @@ function createBrowserWatcher(options = {}) {
         try {
             const ctrl = getController();
             await ctrl.stopBrowser();
-            console.log('[BrowserWatcher] Browser stopped');
+            logger.info('[BrowserWatcher]', 'Browser stopped');
         } catch (err) {
-            console.error('[BrowserWatcher] Error closing browser:', err.message);
+            logger.error('[BrowserWatcher]', 'Error closing browser:', err.message);
         }
     }
 
     function isRunning() {
-        return watcher !== null;
+        return fileWatcher !== null && fileWatcher.isRunning();
     }
 
     return {

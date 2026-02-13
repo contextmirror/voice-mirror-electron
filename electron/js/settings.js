@@ -5,6 +5,8 @@
 import { state } from './state.js';
 import { formatKeybind } from './utils.js';
 import { navigateTo } from './navigation.js';
+import { createLog } from './log.js';
+const log = createLog('[Settings]');
 import { updateProviderDisplay } from './terminal.js';
 import { PRESETS, deriveOrbColors, applyTheme, resolveTheme, buildExportData, validateImportData, applyMessageCardOverrides, hexToRgb } from './theme-engine.js';
 import { renderOrb, DURATIONS } from './orb-canvas.js';
@@ -169,7 +171,7 @@ export function toggleSettings() {
 export async function loadSettingsUI() {
     try {
         state.currentConfig = await window.voiceMirror.config.get();
-        console.log('[Settings] Loaded config:', state.currentConfig);
+        log.info('Loaded config:', state.currentConfig);
 
         // User name
         document.getElementById('user-name').value = state.currentConfig.user?.name || '';
@@ -249,7 +251,8 @@ export async function loadSettingsUI() {
 
         // Load detected API keys from environment
         try {
-            state._detectedKeyProviders = await window.voiceMirror.python.getDetectedKeys() || [];
+            const keysResult = await window.voiceMirror.python.getDetectedKeys();
+            state._detectedKeyProviders = keysResult.data || [];
         } catch { state._detectedKeyProviders = []; }
 
         // Populate API key field for current provider
@@ -270,7 +273,7 @@ export async function loadSettingsUI() {
         loadToolProfileUI();
 
     } catch (err) {
-        console.error('[Settings] Failed to load config:', err);
+        log.error('Failed to load config:', err);
     }
 }
 
@@ -394,8 +397,9 @@ export async function scanProviders() {
 
     try {
         // Call main process to scan providers
-        const results = await window.voiceMirror.ai.scanProviders();
-        state.detectedProviders = results || [];
+        const scanResult = await window.voiceMirror.ai.scanProviders();
+        const results = scanResult.data || [];
+        state.detectedProviders = results;
 
         // Build status display
         let html = '<span class="detection-label">Local LLM Servers</span>';
@@ -445,10 +449,10 @@ export async function scanProviders() {
             }
         }
 
-        console.log('[Settings] Provider scan complete:', results);
+        log.info('Provider scan complete:', results);
 
     } catch (err) {
-        console.error('[Settings] Provider scan failed:', err);
+        log.error('Provider scan failed:', err);
         statusDiv.className = 'detection-status';
         statusDiv.innerHTML = '<span class="detection-label">Failed to scan providers</span>';
     } finally {
@@ -554,7 +558,7 @@ export async function saveSettings() {
     const modelChanged = oldModel !== aiModel;
     const contextLengthChanged = oldContextLength !== aiContextLength;
     if (providerChanged || modelChanged || contextLengthChanged) {
-        console.log(`[Settings] Provider/model changed: ${oldProvider}/${oldModel} -> ${aiProvider}/${aiModel}`);
+        log.info(`Provider/model changed: ${oldProvider}/${oldModel} -> ${aiProvider}/${aiModel}`);
 
         // Update state so next terminal banner shows the NEW provider name
         state.currentProvider = aiProvider;
@@ -568,7 +572,7 @@ export async function saveSettings() {
 
     try {
         const newConfig = await window.voiceMirror.config.set(updates);
-        console.log('[Settings] Saved config:', newConfig);
+        log.info('Saved config:', newConfig);
 
         // Update welcome message with new mode
         window.updateWelcomeMessage();
@@ -596,7 +600,7 @@ export async function saveSettings() {
         }, 1500);
 
     } catch (err) {
-        console.error('[Settings] Failed to save:', err);
+        log.error('Failed to save:', err);
         alert('Failed to save settings: ' + err.message);
     }
 }
@@ -610,7 +614,8 @@ async function loadAudioDevices() {
     if (!inputSelect || !outputSelect) return;
 
     try {
-        const devices = await window.voiceMirror.python.listAudioDevices();
+        const devicesResult = await window.voiceMirror.python.listAudioDevices();
+        const devices = devicesResult.data;
         if (!devices) return;
 
         // Populate input devices
@@ -639,7 +644,7 @@ async function loadAudioDevices() {
             if (savedOutput) outputSelect.value = savedOutput;
         }
     } catch (err) {
-        console.log('[Settings] Could not load audio devices:', err);
+        log.info('Could not load audio devices:', err);
     }
 }
 
@@ -687,8 +692,9 @@ async function loadOverlayOutputs() {
     if (!section || !select) return;
 
     try {
-        const outputs = await window.voiceMirror.overlay.listOutputs();
-        if (!outputs || outputs.length <= 1) {
+        const outputsResult = await window.voiceMirror.overlay.listOutputs();
+        const outputs = outputsResult.data || [];
+        if (outputs.length <= 1) {
             // Hide section if only one or no monitors
             section.style.display = 'none';
             return;
@@ -713,7 +719,7 @@ async function loadOverlayOutputs() {
             select.value = savedOutput;
         }
     } catch (err) {
-        console.log('[Settings] Could not load overlay outputs:', err);
+        log.info('Could not load overlay outputs:', err);
         section.style.display = 'none';
     }
 }
@@ -728,9 +734,9 @@ export async function resetSettings() {
         await window.voiceMirror.config.reset();
         loadSettingsUI();
         window.updateWelcomeMessage();
-        console.log('[Settings] Reset to defaults');
+        log.info('Reset to defaults');
     } catch (err) {
-        console.error('[Settings] Failed to reset:', err);
+        log.error('Failed to reset:', err);
     }
 }
 
@@ -835,7 +841,7 @@ async function checkAndPromptCLIInstall(providerId) {
 
     try {
         const result = await window.voiceMirror.ai.checkCLIAvailable('opencode');
-        if (result.available) return;
+        if (result.data?.available) return;
 
         showToast(
             'OpenCode is not installed.',
@@ -857,7 +863,7 @@ async function checkAndPromptCLIInstall(providerId) {
                                 `Install failed. Run "npm install -g opencode-ai" manually.`,
                                 'error'
                             );
-                            console.error('[Settings] OpenCode install failed:', installResult.error);
+                            log.error('OpenCode install failed:', installResult.error);
                         }
                     } catch (err) {
                         updateToast(
@@ -865,13 +871,13 @@ async function checkAndPromptCLIInstall(providerId) {
                             `Install failed. Run "npm install -g opencode-ai" manually.`,
                             'error'
                         );
-                        console.error('[Settings] OpenCode install error:', err);
+                        log.error('OpenCode install error:', err);
                     }
                 }
             }
         );
     } catch (err) {
-        console.error('[Settings] CLI availability check failed:', err);
+        log.error('CLI availability check failed:', err);
     }
 }
 
@@ -1473,7 +1479,7 @@ async function importTheme() {
 
         applyLiveTheme();
     } catch (err) {
-        console.error('[Theme] Import failed:', err);
+        log.error('Theme import failed:', err);
     }
 }
 
@@ -1485,7 +1491,7 @@ async function exportTheme() {
         const data = buildExportData('My Theme', colors, fonts);
         await window.voiceMirror.theme.export(data);
     } catch (err) {
-        console.error('[Theme] Export failed:', err);
+        log.error('Theme export failed:', err);
     }
 }
 
@@ -1674,7 +1680,8 @@ function removeInjectedFont(fontId) {
 
 /** Load all custom fonts, inject @font-face rules, populate dropdowns and management list */
 async function loadCustomFonts() {
-    const fonts = await window.voiceMirror.fonts.list();
+    const fontsResult = await window.voiceMirror.fonts.list();
+    const fonts = fontsResult.data || [];
     for (const font of fonts) {
         await injectCustomFont(font);
     }
@@ -1753,7 +1760,7 @@ async function handleUploadFont(type) {
 
     const addResult = await window.voiceMirror.fonts.add(uploadResult.filePath, type);
     if (!addResult.success) {
-        console.error('[Fonts] Failed to add font:', addResult.error);
+        log.error('Failed to add font:', addResult.error);
         return;
     }
 
@@ -1776,7 +1783,7 @@ async function handleUploadFont(type) {
 async function handleRemoveFont(fontId) {
     const result = await window.voiceMirror.fonts.remove(fontId);
     if (!result.success) {
-        console.error('[Fonts] Failed to remove font:', result.error);
+        log.error('Failed to remove font:', result.error);
         return;
     }
 

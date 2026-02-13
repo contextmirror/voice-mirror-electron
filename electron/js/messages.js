@@ -7,6 +7,8 @@
 import { state, recentMessages, DEDUP_WINDOW_MS } from './state.js';
 import { renderMarkdown } from './markdown.js';
 import { formatTime } from './utils.js';
+import { createLog } from './log.js';
+const log = createLog('[Chat]');
 
 /**
  * Smart auto-scroll: only scrolls if user is near the bottom.
@@ -90,7 +92,7 @@ export function isDuplicate(text) {
 
     // Check if we've seen this recently
     if (recentMessages.has(normalized)) {
-        console.log('[Chat] Duplicate message suppressed:', text.slice(0, 50));
+        log.info('Duplicate message suppressed:', text.slice(0, 50));
         window.voiceMirror?.devlog('UI', 'card-dedup', { text: text.slice(0, 200), reason: 'duplicate within 5s window' });
         return true;
     }

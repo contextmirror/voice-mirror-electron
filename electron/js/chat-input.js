@@ -6,6 +6,8 @@
 import { addMessage, isDuplicate, autoScroll } from './messages.js';
 import { state } from './state.js';
 import { triggerAutoName } from './chat-store.js';
+import { createLog } from './log.js';
+const log = createLog('[Waveform]');
 
 let textarea;
 let sendBtn;
@@ -174,7 +176,7 @@ function startAudioVisualizer() {
             sampleTimer = setInterval(sampleAmplitude, SAMPLE_INTERVAL_MS);
             drawLoop();
         } catch (err) {
-            console.warn('[Waveform] Could not access microphone for visualizer:', err);
+            log.warn('Could not access microphone for visualizer:', err);
         }
     };
     init();

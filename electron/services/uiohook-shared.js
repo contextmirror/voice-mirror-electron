@@ -11,6 +11,8 @@
 
 const { EventEmitter } = require('events');
 const emitter = new EventEmitter();
+const { createLogger } = require('./logger');
+const logger = createLogger();
 
 let uIOhook = null;
 let started = false;
@@ -28,10 +30,10 @@ const STALE_THRESHOLD_MS = 120000;  // 120s with no events = likely dead (avoid 
 try {
     const mod = require('uiohook-napi');
     uIOhook = mod.uIOhook;
-    console.log('[uiohook-shared] uiohook-napi loaded successfully');
+    logger.info('[uiohook]', 'uiohook-napi loaded successfully');
 } catch (err) {
     loadError = err;
-    console.warn('[uiohook-shared] uiohook-napi not available:', err.message);
+    logger.warn('[uiohook]', 'uiohook-napi not available:', err.message);
 }
 
 /**
@@ -58,7 +60,7 @@ function startHealthMonitor() {
         if (!started) return;
         const elapsed = Date.now() - lastEventSeen;
         if (elapsed > STALE_THRESHOLD_MS) {
-            console.warn(`[uiohook-shared] No input events for ${Math.round(elapsed / 1000)}s — restarting`);
+            logger.warn('[uiohook]', `No input events for ${Math.round(elapsed / 1000)}s — restarting`);
             restart();
         }
     }, HEALTH_INTERVAL_MS);
@@ -77,10 +79,10 @@ function ensureStarted() {
         lastEventSeen = Date.now();
         attachCanary();
         startHealthMonitor();
-        console.log('[uiohook-shared] uiohook started');
+        logger.info('[uiohook]', 'uiohook started');
         return true;
     } catch (err) {
-        console.error('[uiohook-shared] Failed to start uiohook:', err);
+        logger.error('[uiohook]', 'Failed to start uiohook:', err);
         started = false;
         return false;
     }
@@ -91,7 +93,7 @@ function ensureStarted() {
  * @returns {boolean} true if restart succeeded
  */
 function restart() {
-    console.log('[uiohook-shared] Restarting uiohook...');
+    logger.info('[uiohook]', 'Restarting uiohook...');
     try { uIOhook.stop(); } catch {}
     started = false;
     canaryAttached = false;
@@ -99,10 +101,10 @@ function restart() {
 
     const ok = ensureStarted();
     if (ok) {
-        console.log('[uiohook-shared] Restart successful, notifying consumers');
+        logger.info('[uiohook]', 'Restart successful, notifying consumers');
         emitter.emit('restarted');
     } else {
-        console.error('[uiohook-shared] Restart failed');
+        logger.error('[uiohook]', 'Restart failed');
     }
     return ok;
 }
@@ -120,7 +122,7 @@ function stop() {
             uIOhook.stop();
             started = false;
             canaryAttached = false;
-            console.log('[uiohook-shared] uiohook stopped');
+            logger.info('[uiohook]', 'uiohook stopped');
         } catch (err) {
             // Ignore errors during cleanup
         }

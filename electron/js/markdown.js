@@ -4,6 +4,8 @@
  */
 
 import { escapeHtml } from './utils.js';
+import { createLog } from './log.js';
+const log = createLog('[Markdown]');
 import {
     markdownCache,
     MARKDOWN_CACHE_LIMIT,
@@ -127,7 +129,7 @@ export function renderMarkdown(text) {
             });
         }
     } catch (err) {
-        console.error('[Markdown] Parse error:', err);
+        log.error('Parse error:', err);
         html = escapeHtml(text).replace(/\n/g, '<br>');
     }
 

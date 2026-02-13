@@ -5,6 +5,8 @@
 
 const { Tray, Menu, app, nativeImage } = require('electron');
 const path = require('path');
+const { createLogger } = require('../services/logger');
+const logger = createLogger();
 
 /**
  * Create a tray service instance.
@@ -37,7 +39,7 @@ function createTrayService(options = {}) {
             }
             tray = new Tray(icon);
         } catch (e) {
-            console.log('[Tray] Icon not found, skipping tray creation');
+            logger.info('[Tray]', 'Icon not found, skipping tray creation');
             return null;
         }
 
@@ -78,7 +80,7 @@ function createTrayService(options = {}) {
             }
         });
 
-        console.log('[Tray] System tray created');
+        logger.info('[Tray]', 'System tray created');
         return tray;
     }
 

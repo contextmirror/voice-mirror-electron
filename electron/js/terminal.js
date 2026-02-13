@@ -8,6 +8,8 @@
 import { state } from './state.js';
 import { PROVIDER_ICON_CLASSES } from './settings.js';
 import { onTerminalThemeChanged } from './theme-engine.js';
+import { createLog } from './log.js';
+const log = createLog('[Terminal]');
 
 // ghostty-web instance
 let term = null;
@@ -84,16 +86,16 @@ export async function initTerminal() {
     // ghostty-web loaded via UMD script tag (exposes window.GhosttyWeb)
     const GhosttyWeb = window.GhosttyWeb;
     if (!GhosttyWeb) {
-        console.error('[ghostty-web] GhosttyWeb not loaded - check script tags');
+        log.error('GhosttyWeb not loaded - check script tags');
         return;
     }
 
     // Initialize WASM before creating any Terminal instances
     try {
         await GhosttyWeb.init();
-        console.log('[ghostty-web] WASM initialized');
+        log.info('WASM initialized');
     } catch (err) {
-        console.error('[ghostty-web] WASM init failed:', err);
+        log.error('WASM init failed:', err);
         return;
     }
 
@@ -107,7 +109,7 @@ export async function initTerminal() {
             state.terminalLocation = config.behavior.terminalLocation;
         }
     } catch (err) {
-        console.warn('[ghostty-web] Failed to load terminal location preference:', err);
+        log.warn('Failed to load terminal location preference:', err);
     }
 
     term = new Terminal({
@@ -380,7 +382,7 @@ export async function initTerminal() {
     term.writeln(`\x1b[90mClick "Start" to launch ${providerName}...\x1b[0m`);
     term.writeln('');
 
-    console.log('[ghostty-web] Initialized at:', state.terminalLocation);
+    log.info('Initialized at:', state.terminalLocation);
 }
 
 /**
@@ -453,12 +455,12 @@ export function minimizeTerminal() {
  */
 export async function relocateTerminal(location) {
     if (!term || !term.element) {
-        console.warn('[ghostty-web] Cannot relocate - terminal not initialized');
+        log.warn('Cannot relocate - terminal not initialized');
         return;
     }
 
     if (location === state.terminalLocation) {
-        console.log('[ghostty-web] Already at location:', location);
+        log.info('Already at location:', location);
         return;
     }
 
@@ -505,9 +507,9 @@ export async function relocateTerminal(location) {
         await window.voiceMirror.config.set({
             behavior: { terminalLocation: location }
         });
-        console.log('[ghostty-web] Relocated to:', location);
+        log.info('Relocated to:', location);
     } catch (err) {
-        console.error('[ghostty-web] Failed to save terminal location:', err);
+        log.error('Failed to save terminal location:', err);
     }
 }
 
@@ -609,7 +611,7 @@ export function updateProviderDisplay(providerName, providerType = 'claude', mod
         navTerminal.setAttribute('data-tooltip', providerName);
     }
 
-    console.log(`[Terminal] Provider display updated: ${providerName} (${providerType}${model ? ', model: ' + model : ''})`);
+    log.info(`Provider display updated: ${providerName} (${providerType}${model ? ', model: ' + model : ''})`);
 }
 
 /**
@@ -665,11 +667,11 @@ export function handleAIOutput(data) {
     // After that, any stale output from an older generation is still dropped.
     if (state.pendingProviderClear) {
         if (data.type !== 'start') {
-            console.log(`[Terminal] GATED (pendingClear): type=${data.type} len=${(data.text || '').length}`);
+            log.debug(`GATED (pendingClear): type=${data.type} len=${(data.text || '').length}`);
             return;
         }
         // 'start' from the new provider — accept this generation
-        console.log(`[Terminal] Accepting gen ${state.providerGeneration}: ${(data.text || '').substring(0, 60)}`);
+        log.info(`Accepting gen ${state.providerGeneration}: ${(data.text || '').substring(0, 60)}`);
         acceptedGeneration = state.providerGeneration;
         state.pendingProviderClear = false;
         clearTerminal();
@@ -678,7 +680,7 @@ export function handleAIOutput(data) {
         lastPtyRows = 0;
     } else if (state.providerGeneration !== acceptedGeneration) {
         // Late-arriving output from an old provider after flag was cleared
-        console.log(`[Terminal] GATED (stale gen): type=${data.type} provGen=${state.providerGeneration} accepted=${acceptedGeneration}`);
+        log.debug(`GATED (stale gen): type=${data.type} provGen=${state.providerGeneration} accepted=${acceptedGeneration}`);
         return;
     }
 
@@ -766,7 +768,7 @@ export function clearTerminal() {
     }
     term.writeln('');
 
-    console.log('[Terminal] Cleared');
+    log.info('Cleared');
 }
 
 // Expose functions globally for onclick handlers
