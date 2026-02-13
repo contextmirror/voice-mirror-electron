@@ -12,12 +12,10 @@ Electron (frontend + main process)
 ├── electron/overlay.html         — Renderer HTML (single-page app)
 ├── electron/renderer/            — Renderer modules (terminal, theme, settings, state)
 ├── electron/services/            — Backend services (AI manager, hotkeys, screen capture)
-├── electron/providers/           — AI provider configs (Claude Code, OpenCode, Ollama, etc.)
+├── electron/providers/           — AI providers + PTY spawners (Claude Code, OpenCode, Ollama, etc.)
 ├── electron/tools/               — MCP tool group definitions
 ├── electron/ipc/                  — IPC bridge modules (ai, config, misc, screen, window)
 ├── electron/lib/                  — Shared utilities (JSON watcher, Ollama launcher, safe paths, screen capture)
-├── electron/cli-spawner.js       — PTY spawner for CLI-based providers (OpenCode)
-├── electron/claude-spawner.js    — PTY spawner for Claude Code
 ├── electron/constants.js         — Shared constants
 └── electron/browser/             — CDP browser automation engine
 
@@ -81,7 +79,7 @@ Tools are organized into groups that load dynamically. Use `list_tool_groups` to
 
 ```bash
 npm install                  # Install dependencies
-npm test                     # Run all tests (452 across 114 suites)
+npm test                     # Run all tests (519 across 126 suites)
 npm start                    # Launch Voice Mirror
 npm run dev                  # Dev mode with auto-reload
 ```
