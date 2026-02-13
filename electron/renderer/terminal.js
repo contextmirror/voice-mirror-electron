@@ -706,6 +706,11 @@ export function handleAIOutput(data) {
             // Write raw PTY data directly (includes ANSI codes)
             term.write(data.text);
             break;
+        case 'tui':
+            // TUI dashboard render output — same as stdout but uses separate
+            // type so InboxWatcher can ignore it (only captures 'stdout')
+            term.write(data.text);
+            break;
         case 'stderr':
             // stderr also gets written as raw data
             term.write(data.text);

@@ -364,7 +364,7 @@ async function captureProviderResponse(provider, message, _devlog = () => {}, im
         provider.emitOutput = (type, text) => {
             originalEmit(type, text);
             if (resolved) return;
-            if (type === 'stdout' && text) {
+            if ((type === 'stdout' || type === 'response') && text) {
                 fullResponse += text;
                 allOutput += text;
                 // Detect max tool iterations reached

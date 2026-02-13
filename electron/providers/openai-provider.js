@@ -140,6 +140,22 @@ class OpenAIProvider extends BaseProvider {
         }
 
         this.emitOutput('start', `${this.getDisplayName()} ready\n`);
+
+        // Create TUI dashboard for rich terminal rendering
+        const { TUIRenderer } = require('./tui-renderer');
+        this.tui = new TUIRenderer(
+            (text) => this.emitOutput('tui', text),
+            {
+                model: this.model,
+                providerName: this.providerName,
+                contextLength: this.contextLength,
+                cols: options.cols || 120,
+                rows: options.rows || 30
+            }
+        );
+        this.tui.updateInfo('toolCount', `${Object.keys(toOpenAITools()).length}`);
+        this.tui.render();
+
         logger.info('[OpenAIProvider]', `${this.providerName} started with model: ${this.model}`);
 
         return true;
@@ -153,9 +169,21 @@ class OpenAIProvider extends BaseProvider {
             this.abortController.abort();
             this.abortController = null;
         }
+        if (this.tui) {
+            this.tui.destroy();
+            this.tui = null;
+        }
         this.running = false;
         this.messages = [];
         logger.info('[OpenAIProvider]', `${this.providerName} stopped`);
+    }
+
+    resize(cols, rows) {
+        if (this.tui) this.tui.resize(cols, rows);
+    }
+
+    hasTUI() {
+        return !!this.tui;
     }
 
     /**
@@ -212,7 +240,11 @@ class OpenAIProvider extends BaseProvider {
                     content: text
                 });
             }
-            this.emitOutput('stdout', `\n> ${text}\n\n`);
+            if (this.tui) {
+                this.tui.appendMessage('user', text);
+            } else {
+                this.emitOutput('stdout', `\n> ${text}\n\n`);
+            }
             // Reset tool iteration counter for new user input
             this.currentToolIteration = 0;
         }
@@ -296,6 +328,8 @@ class OpenAIProvider extends BaseProvider {
             let fullResponse = '';
             let accumulatedToolCalls = [];
             let finishReason = null;
+            let streamStart = Date.now();
+            let tokenCount = 0;
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
 
@@ -317,7 +351,12 @@ class OpenAIProvider extends BaseProvider {
                             const content = choice?.delta?.content;
                             if (content) {
                                 fullResponse += content;
-                                this.emitOutput('stdout', content);
+                                tokenCount++;
+                                if (this.tui) {
+                                    this.tui.streamToken(content);
+                                } else {
+                                    this.emitOutput('stdout', content);
+                                }
                             }
 
                             // Accumulate native tool calls from streaming deltas
@@ -334,6 +373,15 @@ class OpenAIProvider extends BaseProvider {
                         }
                     }
                 }
+            }
+
+            // Update TUI speed and finish stream
+            if (this.tui && tokenCount > 0) {
+                const elapsed = (Date.now() - streamStart) / 1000;
+                if (elapsed > 0) {
+                    this.tui.updateInfo('speed', `${(tokenCount / elapsed).toFixed(0)} tok/s`);
+                }
+                this.tui.finishStream();
             }
 
             // Diagnostic trace: model response complete
@@ -378,7 +426,11 @@ class OpenAIProvider extends BaseProvider {
                     }
 
                     logger.info('[OpenAIProvider]', `Native tool call: ${tc.name}`);
-                    this.emitOutput('stdout', `\n[Executing tool: ${tc.name}...]\n`);
+                    if (this.tui) {
+                        this.tui.addToolCall(tc.name, JSON.stringify(tc.args || {}).slice(0, 40));
+                    } else {
+                        this.emitOutput('stdout', `\n[Executing tool: ${tc.name}...]\n`);
+                    }
 
                     // Diagnostic trace
                     try {
@@ -427,11 +479,19 @@ class OpenAIProvider extends BaseProvider {
                     } catch { /* diagnostic not available */ }
 
                     logger.info('[OpenAIProvider]', `Tool result: ${result.success ? 'success' : 'failed'}`);
-                    this.emitOutput('stdout', `[Tool ${result.success ? 'succeeded' : 'failed'}]\n\n`);
+                    if (this.tui) {
+                        this.tui.updateToolCall(tc.name, result.success ? 'done' : 'failed');
+                    } else {
+                        this.emitOutput('stdout', `[Tool ${result.success ? 'succeeded' : 'failed'}]\n\n`);
+                    }
                 }
 
                 // Emit context usage before follow-up
-                this.emitOutput('context-usage', JSON.stringify(this.estimateTokenUsage()));
+                const nativeUsage = this.estimateTokenUsage();
+                this.emitOutput('context-usage', JSON.stringify(nativeUsage));
+                if (this.tui) {
+                    this.tui.updateContext(nativeUsage.used, nativeUsage.limit);
+                }
 
                 // Get follow-up response from model with tool results
                 await this.sendInput('', true);
@@ -444,10 +504,21 @@ class OpenAIProvider extends BaseProvider {
                     role: 'assistant',
                     content: fullResponse
                 });
+                if (this.tui) {
+                    this.tui.appendMessage('assistant', fullResponse);
+                    // Emit response text for InboxWatcher to capture
+                    // (TUI uses 'tui' type which InboxWatcher ignores, so we need
+                    // a separate emit with the plain text for chat cards and TTS)
+                    this.emitOutput('response', fullResponse);
+                }
             }
 
             // Emit context usage estimate
-            this.emitOutput('context-usage', JSON.stringify(this.estimateTokenUsage()));
+            const usage = this.estimateTokenUsage();
+            this.emitOutput('context-usage', JSON.stringify(usage));
+            if (this.tui) {
+                this.tui.updateContext(usage.used, usage.limit);
+            }
 
             // --- Text-parsing tool path (local providers fallback) ---
             if (this.supportsTools() && !this.supportsNativeTools() && fullResponse) {
@@ -479,7 +550,11 @@ class OpenAIProvider extends BaseProvider {
                     }
 
                     logger.info('[OpenAIProvider]', `Tool call detected: ${toolCall.tool}`);
-                    this.emitOutput('stdout', `\n[Executing tool: ${toolCall.tool}...]\n`);
+                    if (this.tui) {
+                        this.tui.addToolCall(toolCall.tool, JSON.stringify(toolCall.args || {}).slice(0, 40));
+                    } else {
+                        this.emitOutput('stdout', `\n[Executing tool: ${toolCall.tool}...]\n`);
+                    }
 
                     // Diagnostic trace: tool call detected
                     try {
@@ -567,7 +642,11 @@ class OpenAIProvider extends BaseProvider {
                     } catch { /* diagnostic not available */ }
 
                     logger.info('[OpenAIProvider]', `Tool result: ${result.success ? 'success' : 'failed'}`);
-                    this.emitOutput('stdout', `[Tool ${result.success ? 'succeeded' : 'failed'}]\n\n`);
+                    if (this.tui) {
+                        this.tui.updateToolCall(toolCall.tool, result.success ? 'done' : 'failed');
+                    } else {
+                        this.emitOutput('stdout', `[Tool ${result.success ? 'succeeded' : 'failed'}]\n\n`);
+                    }
 
                     // Get follow-up response from model
                     await this.sendInput('', true);
@@ -575,7 +654,9 @@ class OpenAIProvider extends BaseProvider {
                 }
             }
 
-            this.emitOutput('stdout', '\n\n');
+            if (!this.tui) {
+                this.emitOutput('stdout', '\n\n');
+            }
 
         } catch (err) {
             if (err.name === 'AbortError') {

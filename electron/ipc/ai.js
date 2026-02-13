@@ -66,6 +66,16 @@ function registerAIHandlers(ctx, validators) {
             // OpenAI-compatible providers - accumulate input and send on Enter
             const provider = aiManager?.getProvider();
             if (provider && provider.isRunning()) {
+                const tuiMode = provider.hasTUI && provider.hasTUI();
+
+                // TUI scroll keys (arrow up/down, page up/down)
+                if (tuiMode && provider.tui) {
+                    if (data === '\x1b[A') { provider.tui.scrollChat(-1); return { success: true }; }
+                    if (data === '\x1b[B') { provider.tui.scrollChat(1); return { success: true }; }
+                    if (data === '\x1b[5~') { provider.tui.scrollChat(-10); return { success: true }; }
+                    if (data === '\x1b[6~') { provider.tui.scrollChat(10); return { success: true }; }
+                }
+
                 // Check if Enter key was pressed (CR or LF)
                 if (data === '\r' || data === '\n') {
                     // Send accumulated input
@@ -77,20 +87,24 @@ function registerAIHandlers(ctx, validators) {
                     // Backspace - remove last character
                     if (provider._inputBuffer) {
                         provider._inputBuffer = provider._inputBuffer.slice(0, -1);
-                        // Echo backspace to terminal
-                        ctx.safeSend('claude-terminal', {
-                            type: 'stdout',
-                            text: '\b \b'
-                        });
+                        if (!tuiMode) {
+                            // Echo backspace to terminal (suppressed when TUI handles display)
+                            ctx.safeSend('claude-terminal', {
+                                type: 'stdout',
+                                text: '\b \b'
+                            });
+                        }
                     }
                 } else if (data.charCodeAt(0) >= 32 || data === '\t') {
-                    // Printable characters - accumulate and echo
+                    // Printable characters - accumulate
                     provider._inputBuffer = (provider._inputBuffer || '') + data;
-                    // Echo to terminal
-                    ctx.safeSend('claude-terminal', {
-                        type: 'stdout',
-                        text: data
-                    });
+                    if (!tuiMode) {
+                        // Echo to terminal (suppressed when TUI handles display)
+                        ctx.safeSend('claude-terminal', {
+                            type: 'stdout',
+                            text: data
+                        });
+                    }
                 }
                 return { success: true };
             }
@@ -114,6 +128,15 @@ function registerAIHandlers(ctx, validators) {
         if (CLI_PROVIDERS.includes(providerType) && aiManager) {
             aiManager.resize(v.value.cols, v.value.rows);
             return { success: true };
+        }
+
+        // API providers — forward resize to TUI renderer
+        if (!CLI_PROVIDERS.includes(providerType)) {
+            const provider = aiManager?.getProvider();
+            if (provider && provider.resize) {
+                provider.resize(v.value.cols, v.value.rows);
+                return { success: true };
+            }
         }
         return { success: false, error: CLI_PROVIDERS.includes(providerType) ? 'not running' : 'not PTY' };
     });

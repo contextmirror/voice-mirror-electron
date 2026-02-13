@@ -423,6 +423,13 @@ function createAIManager(options = {}) {
                 model: model
             });
 
+            // Pass TTS/STT engine info to TUI if active
+            if (activeProvider.tui) {
+                const voiceConfig = config?.voice || {};
+                if (voiceConfig.ttsAdapter) activeProvider.tui.updateInfo('ttsEngine', voiceConfig.ttsAdapter);
+                if (voiceConfig.sttAdapter) activeProvider.tui.updateInfo('sttEngine', voiceConfig.sttAdapter);
+            }
+
             // Log if tools are enabled
             if (activeProvider.supportsTools && activeProvider.supportsTools()) {
                 logger.info('[AIManager]', `Tool support enabled for ${providerType}`);

@@ -5,6 +5,35 @@ Format inspired by game dev patch notes — grouped by release, categorized by i
 
 ---
 
+## v0.8.6 — "Dashboard" (2026-02-13)
+
+TUI dashboard for local models — replaces the blank terminal canvas with a rich ANSI-rendered dashboard when using Ollama, LM Studio, Jan, and other OpenAI-compatible providers.
+
+### New Feature — TUI Dashboard
+- **Conversation panel** (left, 65%) — scrollable chat with user/assistant messages, timestamps, and live streaming cursor
+- **Tool Calls panel** (right top) — live activity feed with spinner animation for running tools, checkmark/X for completed, tool name and duration
+- **Info panel** (right bottom) — model name, generation speed (tok/s), loaded tool count, voice status (Recording/Speaking/Idle)
+- **Status bar** (bottom) — context usage gauge (e.g. `CTX: 2.6K/32.8K`), TTS engine, STT engine, tool call count
+- **ANSI rendering** — box-drawing characters, 256-color theme (accent blue borders, green/red/yellow status), word wrapping, all rendered via escape sequences into ghostty-web
+- **Scroll support** — Arrow Up/Down scrolls chat by 1 line, Page Up/Down by 10 lines
+- **Resize handling** — TUI re-renders on terminal resize
+- **Generation speed** — real-time tok/s calculated from streaming token count and elapsed time
+
+### Fixed
+- **TUI output captured as AI response** — TUI ANSI rendering was emitted as `stdout`, which InboxWatcher captured as the model's response text (causing chat spam and TTS reading box-drawing characters). Added separate `tui` output type for rendering and `response` type for plain text capture
+- **Voice status showing system events** — events like `claude_connected` leaked into the TUI Info panel. Now filters to actual voice states (Idle, Recording, Speaking, Thinking, Processing)
+
+### Technical
+- New `electron/providers/tui-renderer.js` (~730 lines) — pure ANSI rendering engine with state model, partial re-render optimization, spinner timer
+- Output type separation: `tui` (terminal rendering, ignored by InboxWatcher), `response` (plain text, captured by InboxWatcher), `stdout` (legacy non-TUI path)
+- Input echo suppressed when TUI active — TUI renders its own conversation display
+- Resize forwarded to API providers (previously only CLI/PTY providers received resize events)
+- Voice events forwarded from main process to TUI with human-readable labels
+- 8 files changed (1 new, 7 modified), ~900 insertions
+- 519 tests passing
+
+---
+
 ## v0.8.5 — "Plug & Play" (2026-02-13)
 
 Plug-and-play TTS/STT engine selection with auto-install, 7 TTS engines and 5 STT engines.

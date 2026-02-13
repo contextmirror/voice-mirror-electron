@@ -515,6 +515,15 @@ app.whenReady().then(() => {
         onVoiceEvent: (event) => {
             safeSend('voice-event', event);
             forwardVoiceEventToOrb(event);
+            // Update TUI voice status if active (only actual voice states)
+            const voiceStates = ['idle', 'recording', 'speaking', 'thinking', 'processing'];
+            if (aiManager && voiceStates.includes(event.type)) {
+                const provider = aiManager.getProvider?.();
+                if (provider?.tui) {
+                    const labels = { idle: 'Idle', recording: 'Recording...', speaking: 'Speaking...', thinking: 'Thinking...', processing: 'Processing...' };
+                    provider.tui.updateInfo('voiceStatus', labels[event.type] || event.type);
+                }
+            }
         },
         onToolCall: (data) => {
             safeSend('tool-call', data);
