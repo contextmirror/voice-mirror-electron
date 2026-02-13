@@ -20,14 +20,14 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/status-alpha-orange" alt="Alpha">
-  <img src="https://img.shields.io/badge/version-0.8.0-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.8.2-blue" alt="Version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-blue" alt="Platform">
   <img src="https://img.shields.io/badge/electron-28.3.3-47848f" alt="Electron">
   <img src="https://img.shields.io/badge/node-%3E%3D18-339933" alt="Node.js">
   <img src="https://img.shields.io/badge/python-%3E%3D3.9-3776ab" alt="Python">
   <img src="https://img.shields.io/badge/MCP_tools-58-blueviolet" alt="MCP Tools">
   <img src="https://img.shields.io/badge/AI_providers-5_(75%2B_via_OpenCode)-orange" alt="AI Providers">
-  <img src="https://img.shields.io/badge/tests-490_passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-519_passing-brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <a href="https://discord.com/invite/JBpsSFB7EQ"><img src="https://img.shields.io/badge/Discord-Join%20us-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
 </p>
@@ -202,18 +202,20 @@ Settings are accessible from the in-app Settings page — AI provider, voice, ac
 ```
 voice-mirror-electron/
 ├── electron/              # Electron app
-│   ├── main.js            # Window, tray, IPC orchestration
-│   ├── services/          # 16 service modules
+│   ├── main.js            # Window, tray, service orchestration
+│   ├── constants.js       # Shared constants (providers, endpoints, timeouts)
+│   ├── ipc/               # IPC handlers (6 modules: window, config, screen, ai, browser, misc)
+│   ├── lib/               # Shared utilities (file watcher, screen capture, path safety, ollama)
+│   ├── services/          # 15 service modules (standardised lifecycle: start/stop/isRunning)
 │   ├── providers/         # Multi-AI provider system (5 providers, 75+ via OpenCode)
-│   ├── browser/           # CDP browser automation (11 modules)
-│   ├── tools/             # Tool system for local LLMs (8 tools)
-│   ├── js/                # Renderer modules (13 files)
+│   ├── browser/           # CDP browser automation (10 modules)
+│   ├── tools/             # Tool system for local LLMs (4 tools)
+│   ├── js/                # Renderer modules (15 files)
 │   └── styles/            # CSS modules (10 files)
 ├── python/                # Voice backend (STT, TTS, wake word)
 ├── mcp-server/            # MCP server (58 tools, 10 groups)
 ├── wayland-orb/           # Rust native overlay (Linux/Wayland)
 ├── chrome-extension/      # Browser relay extension (MV3)
-├── test/                  # Test suites (114 suites, 452 cases)
 ├── cli/                   # Setup wizard + CLI
 └── assets/                # Icons
 ```
@@ -281,7 +283,7 @@ Cloud provider API keys (OpenAI, Google, xAI, etc.) are configured through OpenC
 npm test
 ```
 
-452 tests across 114 suites covering config safety, API key detection, provider detection, settings, startup behavior, cross-platform paths, terminal rendering, MCP memory, browser automation, IPC validation, and more.
+519 tests across 126 suites covering config safety, API key detection, provider detection, settings, startup behavior, cross-platform paths, terminal rendering, MCP memory, browser automation, IPC validation, structured logging, path safety, and more.
 
 ---
 

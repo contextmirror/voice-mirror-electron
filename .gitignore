@@ -49,14 +49,12 @@ opencode.json
 .electron/
 *.asar
 
+# Tests (local only)
+test/
+
 # Test coverage
 coverage/
 .nyc_output/
-
-# Benchmark (local testing only)
-test/browser-benchmark/
-test/benchmark/images/
-test/benchmark/results/
 
 # Temporary files
 *.tmp
