@@ -19,6 +19,8 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/status-alpha-orange" alt="Alpha">
+  <img src="https://img.shields.io/badge/version-0.8.0-blue" alt="Version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-blue" alt="Platform">
   <img src="https://img.shields.io/badge/electron-28.3.3-47848f" alt="Electron">
   <img src="https://img.shields.io/badge/node-%3E%3D18-339933" alt="Node.js">
@@ -29,6 +31,8 @@
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <a href="https://discord.com/invite/JBpsSFB7EQ"><img src="https://img.shields.io/badge/Discord-Join%20us-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
 </p>
+
+> **Alpha Release** — Voice Mirror is in active development. Core features work and are tested across all platforms, but expect rough edges. Bug reports and feedback welcome via [GitHub Issues](https://github.com/contextmirror/voice-mirror-electron/issues) or [Discord](https://discord.com/invite/JBpsSFB7EQ).
 
 ---
 
