@@ -791,7 +791,7 @@
 }
 
 .provider-icon-claude {
-    background: url(../assets/icons/providers/claude.webp) center/cover no-repeat;
+    background: url(../../assets/icons/providers/claude.webp) center/cover no-repeat;
     border-radius: 4px;
 }
 .provider-icon-claude::before {
@@ -802,7 +802,7 @@
     background: linear-gradient(135deg, #10a37f, #0d8c6d);
 }
 .provider-icon-openai::before {
-    background-image: url(../assets/icons/providers/openai.svg);
+    background-image: url(../../assets/icons/providers/openai.svg);
 }
 
 .provider-icon-gemini {
@@ -810,77 +810,77 @@
     background-size: 200% 200%;
 }
 .provider-icon-gemini::before {
-    background-image: url(../assets/icons/providers/gemini.svg);
+    background-image: url(../../assets/icons/providers/gemini.svg);
 }
 
 .provider-icon-ollama {
     background: linear-gradient(135deg, #f0f0f0, #d0d0d0);
 }
 .provider-icon-ollama::before {
-    background-image: url(../assets/icons/providers/ollama.svg);
+    background-image: url(../../assets/icons/providers/ollama.svg);
 }
 
 .provider-icon-lmstudio {
     background: linear-gradient(135deg, #3b82f6, #1d4ed8);
 }
 .provider-icon-lmstudio::before {
-    background-image: url(../assets/icons/providers/lmstudio.svg);
+    background-image: url(../../assets/icons/providers/lmstudio.svg);
 }
 
 .provider-icon-jan {
     background: linear-gradient(135deg, #a855f7, #7c3aed);
 }
 .provider-icon-jan::before {
-    background-image: url(../assets/icons/providers/jan.svg);
+    background-image: url(../../assets/icons/providers/jan.svg);
 }
 
 .provider-icon-grok {
     background: linear-gradient(135deg, #1a1a1a, #333);
 }
 .provider-icon-grok::before {
-    background-image: url(../assets/icons/providers/grok.svg);
+    background-image: url(../../assets/icons/providers/grok.svg);
 }
 
 .provider-icon-groq {
     background: linear-gradient(135deg, #f97316, #ea580c);
 }
 .provider-icon-groq::before {
-    background-image: url(../assets/icons/providers/groq.svg);
+    background-image: url(../../assets/icons/providers/groq.svg);
 }
 
 .provider-icon-mistral {
     background: linear-gradient(135deg, #ff6b35, #f7931e);
 }
 .provider-icon-mistral::before {
-    background-image: url(../assets/icons/providers/mistral.svg);
+    background-image: url(../../assets/icons/providers/mistral.svg);
 }
 
 .provider-icon-openrouter {
     background: linear-gradient(135deg, #6366f1, #4f46e5);
 }
 .provider-icon-openrouter::before {
-    background-image: url(../assets/icons/providers/openrouter.svg);
+    background-image: url(../../assets/icons/providers/openrouter.svg);
 }
 
 .provider-icon-deepseek {
     background: linear-gradient(135deg, #0ea5e9, #0284c7);
 }
 .provider-icon-deepseek::before {
-    background-image: url(../assets/icons/providers/deepseek.svg);
+    background-image: url(../../assets/icons/providers/deepseek.svg);
 }
 
 .provider-icon-kimi {
     background: linear-gradient(135deg, #0071e3, #005bb5);
 }
 .provider-icon-kimi::before {
-    background-image: url(../assets/icons/providers/kimi.svg);
+    background-image: url(../../assets/icons/providers/kimi.svg);
 }
 
 .provider-icon-opencode {
     background: linear-gradient(135deg, #1a1717, #131010);
 }
 .provider-icon-opencode::before {
-    background-image: url(../assets/icons/providers/opencode.svg);
+    background-image: url(../../assets/icons/providers/opencode.svg);
 }
 
 /* ========== Provider Badge (inline pill next to name) ========== */

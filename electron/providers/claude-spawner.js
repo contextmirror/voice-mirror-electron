@@ -13,11 +13,11 @@ const { createLogger } = require('../services/logger');
 const logger = createLogger();
 
 // Path to MCP server
-const MCP_SERVER_PATH = path.join(__dirname, '..', 'mcp-server', 'index.js');
+const MCP_SERVER_PATH = path.join(__dirname, '..', '..', 'mcp-server', 'index.js');
 
 // Claude settings directories (write to all for compatibility across Claude Code versions)
 // Project-level .claude/ takes priority in Claude Code, so we must include it
-const PROJECT_CLAUDE_DIR = path.join(__dirname, '..', '.claude');
+const PROJECT_CLAUDE_DIR = path.join(__dirname, '..', '..', '.claude');
 const CLAUDE_CONFIG_DIRS = [
     PROJECT_CLAUDE_DIR,
     path.join(os.homedir(), '.claude'),
@@ -27,7 +27,7 @@ const CLAUDE_CONFIG_DIR = CLAUDE_CONFIG_DIRS[0];
 const MCP_SETTINGS_PATH = path.join(CLAUDE_CONFIG_DIR, 'mcp_settings.json');
 
 // Voice Mirror working directory
-const VOICE_MIRROR_DIR = path.join(__dirname, '..', 'python');
+const VOICE_MIRROR_DIR = path.join(__dirname, '..', '..', 'python');
 
 const DATA_DIR = _getDataDir();
 const INBOX_PATH = path.join(DATA_DIR, 'inbox.json');
@@ -127,7 +127,7 @@ async function configureMCPServer(appConfig) {
  */
 async function configureStatusLine() {
     const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
-    const scriptPath = path.join(__dirname, '..', 'vendor', 'claude-pulse', 'claude_status.py');
+    const scriptPath = path.join(__dirname, '..', '..', 'vendor', 'claude-pulse', 'claude_status.py');
 
     // Only configure if the bundled script exists
     if (!fs.existsSync(scriptPath)) {
@@ -135,7 +135,7 @@ async function configureStatusLine() {
         return;
     }
 
-    const pythonExe = path.join(__dirname, '..', 'python', '.venv',
+    const pythonExe = path.join(__dirname, '..', '..', 'python', '.venv',
         process.platform === 'win32' ? 'Scripts\\python.exe' : 'bin/python');
 
     // Read existing settings
@@ -165,7 +165,7 @@ async function configureStatusLine() {
     for (const cmd of ['pulse.md', 'setup.md']) {
         const dest = path.join(commandsDir, cmd);
         if (!fs.existsSync(dest)) {
-            const src = path.join(__dirname, '..', 'vendor', 'claude-pulse', 'commands', cmd);
+            const src = path.join(__dirname, '..', '..', 'vendor', 'claude-pulse', 'commands', cmd);
             if (fs.existsSync(src)) {
                 await fsPromises.copyFile(src, dest);
                 debugLog(`Installed slash command: ${cmd}`);
