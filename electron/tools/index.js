@@ -146,7 +146,15 @@ class ToolExecutor {
                 }
             }
 
-            const jsonStr = remaining.slice(0, jsonEnd);
+            let jsonStr = remaining.slice(0, jsonEnd);
+
+            // Auto-close missing braces — small local models (especially quantized)
+            // sometimes omit trailing closing braces from tool call JSON.
+            // If depth > 0 after scanning, the JSON is incomplete.
+            if (depth > 0) {
+                jsonStr += '}'.repeat(depth);
+            }
+
             const parsed = JSON.parse(jsonStr);
 
             // Validate it has a tool field

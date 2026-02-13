@@ -108,6 +108,40 @@ Claude Code and OpenCode keep their own TUI (they're PTY-based).
 
 ---
 
+## Phase 1.5: Custom Wake Word — "Mirror"
+
+**Goal:** Replace the default "Hey Claude" wake word with a custom **"Mirror"** keyword, giving Voice Mirror its own identity independent of any AI provider.
+
+### Why
+The current wake word detection uses [OpenWakeWord](https://github.com/dscripka/openWakeWord) with pre-trained models ("hey_claude", "hey_jarvis", etc.). "Hey Claude" ties the experience to one provider — but Voice Mirror works with Ollama, GPT, Gemini, and others. A custom wake word makes it provider-agnostic and more natural: just say **"Mirror"** and start talking.
+
+### Training a Custom Model
+
+OpenWakeWord supports training custom models. The pipeline:
+
+1. **Collect positive samples** — record ~100+ clips of "Mirror" spoken by different people, accents, distances, background noise levels
+2. **Generate synthetic samples** — use TTS engines (Piper, Kokoro, Edge TTS) to generate thousands of synthetic "Mirror" utterances with varied voices, speeds, and pitches
+3. **Collect negative samples** — ambient noise, speech that sounds similar ("bitter", "litter", "mere"), general conversation
+4. **Train with OpenWakeWord** — fine-tune a small model (~500KB) using the provided training notebook
+5. **Validate** — test false positive rate (activations on non-wake-word speech) and false negative rate (missed activations)
+6. **Ship** — bundle the `.onnx` model file with Voice Mirror, add "Mirror" to the wake word selector in settings
+
+### Technical Details
+
+- **Model format:** ONNX (same as existing wake word models)
+- **Model size:** ~500KB (runs on CPU, <1ms inference)
+- **Integration point:** `python/wake_word.py` — already loads `.onnx` models from a configurable path
+- **Settings:** Add "Mirror" option to wake word dropdown alongside existing options
+- **Fallback:** Keep "Hey Claude", "Hey Jarvis", etc. as alternatives — user picks in settings
+- **Threshold tuning:** Expose sensitivity slider in settings (higher = fewer false positives, lower = fewer misses)
+
+### Stretch Goals
+- **Custom wake word training UI** — let users record their own wake word samples in-app and train a personal model
+- **Multiple wake words** — respond to both "Mirror" and a user-defined phrase
+- **Confirmation sound** — play a subtle chime when wake word is detected (before STT starts)
+
+---
+
 ## Phase 2: Voice Mirror Server
 
 **Goal:** Run Voice Mirror as a Node.js server, access the full dashboard from `localhost:3333` in any browser.
@@ -256,7 +290,8 @@ This is the furthest out and depends on demand. The server architecture from Pha
 ## Execution Priority
 
 ```
-Phase 1 (TUI)            — Immediate visual impact. Fixes the blank terminal problem.
+Phase 1 (TUI)            — Immediate visual impact. Fixes the blank terminal problem. ✅ Shipped v0.8.6
+Phase 1.5 (Wake word)    — Brand identity. Can develop in parallel with Phase 2.
 Phase 2 (Server mode)    — Foundation for cross-platform. Everything after builds on this.
 Phase 3A (LAN access)    — Quick win once Phase 2 is done.
 Phase 4A (PWA)           — Mobile access with minimal new code.
@@ -265,7 +300,7 @@ Phase 4B (Native app)    — Only if PWA hits real limitations.
 Phase 5 (Cloud)          — If there's demand for hosted Voice Mirror.
 ```
 
-Phase 1 (TUI) is self-contained and can ship independently. Phase 2A (transport abstraction) is the foundation for everything cross-platform — once the renderer talks through an abstract transport instead of Electron IPC, every subsequent phase becomes incremental.
+Phase 1 (TUI) shipped in v0.8.6. Phase 1.5 (custom wake word) is independent and can be developed in parallel with anything else — it's purely Python-side work. Phase 2A (transport abstraction) is the foundation for everything cross-platform — once the renderer talks through an abstract transport instead of Electron IPC, every subsequent phase becomes incremental.
 
 ---
 

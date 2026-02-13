@@ -21,6 +21,8 @@ TUI dashboard for local models — replaces the blank terminal canvas with a ric
 
 ### Fixed
 - **TUI output captured as AI response** — TUI ANSI rendering was emitted as `stdout`, which InboxWatcher captured as the model's response text (causing chat spam and TTS reading box-drawing characters). Added separate `tui` output type for rendering and `response` type for plain text capture
+- **Tool call JSON spoken by TTS** — response text was emitted to InboxWatcher before the tool parsing check, so raw JSON like `{"tool": "browser_control", ...}` was captured as the AI response and spoken aloud. Moved response emit to after tool parsing — only non-tool responses reach chat/TTS
+- **Tool parse failure on missing braces** — small local models (e.g. ministral-3) sometimes omit trailing `}` from tool call JSON. The brace matcher now auto-closes incomplete JSON before parsing
 - **Voice status showing system events** — events like `claude_connected` leaked into the TUI Info panel. Now filters to actual voice states (Idle, Recording, Speaking, Thinking, Processing)
 
 ### Technical

@@ -506,10 +506,9 @@ class OpenAIProvider extends BaseProvider {
                 });
                 if (this.tui) {
                     this.tui.appendMessage('assistant', fullResponse);
-                    // Emit response text for InboxWatcher to capture
-                    // (TUI uses 'tui' type which InboxWatcher ignores, so we need
-                    // a separate emit with the plain text for chat cards and TTS)
-                    this.emitOutput('response', fullResponse);
+                    // Don't emit 'response' here — need to check for tool calls first.
+                    // Tool call JSON should NOT be sent to InboxWatcher as a response.
+                    // The 'response' emit happens below, after tool parsing.
                 }
             }
 
@@ -654,7 +653,14 @@ class OpenAIProvider extends BaseProvider {
                 }
             }
 
-            if (!this.tui) {
+            if (this.tui) {
+                // Emit response text for InboxWatcher to capture (chat cards + TTS).
+                // Only reaches here for non-tool-call responses — tool calls return early
+                // above after executing and calling sendInput('', true) for follow-up.
+                if (fullResponse) {
+                    this.emitOutput('response', fullResponse);
+                }
+            } else {
                 this.emitOutput('stdout', '\n\n');
             }
 
