@@ -229,16 +229,84 @@ Pre-built n8n workflows optimized for Voice Mirror:
 
 These templates are JSON files shipped with Voice Mirror, importable via the n8n API.
 
+### n8n as the Task & Reminder Engine
+
+n8n isn't just for automations — it **is** Voice Mirror's built-in task scheduler, reminder system, and recurring job runner. No custom heartbeat or cron system needed.
+
+#### How It Works
+
+```
+User: "Wake me up at 8am and tell me about traffic"
+    ↓
+AI builds n8n workflow via MCP tools:
+    [Schedule Trigger: 8:00 AM daily]
+        → [Google Maps API: traffic for saved route]
+        → [HTTP Request: POST to Voice Mirror webhook]
+            Body: { "speak": "Good morning! Traffic on your commute is light, 25 minutes today." }
+    ↓
+Voice Mirror webhook listener receives callback → TTS speaks the message
+```
+
+#### Webhook Listener
+
+A lightweight HTTP endpoint (~50 lines) inside Voice Mirror that receives n8n callbacks:
+
+```js
+// POST /api/webhook  →  { "speak": "...", "notify": true }
+// Voice Mirror receives it → TTS speaks the text, optionally shows a notification
+```
+
+- Runs on `localhost:3334` (configurable)
+- Accepts `speak` (text to say aloud), `notify` (show UI notification), `data` (structured payload)
+- n8n workflows use the "HTTP Request" node to POST to this endpoint
+- Works with any n8n trigger: schedule, webhook, email received, RSS feed, etc.
+
+#### Example Voice-Created Workflows
+
+| Voice Command | n8n Workflow Created |
+|---|---|
+| *"Wake me up at 8am with the weather"* | Schedule 8:00 → Weather API → webhook `/api/webhook` with forecast text |
+| *"Remind me to take meds at 9am and 9pm"* | Two schedule triggers → webhook with reminder message |
+| *"Tell me when someone stars my repo"* | GitHub webhook → webhook to Voice Mirror with star count |
+| *"Every Friday, summarize my unread emails"* | Schedule Fri 5pm → Gmail API → AI summarize → webhook with summary |
+| *"Ping me if my server goes down"* | HTTP poll every 5 min → if status != 200 → webhook with alert |
+
+#### Mobile Integration
+
+This architecture extends naturally to the mobile app (Phase 4):
+
+```
+Phone (anywhere)                    Desktop (home)
+┌──────────────┐                   ┌──────────────────────┐
+│ Voice Mirror  │   WebSocket      │ Voice Mirror Server   │
+│ Mobile App    │ ←───────────────→│  ├── n8n (scheduler) │
+│               │                  │  ├── Webhook listener │
+│ "Remind me to │                  │  ├── Python TTS/STT   │
+│  call mom at  │                  │  └── AI provider      │
+│  3pm"         │                  └──────────────────────┘
+└──────────────┘                            ↓
+                                   n8n creates schedule
+                                   trigger → 3pm fires →
+                                   webhook → TTS speaks
+                                   "Time to call mom!"
+                                   (+ push notification
+                                    to phone)
+```
+
+Users set reminders from their phone by voice, n8n schedules them, and Voice Mirror speaks the reminder — whether the user is at their desktop or gets a push notification on mobile.
+
 ### What Makes This Unique
 
 Most n8n users interact through a browser tab. Voice Mirror makes n8n **voice-first**:
 
 1. **Build workflows by voice** — "Create a workflow that monitors my email for invoices and saves them to Google Drive" → Claude Code builds the entire n8n workflow using MCP tools
 2. **Trigger workflows by voice** — "Send the weekly report" → executes the workflow
-3. **See results in-app** — the n8n dashboard is right there, showing execution history
-4. **No context switching** — everything lives inside Voice Mirror
+3. **Reminders & scheduling by voice** — "Wake me up at 8am with traffic" → n8n handles the scheduling, Voice Mirror speaks the result
+4. **See results in-app** — the n8n dashboard is right there, showing execution history
+5. **No context switching** — everything lives inside Voice Mirror
+6. **Mobile-ready** — set reminders from your phone, hear them on your desktop (or get push notifications)
 
-This is the bridge between conversational AI and real-world automation.
+This is the bridge between conversational AI and real-world automation. n8n is the scheduler, Voice Mirror is the voice.
 
 ---
 
@@ -349,9 +417,10 @@ Before building a native app, ship a Progressive Web App:
 
 - Responsive layout of the existing dashboard (chat + settings)
 - PWA manifest for "Add to Home Screen"
-- Push notifications for AI responses
+- Push notifications for AI responses **and n8n reminders** (Phase 1.6 webhook triggers push)
 - MediaRecorder API for voice input (record on phone, stream to server)
 - Audio playback for TTS responses streamed from server
+- Voice-driven reminders: "Remind me at 3pm to call mom" → server creates n8n workflow → push notification at 3pm
 
 This tests the full mobile experience with zero native code.
 
@@ -401,7 +470,7 @@ Phase 4B (Native app)    — Only if PWA hits real limitations.
 Phase 5 (Cloud)          — If there's demand for hosted Voice Mirror.
 ```
 
-Phase 1 (TUI) shipped in v0.8.6. Phase 1.5 (wake word) and Phase 1.6 (n8n) are both independent — they can be developed in parallel with each other and with Phase 2. Phase 1.6 is particularly high-value because it turns Voice Mirror from a conversation tool into a voice-driven automation platform: users say what they want built, and the AI creates n8n workflows that connect to real services (Gmail, Slack, GitHub, etc.). Phase 2A (transport abstraction) is the foundation for everything cross-platform.
+Phase 1 (TUI) shipped in v0.8.6. Phase 1.5 (wake word) and Phase 1.6 (n8n) are both independent — they can be developed in parallel with each other and with Phase 2. Phase 1.6 is particularly high-value because it turns Voice Mirror from a conversation tool into a **voice-driven automation and scheduling platform**: users say what they want built, and the AI creates n8n workflows that connect to real services (Gmail, Slack, GitHub, etc.). The webhook listener means n8n can call back into Voice Mirror to speak reminders, alerts, and summaries — making it a true personal assistant with memory and initiative. Combined with Phase 4 (mobile), users can set reminders from their phone and hear them spoken aloud at home.
 
 ---
 
