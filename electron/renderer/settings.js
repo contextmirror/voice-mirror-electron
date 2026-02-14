@@ -48,15 +48,13 @@ import {
 } from './settings-dependencies.js';
 
 // ========== Modular Tab System ==========
-const BASE_TABS = [
+const SETTINGS_TABS = [
     { id: 'ai',      label: 'AI & Tools' },
     { id: 'voice',   label: 'Voice & Audio' },
     { id: 'general', label: 'General' },
     { id: 'appearance', label: 'Appearance' },
+    { id: 'dependencies', label: 'Dependencies', flag: 'advanced.showDependencies' },
 ];
-
-// Mutable — rebuilt on each initSettings() based on feature flags
-let SETTINGS_TABS = [...BASE_TABS];
 
 const SETTINGS_TAB_STORAGE_KEY = 'vm-settings-tab';
 
@@ -206,6 +204,16 @@ export async function loadSettingsUI() {
         state.currentConfig = await window.voiceMirror.config.get();
         log.info('Loaded config:', state.currentConfig);
 
+        // Show/hide feature-flagged tabs
+        for (const tab of SETTINGS_TABS) {
+            if (!tab.flag) continue;
+            const keys = tab.flag.split('.');
+            let val = state.currentConfig;
+            for (const k of keys) val = val?.[k];
+            const btn = document.querySelector(`.settings-tab[data-tab="${tab.id}"]`);
+            if (btn) btn.style.display = val ? '' : 'none';
+        }
+
         // General tab: User name
         document.getElementById('user-name').value = state.currentConfig.user?.name || '';
 
@@ -350,22 +358,6 @@ export async function resetSettings() {
  * Loads tab templates first, then wires up all event handlers.
  */
 export async function initSettings() {
-    // Rebuild SETTINGS_TABS based on feature flags
-    SETTINGS_TABS = [...BASE_TABS];
-    const cfg = state.currentConfig || await window.voiceMirror.config.get();
-    if (cfg?.advanced?.showDependencies) {
-        SETTINGS_TABS.push({ id: 'dependencies', label: 'Dependencies' });
-
-        // Ensure DOM panel exists for the dependencies tab
-        const container = document.querySelector('.settings-tab-content[data-tab="appearance"]')?.parentElement;
-        if (container && !document.querySelector('.settings-tab-content[data-tab="dependencies"]')) {
-            const panel = document.createElement('div');
-            panel.className = 'settings-tab-content';
-            panel.dataset.tab = 'dependencies';
-            container.appendChild(panel);
-        }
-    }
-
     // Load tab templates into the DOM before anything else
     await loadAllTabTemplates();
 
@@ -376,10 +368,7 @@ export async function initSettings() {
     initAITab();
     initVoiceTab();
     initAppearanceTab();
-
-    if (cfg?.advanced?.showDependencies) {
-        initDependenciesTab();
-    }
+    initDependenciesTab();
 }
 
 // Expose functions globally for onclick handlers in HTML templates
