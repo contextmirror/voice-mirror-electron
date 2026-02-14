@@ -5,6 +5,16 @@ Format inspired by game dev patch notes — grouped by release, categorized by i
 
 ---
 
+## v0.9.1 — "Update Fix" (2026-02-14)
+
+Fix the in-app update system that was causing blank terminals and broken repos on Windows.
+
+### Fixed
+- **Blank terminal after updating on Windows** — `npm install` silently failed because `execFile('npm')` needs `npm.cmd` on Windows. Dependency updates (like ghostty-web) never installed after `git pull`, leaving the terminal blank. Also increased npm install timeout from 30s to 180s
+- **Update leaves repo in broken state** — When `git stash pop` hit a merge conflict (e.g., user modified `requirements.txt`), the repo was left with conflict markers blocking all future operations. Now auto-recovers: discards conflicted local changes, keeps upstream version, and drops the stale stash
+
+---
+
 ## v0.9.0 — "Scroll Fix" (2026-02-14)
 
 Fix terminal scrolling — mouse wheel now works in Claude Code, vim, and all providers.
