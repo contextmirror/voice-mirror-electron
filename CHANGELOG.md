@@ -5,6 +5,18 @@ Format inspired by game dev patch notes — grouped by release, categorized by i
 
 ---
 
+## v0.8.9 — "Smooth Operator" (2026-02-14)
+
+Performance and reliability fixes — smoother scrolling, bulletproof installer shortcuts.
+
+### Fixed
+- **Scroll jank / FPS drops** — `backdrop-filter: blur(20px)` on the main panel forced the GPU to recalculate a gaussian blur across the entire window on every scroll frame. The panel already has a solid background so the blur was invisible — removed it along with a second blur on the chat input bar. Scrolling is now butter smooth
+- **Desktop shortcut creation failing on Windows** — Replaced PowerShell-based shortcut creation with VBScript (`cscript`), which can't be blocked by execution policies. Desktop folder is now detected via the Windows registry, handling OneDrive redirection and non-English folder names
+- **Desktop shortcut failing on macOS/Linux** — Shortcuts now use absolute `node scripts/launch.js` paths instead of relying on `voice-mirror` being on PATH. Linux shortcuts read `XDG_DESKTOP_DIR` for correct desktop location and are marked as trusted via `gio`
+- **Silent shortcut failures** — Installer now reports specific error messages instead of a generic "could not create shortcut"
+
+---
+
 ## v0.8.8 — "Under the Hood" (2026-02-14)
 
 Quality-of-life improvements: hidden console on startup, embedded log viewer, and browser tool no longer hijacks your tab.
