@@ -5,6 +5,27 @@ Format inspired by game dev patch notes — grouped by release, categorized by i
 
 ---
 
+## v0.8.8 — "Under the Hood" (2026-02-14)
+
+Quality-of-life improvements: hidden console on startup, embedded log viewer, and browser tool no longer hijacks your tab.
+
+### New — Embedded Log Viewer
+- **Dedicated log viewer window** — Settings > General > Logs opens a terminal-style window (like VS Code DevTools) with live-streaming colored log output, auto-scroll, and a clear button. Replaces the old "open in Notepad" approach
+- ANSI color codes rendered as styled HTML — timestamps, log levels, and categories all color-coded
+- Logger now supports a listener pattern (`addListener`/`removeListener`) for real-time log broadcasting
+
+### Fixed
+- **Console window visible on startup** — Desktop shortcut launched `npm start` directly, showing a CMD window in the taskbar. Now uses `wscript.exe` + `launch-hidden.vbs` to start the app with the console completely hidden
+- **Browser tool steals tab focus** — When the AI used `browser_control` (search, navigate), the UI auto-switched from chat to the browser tab mid-conversation. The browser panel now updates silently in the background — stay on chat while the AI browses
+
+### Technical
+- New files: `log-viewer.html`, `preload-log-viewer.js`, `services/log-viewer.js`
+- Logger service extended with listener array + `addListener()`/`removeListener()` methods
+- Removed `navigateTo('browser')` calls from `did-navigate` and `onStatusChange` handlers in `browser-panel.js`
+- 519 tests passing
+
+---
+
 ## v0.8.7 — "Full Screen" (2026-02-14)
 
 Fix terminal sizing bug that caused all AI providers (Claude Code, Ollama TUI, OpenCode) to render squished in the top-left corner instead of filling the terminal area.
