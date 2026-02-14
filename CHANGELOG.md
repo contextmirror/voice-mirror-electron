@@ -5,6 +5,15 @@ Format inspired by game dev patch notes — grouped by release, categorized by i
 
 ---
 
+## v0.9.0 — "Scroll Fix" (2026-02-14)
+
+Fix terminal scrolling — mouse wheel now works in Claude Code, vim, and all providers.
+
+### Fixed
+- **Cannot scroll in Claude Code terminal** — A custom window-level wheel handler was intercepting all scroll events before ghostty-web's own handler could fire. Removed it and switched to ghostty-web's `attachCustomWheelEventHandler` API. Scrolling now works natively for all modes: viewport scrollback in normal mode, arrow keys to PTY for alternate screen apps (Claude Code, vim), and SGR mouse events for TUI apps with mouse tracking (OpenCode)
+
+---
+
 ## v0.8.9 — "Smooth Operator" (2026-02-14)
 
 Performance and reliability fixes — smoother scrolling, bulletproof installer shortcuts.
