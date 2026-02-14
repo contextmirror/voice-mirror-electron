@@ -26,6 +26,7 @@ const { createPythonBackend, startDockerServices } = require('./services/python-
 const { createScreenCaptureWatcher } = require('./services/screen-capture-watcher');
 const { createBrowserWatcher } = require('./services/browser-watcher');
 const { createAIManager } = require('./services/ai-manager');
+const { createLogViewer } = require('./services/log-viewer');
 const { createInboxWatcher } = require('./services/inbox-watcher');
 const { createPerfMonitor } = require('./services/perf-monitor');
 const { createUpdateChecker } = require('./services/update-checker');
@@ -85,6 +86,7 @@ let aiManager = null;
 
 // Inbox watcher service (initialized after config is loaded)
 let inboxWatcherService = null;
+let logViewer = null;
 
 // Performance monitor service
 let perfMonitor = null;
@@ -590,9 +592,16 @@ app.whenReady().then(() => {
         getHotkeyManager: () => hotkeyManager,
         getInboxWatcherService: () => inboxWatcherService,
         getUpdateChecker: () => updateChecker,
-        logger
+        logger,
+        getLogViewer: () => logViewer,
     };
     registerIpcHandlers(ipcCtx);
+
+    // Initialize log viewer service (creates window on demand, not at startup)
+    logViewer = createLogViewer({
+        logger,
+        getMainWindow: () => mainWindow,
+    });
 
     // Initialize native Wayland overlay orb before creating window
     // so we know whether to start the Electron window hidden

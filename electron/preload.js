@@ -213,6 +213,9 @@ contextBridge.exposeInMainWorld('voiceMirror', {
     // Dev logging — renderer → main process → vmr.log
     devlog: (category, action, data) => ipcRenderer.send('devlog', category, action, data),
 
+    // Toggle the log viewer window
+    toggleLogViewer: () => ipcRenderer.invoke('toggle-log-viewer'),
+
     // Open external URLs in default browser
     openExternal: (url) => {
         // Block dangerous URL schemes at the preload boundary

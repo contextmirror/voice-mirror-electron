@@ -1,6 +1,6 @@
 /**
  * IPC handlers for miscellaneous operations.
- * Handles: open-external, quit-app, hotkey-fallback, devlog,
+ * Handles: toggle-log-viewer, open-external, quit-app, hotkey-fallback, devlog,
  *          send-to-python, get-python-status, start-python, stop-python,
  *          python-restart, send-query, set-voice-mode, send-image,
  *          list-audio-devices, get-detected-keys, check-cli-available,
@@ -33,6 +33,14 @@ function registerMiscHandlers(ctx, validators) {
             ctx.logger.log('HOTKEY', `Fallback triggered for "${id}" from renderer`);
             binding.callback();
         }
+    });
+
+    // Toggle the log viewer window
+    ipcMain.handle('toggle-log-viewer', () => {
+        const logViewer = ctx.getLogViewer?.();
+        if (!logViewer) return { success: false, error: 'Log viewer not initialized' };
+        logViewer.toggle();
+        return { success: true };
     });
 
     // Open external URLs in default browser

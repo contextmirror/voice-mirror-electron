@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Voice Mirror - Logs</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0c0d10;
+            color: #c8c8cc;
+            font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #toolbar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: #16171c;
+            border-bottom: 1px solid #2a2b33;
+            flex-shrink: 0;
+            -webkit-app-region: drag;
+        }
+        #toolbar span {
+            color: #888;
+            font-size: 11px;
+            flex: 1;
+        }
+        #toolbar button {
+            -webkit-app-region: no-drag;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.12);
+            color: #aaa;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        #toolbar button:hover { background: rgba(255,255,255,0.15); color: #ddd; }
+        #toolbar button.active { background: rgba(102,126,234,0.25); border-color: rgba(102,126,234,0.4); color: #99b3ff; }
+        #log-output {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        #log-output::-webkit-scrollbar { width: 8px; }
+        #log-output::-webkit-scrollbar-track { background: transparent; }
+        #log-output::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        #log-output::-webkit-scrollbar-thumb:hover { background: #555; }
+        .line { min-height: 18px; }
+
+        /* ANSI color classes */
+        .ansi-dim { color: #666; }
+        .ansi-red { color: #f44; }
+        .ansi-green { color: #4c4; }
+        .ansi-yellow { color: #da3; }
+        .ansi-blue { color: #58f; }
+        .ansi-magenta { color: #c6c; }
+        .ansi-cyan { color: #4cc; }
+        .ansi-white { color: #ccc; }
+        .ansi-bright-red { color: #f77; }
+        .ansi-bright-green { color: #7f7; }
+        .ansi-bright-yellow { color: #ff7; }
+        .ansi-bright-cyan { color: #7ff; }
+    </style>
+</head>
+<body>
+    <div id="toolbar">
+        <span>Session Logs</span>
+        <button id="btn-scroll" class="active" title="Auto-scroll to bottom">Auto-scroll</button>
+        <button id="btn-clear" title="Clear log display">Clear</button>
+    </div>
+    <div id="log-output"></div>
+
+    <script>
+        const output = document.getElementById('log-output');
+        const btnScroll = document.getElementById('btn-scroll');
+        const btnClear = document.getElementById('btn-clear');
+        let autoScroll = true;
+
+        // ANSI escape code to CSS class mapping
+        const ANSI_MAP = {
+            '0': null,       // reset
+            '2': 'ansi-dim',
+            '31': 'ansi-red',
+            '32': 'ansi-green',
+            '33': 'ansi-yellow',
+            '34': 'ansi-blue',
+            '35': 'ansi-magenta',
+            '36': 'ansi-cyan',
+            '37': 'ansi-white',
+            '91': 'ansi-bright-red',
+            '92': 'ansi-bright-green',
+            '93': 'ansi-bright-yellow',
+            '96': 'ansi-bright-cyan',
+        };
+
+        function ansiToHtml(text) {
+            let result = '';
+            let open = false;
+            const parts = text.split(/\x1b\[([0-9;]*)m/);
+
+            for (let i = 0; i < parts.length; i++) {
+                if (i % 2 === 0) {
+                    // Text content — escape HTML
+                    result += parts[i].replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                } else {
+                    // ANSI code
+                    const codes = parts[i].split(';');
+                    if (open) { result += '</span>'; open = false; }
+                    for (const code of codes) {
+                        const cls = ANSI_MAP[code];
+                        if (cls) {
+                            result += `<span class="${cls}">`;
+                            open = true;
+                        }
+                    }
+                }
+            }
+            if (open) result += '</span>';
+            return result;
+        }
+
+        function appendLine(rawLine) {
+            const div = document.createElement('div');
+            div.className = 'line';
+            div.innerHTML = ansiToHtml(rawLine);
+            output.appendChild(div);
+            if (autoScroll) output.scrollTop = output.scrollHeight;
+        }
+
+        function appendBulk(rawContent) {
+            const lines = rawContent.split('\n');
+            const frag = document.createDocumentFragment();
+            for (const line of lines) {
+                if (!line) continue;
+                const div = document.createElement('div');
+                div.className = 'line';
+                div.innerHTML = ansiToHtml(line);
+                frag.appendChild(div);
+            }
+            output.appendChild(frag);
+            if (autoScroll) output.scrollTop = output.scrollHeight;
+        }
+
+        // Toggle auto-scroll
+        btnScroll.addEventListener('click', () => {
+            autoScroll = !autoScroll;
+            btnScroll.classList.toggle('active', autoScroll);
+            if (autoScroll) output.scrollTop = output.scrollHeight;
+        });
+
+        // Clear display
+        btnClear.addEventListener('click', () => {
+            output.innerHTML = '';
+        });
+
+        // Receive initial log content
+        window.logViewer.onInitialLogs((content) => {
+            appendBulk(content);
+        });
+
+        // Receive live log lines
+        window.logViewer.onLogLine((line) => {
+            appendLine(line);
+        });
+    </script>
+</body>
+</html>

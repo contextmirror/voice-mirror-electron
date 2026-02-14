@@ -56,6 +56,7 @@ const CAT_PAD = 8;
 function createLogger(options = {}) {
     let logFile = null;
     let logFilePath = null;
+    const listeners = [];
 
     /**
      * Initialize the log file.
@@ -99,6 +100,10 @@ function createLogger(options = {}) {
 
         if (logFile) {
             logFile.write(logLine + '\n');
+        }
+
+        for (const fn of listeners) {
+            try { fn(logLine); } catch { /* listener error */ }
         }
     }
 
@@ -175,6 +180,9 @@ function createLogger(options = {}) {
         if (logFile) {
             logFile.write(logLine + '\n');
         }
+        for (const fn of listeners) {
+            try { fn(logLine); } catch { /* listener error */ }
+        }
     }
 
     /**
@@ -207,7 +215,13 @@ function createLogger(options = {}) {
         warn,
         error,
         debug,
-        close
+        close,
+        getLogPath: () => logFilePath,
+        addListener: (fn) => listeners.push(fn),
+        removeListener: (fn) => {
+            const idx = listeners.indexOf(fn);
+            if (idx !== -1) listeners.splice(idx, 1);
+        },
     };
 }
 
