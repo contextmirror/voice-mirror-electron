@@ -31,7 +31,7 @@ describe('Desktop shortcut - no console window on Windows', () => {
 
     it('setup.mjs should use wscript.exe for Windows shortcut', () => {
         assert.ok(
-            setupSource.includes("'wscript.exe'"),
+            setupSource.includes('wscript.exe'),
             'Should target wscript.exe instead of cmd/voice-mirror.cmd'
         );
     });

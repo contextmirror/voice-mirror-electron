@@ -459,11 +459,11 @@ export async function runSetup(opts = {}) {
             initialValue: true,
         }));
         if (wantShortcut) {
-            const ok = createDesktopShortcut(PROJECT_DIR);
-            if (ok) {
-                p.log.success('Desktop shortcut created');
+            const result = createDesktopShortcut(PROJECT_DIR);
+            if (result.ok) {
+                p.log.success(`Desktop shortcut created → ${result.path}`);
             } else {
-                p.log.warn('Could not create desktop shortcut');
+                p.log.warn(`Could not create desktop shortcut: ${result.error}`);
             }
         }
     }
@@ -497,65 +497,235 @@ async function runDependencySetup(config) {
 }
 
 /**
+ * Locate the user's Desktop folder across platforms.
+ * Handles OneDrive redirection (Windows), XDG (Linux), and standard paths.
+ * @returns {string|null} Desktop path or null if not found
+ */
+function findDesktopFolder() {
+    const os = platform();
+    const home = homedir();
+
+    if (os === 'win32') {
+        // 1. Try reading from Windows registry (canonical source)
+        try {
+            const regOutput = execSync(
+                'reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders" /v Desktop',
+                { stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf-8', timeout: 5000 }
+            );
+            const match = regOutput.match(/Desktop\s+REG_SZ\s+(.+)/);
+            if (match) {
+                const regDesktop = match[1].trim();
+                if (existsSync(regDesktop)) return regDesktop;
+            }
+        } catch { /* registry read failed, try fallbacks */ }
+
+        // 2. Fallback: check common locations
+        const candidates = [
+            join(home, 'Desktop'),
+            join(home, 'OneDrive', 'Desktop'),
+            join(home, 'OneDrive - Personal', 'Desktop'),
+        ];
+        for (const dir of candidates) {
+            if (existsSync(dir)) return dir;
+        }
+        return null;
+    }
+
+    if (os === 'linux') {
+        // 1. Check XDG_DESKTOP_DIR env var
+        if (process.env.XDG_DESKTOP_DIR) {
+            const xdg = process.env.XDG_DESKTOP_DIR.replace(/\$HOME/g, home);
+            if (existsSync(xdg)) return xdg;
+        }
+        // 2. Parse ~/.config/user-dirs.dirs
+        try {
+            const userDirs = readFileSync(join(home, '.config', 'user-dirs.dirs'), 'utf-8');
+            const match = userDirs.match(/XDG_DESKTOP_DIR="(.+)"/);
+            if (match) {
+                const xdg = match[1].replace(/\$HOME/g, home);
+                if (existsSync(xdg)) return xdg;
+            }
+        } catch { /* file not found */ }
+        // 3. Standard fallback
+        const std = join(home, 'Desktop');
+        if (existsSync(std)) return std;
+        return null;
+    }
+
+    // macOS — always ~/Desktop
+    const std = join(home, 'Desktop');
+    if (existsSync(std)) return std;
+    return null;
+}
+
+/**
+ * Resolve the Node.js binary path for use in shortcuts.
+ * @returns {string} Absolute path to node executable
+ */
+function resolveNodeBin() {
+    // process.execPath is the absolute path to the running node binary
+    // (e.g., /usr/local/bin/node, C:\Program Files\nodejs\node.exe)
+    return process.execPath;
+}
+
+/**
  * Create a desktop shortcut for Voice Mirror.
+ * Returns { ok: boolean, path?: string, error?: string }
  */
 function createDesktopShortcut(projectDir) {
     const os = platform();
-    const desktop = join(homedir(), 'Desktop');
+    const desktop = findDesktopFolder();
 
-    if (!existsSync(desktop)) return false;
+    if (!desktop) {
+        return { ok: false, error: `Desktop folder not found (checked registry, OneDrive, ~/Desktop)` };
+    }
+
+    const nodeBin = resolveNodeBin();
+    const launchScript = join(projectDir, 'scripts', 'launch.js');
+
+    if (!existsSync(launchScript)) {
+        return { ok: false, error: `Launch script not found: ${launchScript}` };
+    }
 
     try {
         if (os === 'win32') {
-            const lnkPath = join(desktop, 'Voice Mirror.lnk');
-            // Use wscript.exe + launch-hidden.vbs to avoid console window
-            const vbsPath = join(projectDir, 'scripts', 'launch-hidden.vbs');
-            const target = 'wscript.exe';
-            const args = `"${vbsPath}"`;
-            // Write a temp .ps1 script to avoid quote-escaping issues
-            const tmpPs1 = join(process.env.TEMP || homedir(), 'vm-shortcut.ps1');
-            const icoPath = join(projectDir, 'assets', 'icon-256.ico');
-            const lines = [
-                `$ws = New-Object -ComObject WScript.Shell`,
-                `$s = $ws.CreateShortcut('${lnkPath}')`,
-                `$s.TargetPath = '${target}'`,
-                `$s.Arguments = '${args}'`,
-                `$s.WorkingDirectory = '${projectDir}'`,
-                `$s.Description = 'Voice Mirror - Voice-controlled AI agent overlay'`,
-                existsSync(icoPath) ? `$s.IconLocation = '${icoPath},0'` : '',
-                `$s.Save()`,
-            ].filter(Boolean);
-            writeFileSync(tmpPs1, lines.join('\r\n'));
-            execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tmpPs1}"`, { stdio: 'pipe' });
-            try { unlinkSync(tmpPs1); } catch {}
-            return true;
+            return createWindowsShortcut(desktop, projectDir, nodeBin, launchScript);
         }
-
         if (os === 'darwin') {
-            const cmdPath = join(desktop, 'Voice Mirror.command');
-            writeFileSync(cmdPath, `#!/bin/bash\ncd "${projectDir}"\nvoice-mirror start\n`, { mode: 0o755 });
-            return true;
+            return createMacShortcut(desktop, projectDir, nodeBin, launchScript);
         }
-
         if (os === 'linux') {
-            const iconPath = join(projectDir, 'assets', 'icon-256.png');
-            const desktopEntry = `[Desktop Entry]
-Name=Voice Mirror
-Comment=Voice-controlled AI agent overlay
-Exec=voice-mirror start
-Icon=${iconPath}
-Terminal=false
-Type=Application
-Categories=Utility;
-`;
-            writeFileSync(join(desktop, 'voice-mirror.desktop'), desktopEntry, { mode: 0o755 });
-            return true;
+            return createLinuxShortcut(desktop, projectDir, nodeBin, launchScript);
         }
-
-        return false;
-    } catch {
-        return false;
+        return { ok: false, error: `Unsupported platform: ${os}` };
+    } catch (err) {
+        return { ok: false, error: err.message };
     }
+}
+
+/**
+ * Windows: Create .lnk via VBScript (always available, no PowerShell needed).
+ */
+function createWindowsShortcut(desktop, projectDir, nodeBin, launchScript) {
+    const lnkPath = join(desktop, 'Voice Mirror.lnk');
+    const vbsLauncher = join(projectDir, 'scripts', 'launch-hidden.vbs');
+    const icoPath = join(projectDir, 'assets', 'icon-256.ico');
+
+    // Use wscript.exe + launch-hidden.vbs for silent startup
+    const target = existsSync(vbsLauncher)
+        ? 'C:\\Windows\\System32\\wscript.exe'
+        : nodeBin;
+    const args = existsSync(vbsLauncher)
+        ? `"${vbsLauncher}"`
+        : `"${launchScript}"`;
+
+    // Build VBScript to create the .lnk (avoids PowerShell entirely)
+    const tmpVbs = join(process.env.TEMP || process.env.TMP || homedir(), `vm-shortcut-${Date.now()}.vbs`);
+    // VBScript uses "" to escape double quotes inside strings
+    // VBScript treats backslashes literally — no escaping needed.
+    // Only double-quotes need escaping (handled by vbsQuote).
+    const vbsLines = [
+        `Set shell = CreateObject("WScript.Shell")`,
+        `Set lnk = shell.CreateShortcut(${vbsQuote(lnkPath)})`,
+        `lnk.TargetPath = ${vbsQuote(target)}`,
+        `lnk.Arguments = ${vbsQuote(args)}`,
+        `lnk.WorkingDirectory = ${vbsQuote(projectDir)}`,
+        `lnk.Description = "Voice Mirror - Voice-controlled AI agent overlay"`,
+        existsSync(icoPath) ? `lnk.IconLocation = ${vbsQuote(icoPath + ',0')}` : '',
+        `lnk.Save()`,
+    ].filter(Boolean);
+
+    writeFileSync(tmpVbs, vbsLines.join('\r\n'), 'utf-8');
+
+    try {
+        execSync(`cscript //nologo "${tmpVbs}"`, { stdio: 'pipe', timeout: 10000 });
+    } finally {
+        try { unlinkSync(tmpVbs); } catch { /* cleanup best-effort */ }
+    }
+
+    // Verify the shortcut was actually created
+    if (!existsSync(lnkPath)) {
+        return { ok: false, error: 'VBScript ran but .lnk file was not created' };
+    }
+    return { ok: true, path: lnkPath };
+}
+
+/** Escape a string for VBScript double-quoted context */
+function vbsQuote(str) {
+    // VBScript escapes " as "" inside double-quoted strings
+    return `"${str.replace(/"/g, '""')}"`;
+}
+
+/**
+ * macOS: Create a .command file using absolute node path.
+ */
+function createMacShortcut(desktop, projectDir, nodeBin, launchScript) {
+    const cmdPath = join(desktop, 'Voice Mirror.command');
+
+    // Use #!/bin/sh for maximum compatibility (macOS ships sh always)
+    // Use absolute node path so we don't depend on PATH
+    const script = [
+        `#!/bin/sh`,
+        `# Voice Mirror launcher — created by setup wizard`,
+        `cd "${projectDir}" || exit 1`,
+        `exec "${nodeBin}" "${launchScript}"`,
+        '',
+    ].join('\n');
+
+    writeFileSync(cmdPath, script, { mode: 0o755 });
+
+    // Remove macOS quarantine flag so Gatekeeper won't prompt
+    try {
+        execSync(`xattr -d com.apple.quarantine "${cmdPath}"`, { stdio: 'ignore' });
+    } catch { /* no quarantine xattr, or xattr not available */ }
+
+    if (!existsSync(cmdPath)) {
+        return { ok: false, error: 'Failed to write .command file' };
+    }
+    return { ok: true, path: cmdPath };
+}
+
+/**
+ * Linux: Create a .desktop file with absolute paths and XDG compliance.
+ */
+function createLinuxShortcut(desktop, projectDir, nodeBin, launchScript) {
+    const desktopFilePath = join(desktop, 'voice-mirror.desktop');
+    const iconPath = join(projectDir, 'assets', 'icon-256.png');
+
+    const entry = [
+        `[Desktop Entry]`,
+        `Version=1.0`,
+        `Type=Application`,
+        `Name=Voice Mirror`,
+        `Comment=Voice-controlled AI agent overlay`,
+        `Exec="${nodeBin}" "${launchScript}"`,
+        existsSync(iconPath) ? `Icon=${iconPath}` : '',
+        `Terminal=false`,
+        `Categories=Utility;AudioVideo;`,
+        `Keywords=voice;AI;assistant;`,
+        `StartupWMClass=voice-mirror-electron`,
+        '',
+    ].filter(Boolean).join('\n');
+
+    writeFileSync(desktopFilePath, entry, { mode: 0o755 });
+
+    // Mark as trusted so desktop environments don't show "untrusted" warning
+    // GNOME (gio)
+    try {
+        execSync(`gio set "${desktopFilePath}" metadata::trusted true`, { stdio: 'ignore', timeout: 5000 });
+    } catch { /* gio not available or not GNOME */ }
+
+    // Also install to ~/.local/share/applications for app launcher integration
+    const appsDir = join(homedir(), '.local', 'share', 'applications');
+    try {
+        if (!existsSync(appsDir)) mkdirSync(appsDir, { recursive: true });
+        writeFileSync(join(appsDir, 'voice-mirror.desktop'), entry, { mode: 0o755 });
+    } catch { /* best-effort for app launcher */ }
+
+    if (!existsSync(desktopFilePath)) {
+        return { ok: false, error: 'Failed to write .desktop file' };
+    }
+    return { ok: true, path: desktopFilePath };
 }
 
 /**
