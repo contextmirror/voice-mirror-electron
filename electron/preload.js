@@ -172,7 +172,13 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         checkCLIAvailable: (command) => ipcRenderer.invoke('check-cli-available', command),
 
         // Install a CLI tool via npm global install
-        installCLI: (packageName) => ipcRenderer.invoke('install-cli', packageName)
+        installCLI: (packageName) => ipcRenderer.invoke('install-cli', packageName),
+
+        // Check dependency versions (ghostty-web, opencode)
+        checkDependencyVersions: () => ipcRenderer.invoke('check-dependency-versions'),
+
+        // Update a specific dependency
+        updateDependency: (depId) => ipcRenderer.invoke('update-dependency', depId)
     },
 
     // Tool events (for local LLM tool system)

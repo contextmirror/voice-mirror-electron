@@ -1,0 +1,154 @@
+<!-- Dependencies Settings Tab -->
+<div class="settings-section" id="section-dependencies">
+    <h3>Dependencies</h3>
+    <p style="color: rgba(255,255,255,0.5); font-size: 12px; margin: 0 0 16px;">
+        Manage bundled and external components used by Voice Mirror.
+    </p>
+    <div class="settings-group" id="dep-cards">
+
+        <!-- ghostty-web -->
+        <div class="dep-card" data-dep="ghostty-web">
+            <div class="dep-header">
+                <span class="dep-name">ghostty-web</span>
+                <span class="dep-desc">Terminal Emulator (WASM)</span>
+            </div>
+            <div class="dep-versions">
+                <div class="dep-row">
+                    <span class="dep-label">Installed</span>
+                    <span class="dep-value" id="dep-ghostty-installed">--</span>
+                </div>
+                <div class="dep-row">
+                    <span class="dep-label">Latest</span>
+                    <span class="dep-value" id="dep-ghostty-latest">--</span>
+                </div>
+            </div>
+            <div class="dep-footer">
+                <span class="dep-badge" id="dep-ghostty-badge">Checking...</span>
+                <button class="dep-update-btn" id="dep-ghostty-update" style="display:none;">Update</button>
+            </div>
+        </div>
+
+        <!-- OpenCode -->
+        <div class="dep-card" data-dep="opencode">
+            <div class="dep-header">
+                <span class="dep-name">OpenCode</span>
+                <span class="dep-desc">AI CLI Provider</span>
+            </div>
+            <div class="dep-versions">
+                <div class="dep-row">
+                    <span class="dep-label">Installed</span>
+                    <span class="dep-value" id="dep-opencode-installed">--</span>
+                </div>
+                <div class="dep-row">
+                    <span class="dep-label">Latest</span>
+                    <span class="dep-value" id="dep-opencode-latest">--</span>
+                </div>
+            </div>
+            <div class="dep-footer">
+                <span class="dep-badge" id="dep-opencode-badge">Checking...</span>
+                <button class="dep-update-btn" id="dep-opencode-update" style="display:none;">Update</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Actions -->
+    <div style="margin-top: 16px; display: flex; align-items: center; gap: 12px;">
+        <button class="control-btn clear" id="dep-check-btn" onclick="window.checkDependencyUpdates()">Check for Updates</button>
+        <span id="dep-last-checked" style="color: rgba(255,255,255,0.4); font-size: 11px;"></span>
+    </div>
+</div>
+
+<style>
+    .dep-card {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        padding: 14px 16px;
+        margin-bottom: 10px;
+    }
+    .dep-header {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+    .dep-name {
+        font-weight: 600;
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.9);
+        font-family: var(--font-mono, 'SF Mono', monospace);
+    }
+    .dep-desc {
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.4);
+    }
+    .dep-versions {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 10px;
+    }
+    .dep-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .dep-label {
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.5);
+    }
+    .dep-value {
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.8);
+        font-family: var(--font-mono, 'SF Mono', monospace);
+    }
+    .dep-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .dep-badge {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-weight: 500;
+    }
+    .dep-badge.up-to-date {
+        background: rgba(74, 222, 128, 0.15);
+        color: #4ade80;
+    }
+    .dep-badge.update-available {
+        background: rgba(251, 191, 36, 0.15);
+        color: #fbbf24;
+    }
+    .dep-badge.not-installed {
+        background: rgba(148, 163, 184, 0.15);
+        color: #94a3b8;
+    }
+    .dep-badge.error {
+        background: rgba(239, 68, 68, 0.15);
+        color: #ef4444;
+    }
+    .dep-badge.checking {
+        color: rgba(255, 255, 255, 0.4);
+    }
+    .dep-update-btn {
+        padding: 4px 14px;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 500;
+        background: rgba(251, 191, 36, 0.2);
+        color: #fbbf24;
+        transition: all 0.2s;
+    }
+    .dep-update-btn:hover {
+        background: rgba(251, 191, 36, 0.35);
+    }
+    .dep-update-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+</style>

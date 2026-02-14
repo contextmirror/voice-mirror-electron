@@ -115,6 +115,116 @@ function registerMiscHandlers(ctx, validators) {
         });
     });
 
+    // Dependency version checking (for Dependencies settings tab)
+    ipcMain.handle('check-dependency-versions', async () => {
+        const { execFile } = require('child_process');
+        const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+        const appDir = path.join(__dirname, '..', '..');
+        const results = {};
+
+        // Helper: fetch latest version from npm registry
+        async function fetchLatest(pkg) {
+            try {
+                const https = require('https');
+                return new Promise((resolve) => {
+                    const req = https.get(`https://registry.npmjs.org/${pkg}/latest`, { timeout: 10000 }, (res) => {
+                        let data = '';
+                        res.on('data', chunk => { data += chunk; });
+                        res.on('end', () => {
+                            try {
+                                resolve(JSON.parse(data).version || null);
+                            } catch { resolve(null); }
+                        });
+                    });
+                    req.on('error', () => resolve(null));
+                    req.on('timeout', () => { req.destroy(); resolve(null); });
+                });
+            } catch { return null; }
+        }
+
+        // ghostty-web: local npm package
+        try {
+            const pkgPath = path.join(appDir, 'node_modules', 'ghostty-web', 'package.json');
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+            const installed = pkg.version;
+            const latest = await fetchLatest('ghostty-web');
+            results.ghosttyWeb = {
+                installed,
+                latest,
+                updateAvailable: latest && installed !== latest
+            };
+        } catch {
+            results.ghosttyWeb = { installed: null, latest: null, updateAvailable: false, error: 'Not found' };
+        }
+
+        // OpenCode: global npm package
+        try {
+            const { isCLIAvailable } = require('../providers/cli-spawner');
+            const isInstalled = isCLIAvailable('opencode');
+            if (!isInstalled) {
+                const latest = await fetchLatest('opencode-ai');
+                results.opencode = { installed: null, latest, updateAvailable: false, notInstalled: true };
+            } else {
+                // Get installed version via npm list -g
+                const installed = await new Promise((resolve) => {
+                    execFile(npmCmd, ['list', '-g', 'opencode-ai', '--depth=0', '--json'], {
+                        timeout: 15000, windowsHide: true
+                    }, (err, stdout) => {
+                        if (err) return resolve(null);
+                        try {
+                            const data = JSON.parse(stdout);
+                            resolve(data.dependencies?.['opencode-ai']?.version || null);
+                        } catch { resolve(null); }
+                    });
+                });
+                const latest = await fetchLatest('opencode-ai');
+                results.opencode = {
+                    installed,
+                    latest,
+                    updateAvailable: latest && installed && installed !== latest
+                };
+            }
+        } catch {
+            results.opencode = { installed: null, latest: null, updateAvailable: false, error: 'Check failed' };
+        }
+
+        return { success: true, data: results };
+    });
+
+    // Dependency update handler
+    ipcMain.handle('update-dependency', async (_event, depId) => {
+        const { execFile } = require('child_process');
+        const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+        const appDir = path.join(__dirname, '..', '..');
+
+        const ALLOWED = {
+            'ghostty-web': { pkg: 'ghostty-web@latest', global: false },
+            'opencode': { pkg: 'opencode-ai@latest', global: true }
+        };
+
+        if (!ALLOWED[depId]) {
+            return { success: false, error: `Unknown dependency: ${depId}` };
+        }
+
+        const { pkg, global: isGlobal } = ALLOWED[depId];
+        const args = isGlobal
+            ? ['install', '-g', pkg, '--no-audit', '--no-fund']
+            : ['install', pkg, '--no-audit', '--no-fund'];
+        const opts = { timeout: 180000, windowsHide: true, cwd: isGlobal ? undefined : appDir };
+
+        return new Promise((resolve) => {
+            execFile(npmCmd, args, opts, (err, _stdout, stderr) => {
+                if (err) {
+                    ctx.logger.error('[Dep Update]', `Failed to update ${depId}:`, err.message);
+                    resolve({ success: false, error: err.message, stderr: stderr?.slice(0, 500) });
+                } else {
+                    ctx.logger.info('[Dep Update]', `Successfully updated ${depId}`);
+                    resolve({ success: true });
+                }
+            });
+        });
+    });
+
     // Image handling - send to Python backend
     ipcMain.handle('send-image', async (event, imageData) => {
         const v = validators['send-image'](imageData);
