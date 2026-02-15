@@ -354,10 +354,9 @@ function populateApiKeyField(provider) {
 
     const savedKey = state.currentConfig?.ai?.apiKeys?.[provider];
     if (savedKey) {
-        // Show masked key
-        const masked = savedKey.slice(0, 4) + '...' + savedKey.slice(-4);
+        // Key exists (value is already masked by the main process)
         apiKeyInput.value = '';
-        apiKeyInput.placeholder = masked;
+        apiKeyInput.placeholder = savedKey;
     } else {
         apiKeyInput.value = '';
         apiKeyInput.placeholder = 'Enter API key...';

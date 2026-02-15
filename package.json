@@ -17,8 +17,8 @@
     "voice-mirror": "cli/index.mjs"
   },
   "devDependencies": {
-    "electron": "^28.3.3",
-    "electron-builder": "^25.0.0"
+    "electron": "^40.0.0",
+    "electron-builder": "^26.0.0"
   },
   "build": {
     "appId": "com.voicemirror.app",

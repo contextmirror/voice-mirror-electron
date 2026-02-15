@@ -643,8 +643,8 @@ app.whenReady().then(() => {
             });
 
             // Track console messages from the webview
-            guestWebContents.on('console-message', (e, level, message) => {
-                browserController.trackConsoleMessage({ level, message, timestamp: Date.now() });
+            guestWebContents.on('console-message', (event) => {
+                browserController.trackConsoleMessage({ level: event.level, message: event.message, timestamp: Date.now() });
             });
 
             // Notify renderer of URL changes

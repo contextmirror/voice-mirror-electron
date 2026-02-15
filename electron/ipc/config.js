@@ -14,6 +14,51 @@ const fontManager = require('../services/font-manager');
 const { CLI_PROVIDERS } = require('../constants');
 
 /**
+ * Mask an API key for safe display in the renderer.
+ * Returns a masked string like "sk-...a1b2" or null if the key is empty.
+ */
+function maskApiKey(key) {
+    if (!key || typeof key !== 'string') return null;
+    const suffix = key.slice(-4);
+    const prefix = key.length > 8 ? key.slice(0, 4) : '';
+    return prefix ? `${prefix}...${suffix}` : `****${suffix}`;
+}
+
+/**
+ * Test whether a value looks like a redacted/masked key (not a real key).
+ * Matches patterns like "sk-...a1b2" or "****a1b2".
+ */
+function isRedactedKey(value) {
+    if (!value || typeof value !== 'string') return false;
+    return /^\S{0,10}\.\.\.\S{2,6}$/.test(value) || /^\*{2,}/.test(value);
+}
+
+/**
+ * Deep-clone a config and redact all API key fields for renderer consumption.
+ */
+function redactConfigKeys(config) {
+    if (!config) return config;
+    const redacted = JSON.parse(JSON.stringify(config));
+
+    // Redact ai.apiKeys.*
+    if (redacted.ai?.apiKeys) {
+        for (const provider of Object.keys(redacted.ai.apiKeys)) {
+            redacted.ai.apiKeys[provider] = maskApiKey(redacted.ai.apiKeys[provider]);
+        }
+    }
+
+    // Redact voice API keys
+    if (redacted.voice?.ttsApiKey) {
+        redacted.voice.ttsApiKey = maskApiKey(redacted.voice.ttsApiKey);
+    }
+    if (redacted.voice?.sttApiKey) {
+        redacted.voice.sttApiKey = maskApiKey(redacted.voice.sttApiKey);
+    }
+
+    return redacted;
+}
+
+/**
  * Register config-related IPC handlers.
  * @param {Object} ctx - Application context
  * @param {Object} validators - IPC input validators
@@ -37,16 +82,38 @@ function registerConfigHandlers(ctx, validators) {
     ctx._getLastTermDims = () => ({ cols: lastTermCols, rows: lastTermRows });
 
     ipcMain.handle('get-config', () => {
-        return ctx.config.loadConfig();
+        return redactConfigKeys(ctx.config.loadConfig());
     });
 
     ipcMain.handle('set-config', async (event, updates) => {
         const v = validators['set-config'](updates);
         if (!v.valid) {
             ctx.logger.warn('[Config]', 'Rejected invalid update:', v.error);
-            return ctx.getAppConfig();
+            return redactConfigKeys(ctx.getAppConfig());
         }
         updates = v.value;
+
+        // Strip redacted/masked API keys from updates so they don't overwrite
+        // the real stored keys. The renderer receives masked values from get-config
+        // and may send them back unchanged; only save genuinely new key values.
+        if (updates.ai?.apiKeys) {
+            for (const [provider, key] of Object.entries(updates.ai.apiKeys)) {
+                if (!key || isRedactedKey(key)) {
+                    delete updates.ai.apiKeys[provider];
+                }
+            }
+        }
+        if (updates.voice?.ttsApiKey !== undefined) {
+            if (!updates.voice.ttsApiKey || isRedactedKey(updates.voice.ttsApiKey)) {
+                delete updates.voice.ttsApiKey;
+            }
+        }
+        if (updates.voice?.sttApiKey !== undefined) {
+            if (!updates.voice.sttApiKey || isRedactedKey(updates.voice.sttApiKey)) {
+                delete updates.voice.sttApiKey;
+            }
+        }
+
         const appConfig = ctx.getAppConfig();
         const oldProvider = appConfig?.ai?.provider;
         const oldModel = appConfig?.ai?.model;
@@ -114,7 +181,7 @@ function registerConfigHandlers(ctx, validators) {
                 ctx.setAppConfig(reverted);
                 // Also fix the local reference for the return value
                 reverted.behavior.hotkey = oldHotkey;
-                return reverted;
+                return redactConfigKeys(reverted);
             }
         }
 
@@ -130,7 +197,7 @@ function registerConfigHandlers(ctx, validators) {
                 const reverted = await ctx.config.updateConfigAsync({ behavior: { statsHotkey: oldStatsHotkey } });
                 ctx.setAppConfig(reverted);
                 reverted.behavior.statsHotkey = oldStatsHotkey;
-                return reverted;
+                return redactConfigKeys(reverted);
             }
         }
 
@@ -182,7 +249,7 @@ function registerConfigHandlers(ctx, validators) {
             }
         }
 
-        return ctx.getAppConfig();
+        return redactConfigKeys(ctx.getAppConfig());
     });
 
     // Overlay output list
@@ -263,7 +330,7 @@ function registerConfigHandlers(ctx, validators) {
     ipcMain.handle('reset-config', () => {
         const newConfig = ctx.config.resetConfig();
         ctx.setAppConfig(newConfig);
-        return newConfig;
+        return redactConfigKeys(newConfig);
     });
 
     ipcMain.handle('get-platform-info', () => {

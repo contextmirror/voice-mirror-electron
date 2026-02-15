@@ -373,7 +373,12 @@ export async function loadVoiceSettingsUI() {
 
     // TTS extra fields
     const apiKeyEl = document.getElementById('tts-api-key');
-    if (apiKeyEl) apiKeyEl.value = state.currentConfig.voice?.ttsApiKey || '';
+    if (apiKeyEl) {
+        // API key is redacted by the main process; show as placeholder, keep input empty
+        const ttsKey = state.currentConfig.voice?.ttsApiKey;
+        apiKeyEl.value = '';
+        apiKeyEl.placeholder = ttsKey || apiKeyEl.placeholder || 'API key...';
+    }
     const endpointEl = document.getElementById('tts-endpoint');
     if (endpointEl) endpointEl.value = state.currentConfig.voice?.ttsEndpoint || '';
     const modelPathEl = document.getElementById('tts-model-path');
@@ -388,7 +393,12 @@ export async function loadVoiceSettingsUI() {
     const sttModelNameEl = document.getElementById('stt-model-name');
     if (sttModelNameEl) sttModelNameEl.value = state.currentConfig.voice?.sttModelName || '';
     const sttApiKeyEl = document.getElementById('stt-api-key');
-    if (sttApiKeyEl) sttApiKeyEl.value = state.currentConfig.voice?.sttApiKey || '';
+    if (sttApiKeyEl) {
+        // API key is redacted by the main process; show as placeholder, keep input empty
+        const sttKey = state.currentConfig.voice?.sttApiKey;
+        sttApiKeyEl.value = '';
+        sttApiKeyEl.placeholder = sttKey || sttApiKeyEl.placeholder || 'API key...';
+    }
     const sttEndpointEl = document.getElementById('stt-endpoint');
     if (sttEndpointEl) sttEndpointEl.value = state.currentConfig.voice?.sttEndpoint || '';
 

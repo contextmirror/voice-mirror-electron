@@ -10,6 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const { getDataDir } = require('../services/platform-paths');
 const { createLogger } = require('../services/logger');
+const { buildFilteredEnv } = require('../lib/filtered-env');
 const logger = createLogger();
 
 // Debug logging
@@ -142,11 +143,10 @@ function createCLISpawner(cliType) {
                 cols,
                 rows,
                 cwd: spawnCwd,
-                env: {
-                    ...process.env,
+                env: buildFilteredEnv({
                     TERM: 'xterm-256color',
                     COLORTERM: 'truecolor'
-                }
+                })
             });
 
             let outputBuffer = '';

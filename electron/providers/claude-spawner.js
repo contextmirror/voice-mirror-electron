@@ -10,6 +10,7 @@ const fs = require('fs');
 const os = require('os');
 const { getDataDir: _getDataDir } = require('../services/platform-paths');
 const { createLogger } = require('../services/logger');
+const { buildFilteredEnv } = require('../lib/filtered-env');
 const logger = createLogger();
 
 // Path to MCP server
@@ -279,12 +280,11 @@ async function spawnClaude(options = {}) {
             cols: cols,
             rows: rows,
             cwd: VOICE_MIRROR_DIR,
-            env: {
-                ...process.env,
+            env: buildFilteredEnv({
                 TERM: 'xterm-256color',
                 COLORTERM: 'truecolor',
                 VOICE_MIRROR_SESSION: 'true'  // Flag for hooks to identify this session
-            }
+            })
         });
 
         // Buffer to detect ready state
