@@ -368,7 +368,7 @@ function registerMiscHandlers(ctx, validators) {
 
         const result = await new Promise((resolve) => {
             execFile(venvPython, ['-m', 'pip', 'install', '-r', reqFile, '--upgrade'], {
-                timeout: 300000, windowsHide: true, cwd: pythonDir, shell: true
+                timeout: 300000, windowsHide: true, cwd: pythonDir
             }, (err, stdout, stderr) => {
                 if (err) {
                     const hint = stderr?.match(/ERROR: .*/)?.[0] || err.message;
