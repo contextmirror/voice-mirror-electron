@@ -455,8 +455,37 @@ async function init() {
         });
     }
 
-    // Name required check — show modal if no userName configured
+    // Disclaimer check — show on first launch before anything else
     const currentConfig = await window.voiceMirror.config.get();
+    if (!currentConfig.system?.acceptedDisclaimer) {
+        const disclaimerOverlay = document.getElementById('disclaimer-overlay');
+        const acceptBtn = document.getElementById('disclaimer-accept');
+        const declineBtn = document.getElementById('disclaimer-decline');
+        const githubLink = document.getElementById('disclaimer-github');
+        const issuesLink = document.getElementById('disclaimer-issues');
+        const starLink = document.getElementById('disclaimer-star');
+        disclaimerOverlay.style.display = 'flex';
+
+        // GitHub links open in external browser
+        const repoUrl = 'https://github.com/contextmirror/voice-mirror-electron';
+        githubLink.onclick = (e) => { e.preventDefault(); window.voiceMirror.openExternal(repoUrl); };
+        issuesLink.onclick = (e) => { e.preventDefault(); window.voiceMirror.openExternal(repoUrl + '/issues'); };
+        starLink.onclick = (e) => { e.preventDefault(); window.voiceMirror.openExternal(repoUrl); };
+
+        // Wait for user decision before continuing
+        await new Promise((resolve) => {
+            acceptBtn.addEventListener('click', async () => {
+                await window.voiceMirror.config.set({ system: { acceptedDisclaimer: true } });
+                disclaimerOverlay.style.display = 'none';
+                resolve();
+            });
+            declineBtn.addEventListener('click', () => {
+                window.voiceMirror.quitApp();
+            });
+        });
+    }
+
+    // Name required check — show modal if no userName configured
     if (!currentConfig.user?.name) {
         const nameOverlay = document.getElementById('name-required-overlay');
         const nameInput = document.getElementById('name-required-input');

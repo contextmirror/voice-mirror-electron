@@ -101,6 +101,7 @@ const DEFAULT_CONFIG = {
 
     // System announcements (Jarvis-style TTS)
     system: {
+        acceptedDisclaimer: false,    // Set true after user accepts first-launch disclaimer
         firstLaunchDone: false,       // Set true after first-ever launch greeting
         lastGreetingPeriod: null      // e.g. "morning-2026-01-29" to avoid repeat greetings
     },
