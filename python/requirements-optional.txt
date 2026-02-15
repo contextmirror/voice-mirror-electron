@@ -10,4 +10,4 @@ openai-whisper>=20231117
 faster-whisper>=1.0.0
 aiohttp>=3.9.0 # not directly required, pinned by Snyk to avoid a vulnerability
 anyio>=4.4.0 # not directly required, pinned by Snyk to avoid a vulnerability
-zipp>=3.19.1 # not directly required, pinned by Snyk to avoid a vulnerability
+zipp>=3.20.0 # not directly required, pinned to avoid CVE-2024-5569
