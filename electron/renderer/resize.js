@@ -41,5 +41,5 @@ export function initResize() {
         });
     });
 
-    log('Resize edges initialized');
+    log.info('Resize edges initialized');
 }
