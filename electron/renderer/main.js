@@ -510,11 +510,25 @@ async function init() {
         } else if (data.status === 'installing') {
             updateText.textContent = 'Installing...';
         } else if (data.status === 'ready') {
-            updateText.textContent = 'Restart to apply';
-            updateBanner.className = 'success';
-            updateBtn.textContent = 'Restart';
-            updateBtn.disabled = false;
-            updateBtn.onclick = () => window.voiceMirror.relaunch();
+            if (data.installFailed) {
+                updateText.textContent = 'Restart to finish update';
+                updateBanner.className = 'success';
+                updateBtn.textContent = 'Restart';
+                updateBtn.disabled = false;
+                updateBtn.onclick = () => window.voiceMirror.relaunch();
+            } else if (data.pendingInstallCompleted) {
+                updateText.textContent = 'Update complete — restart to apply';
+                updateBanner.className = 'success';
+                updateBtn.textContent = 'Restart';
+                updateBtn.disabled = false;
+                updateBtn.onclick = () => window.voiceMirror.relaunch();
+            } else {
+                updateText.textContent = 'Restart to apply';
+                updateBanner.className = 'success';
+                updateBtn.textContent = 'Restart';
+                updateBtn.disabled = false;
+                updateBtn.onclick = () => window.voiceMirror.relaunch();
+            }
         } else if (data.status === 'error') {
             updateText.textContent = 'Update failed';
             updateBanner.className = 'error';

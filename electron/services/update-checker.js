@@ -169,10 +169,11 @@ function createUpdateChecker(options = {}) {
             // Remove untracked files that might conflict with new version
             await exec('git', ['clean', '-fd']);
 
-            // Phase 4: Always run npm install
+            // Phase 4: Install dependencies and rebuild native modules
             // Even if package.json didn't change — catches previously failed installs,
-            // corrupted node_modules, or missing native rebuilds after Node upgrades.
-            // Non-fatal: git reset already succeeded, app may work without fresh install.
+            // corrupted node_modules, or missing native rebuilds after Electron upgrades.
+            // On Windows, npm may fail if the running Electron process locks files.
+            // In that case, we flag it for post-restart recovery.
             let installFailed = false;
             try {
                 sendStatus('installing');
@@ -181,6 +182,13 @@ function createUpdateChecker(options = {}) {
             } catch (installErr) {
                 installFailed = true;
                 if (log) log('APP', `npm install failed (non-fatal): ${installErr.message}`);
+            }
+
+            // Write a pending-install marker so the app can retry on next launch.
+            // This handles the Windows case where files are locked during update.
+            if (installFailed) {
+                const markerPath = path.join(gitDir, 'node_modules', '.pending-install');
+                try { fs.writeFileSync(markerPath, Date.now().toString()); } catch (_) {}
             }
 
             // Phase 5: Post-flight verification
@@ -222,8 +230,58 @@ function createUpdateChecker(options = {}) {
         }
     }
 
+    /**
+     * Complete a pending npm install from a previous update that failed
+     * (e.g., due to Windows file locking while the app was running).
+     * Called once on app startup before the first update check.
+     */
+    async function completePendingInstall() {
+        const markerPath = path.join(gitDir, 'node_modules', '.pending-install');
+        if (!fs.existsSync(markerPath)) return false;
+
+        // Check retry count — give up after 3 attempts to avoid repeated startup delays
+        let retries = 0;
+        try {
+            const content = fs.readFileSync(markerPath, 'utf8');
+            const parts = content.split(':');
+            retries = parts.length > 1 ? parseInt(parts[1], 10) || 0 : 0;
+        } catch (_) {}
+
+        if (retries >= 3) {
+            if (log) log('APP', 'Pending npm install failed 3 times, giving up. Run npm install manually.');
+            try { fs.unlinkSync(markerPath); } catch (_) {}
+            return false;
+        }
+
+        try {
+            if (log) log('APP', `Completing pending npm install (attempt ${retries + 1})...`);
+
+            // Show the update banner so the user sees progress
+            if (safeSend) safeSend('update-available', { behind: 0, pendingInstall: true, latestCommit: 'Completing previous update...' });
+            sendStatus('installing');
+
+            await exec('npm', ['install', '--no-audit', '--no-fund'], 300000);
+
+            // Clean up the marker
+            try { fs.unlinkSync(markerPath); } catch (_) {}
+
+            if (log) log('APP', 'Pending npm install completed successfully');
+            sendStatus('ready', { needsRestart: true, pendingInstallCompleted: true });
+            return true;
+        } catch (err) {
+            if (log) log('APP', `Pending npm install failed: ${err.message}`);
+            // Increment retry counter in marker
+            try { fs.writeFileSync(markerPath, `${Date.now()}:${retries + 1}`); } catch (_) {}
+            return false;
+        }
+    }
+
     function start(intervalMs = 3600000) {
-        startupTimeout = setTimeout(() => check(), 10000);
+        // On startup, check for and complete any pending installs first
+        startupTimeout = setTimeout(async () => {
+            const didInstall = await completePendingInstall();
+            if (!didInstall) await check();
+        }, 10000);
         checkInterval = setInterval(() => check(), intervalMs);
     }
 

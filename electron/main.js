@@ -6,7 +6,7 @@
  * - Expandable chat panel
  * - System tray integration
  *
- * NOTE: Uses Electron 28. The basic window works - tested 2026-01-24.
+ * NOTE: Uses Electron 40. Upgraded from Electron 28 on 2026-02-15.
  */
 
 const { app, BrowserWindow, ipcMain, desktopCapturer, globalShortcut, shell } = require('electron');

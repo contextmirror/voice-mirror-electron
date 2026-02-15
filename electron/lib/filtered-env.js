@@ -46,6 +46,10 @@ function buildFilteredEnv(overrides = {}) {
         'GEMINI_',      // Google Gemini API
         'MISTRAL_',     // Mistral API
         'GROQ_',        // Groq API
+        'XAI_',         // xAI / Grok API
+        'OPENROUTER_',  // OpenRouter API
+        'DEEPSEEK_',    // DeepSeek API
+        'MOONSHOT_',    // Moonshot / Kimi API
         'XDG_',         // Linux XDG base directories
     ];
 
