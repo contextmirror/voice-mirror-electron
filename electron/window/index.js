@@ -264,6 +264,9 @@ function createWindowManager(options = {}) {
 
         // Then resize and enable resizing
         setTimeout(() => {
+            // Opaque background enables OS-level resize handles on Windows
+            // (transparent frameless windows have no resize edges on Electron 40+)
+            mainWindow.setBackgroundColor('#0c0d10');
             mainWindow.setResizable(true);
             mainWindow.setMinimumSize(300, 400);
             mainWindow.setContentSize(panelWidth, panelHeight);
@@ -314,6 +317,8 @@ function createWindowManager(options = {}) {
 
         // Small delay then resize (helps with Wayland/Cosmic)
         setTimeout(() => {
+            // Restore transparency for the orb overlay
+            mainWindow.setBackgroundColor('#00000000');
             mainWindow.setResizable(false);
             mainWindow.setContentSize(orbSize, orbSize);
             mainWindow.setPosition(restoreX, restoreY);
