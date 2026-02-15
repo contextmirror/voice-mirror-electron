@@ -157,6 +157,20 @@ function registerMiscHandlers(ctx, validators) {
             });
         }
 
+        // Helper: get CLI version via --version flag (fallback when npm list fails)
+        async function getCLIVersion(command) {
+            return new Promise((resolve) => {
+                execFile(command, ['--version'], {
+                    timeout: 10000, windowsHide: true, shell: true
+                }, (err, stdout) => {
+                    if (err) return resolve(null);
+                    // Parse version from output like "1.2.4" or "claude v2.1.42" or "Python 3.11.0"
+                    const match = stdout.trim().match(/v?(\d+\.\d+\.\d+)/);
+                    resolve(match ? match[1] : null);
+                });
+            });
+        }
+
         // Helper: check global CLI package
         async function checkGlobalCLI(command, npmPkg, registryPkg) {
             try {
@@ -166,7 +180,11 @@ function registerMiscHandlers(ctx, validators) {
                     const latest = await fetchLatest(registryPkg);
                     return { installed: null, latest, updateAvailable: false, notInstalled: true };
                 }
-                const installed = await getGlobalNpmVersion(npmPkg);
+                // Try npm global list first, fall back to --version flag
+                let installed = await getGlobalNpmVersion(npmPkg);
+                if (!installed) {
+                    installed = await getCLIVersion(command);
+                }
                 const latest = await fetchLatest(registryPkg);
                 return {
                     installed,
@@ -233,17 +251,34 @@ function registerMiscHandlers(ctx, validators) {
                     results.python = { version: null, error: 'Not found' };
                 }
 
-                // Ollama
-                results.ollama = { installed: isCLIAvailable('ollama') };
-
-                // ffmpeg
+                // Ollama — extract version from `ollama --version`
                 try {
-                    const found = await new Promise((resolve) => {
-                        execFile('ffmpeg', ['-version'], { timeout: 5000, windowsHide: true }, (err) => {
-                            resolve(!err);
+                    const ollamaVersion = await new Promise((resolve) => {
+                        execFile('ollama', ['--version'], { timeout: 5000, windowsHide: true, shell: true }, (err, stdout) => {
+                            if (err) return resolve(null);
+                            const match = stdout.match(/(\d+\.\d+\.\d+)/);
+                            resolve(match ? match[1] : null);
                         });
                     });
-                    results.ffmpeg = { installed: found };
+                    results.ollama = ollamaVersion
+                        ? { installed: true, version: ollamaVersion }
+                        : { installed: isCLIAvailable('ollama') };
+                } catch {
+                    results.ollama = { installed: false };
+                }
+
+                // ffmpeg — extract version from `ffmpeg -version`
+                try {
+                    const ffmpegVersion = await new Promise((resolve) => {
+                        execFile('ffmpeg', ['-version'], { timeout: 5000, windowsHide: true }, (err, stdout) => {
+                            if (err) return resolve(null);
+                            const match = stdout.match(/ffmpeg version (\d+\.\d+\.\d+)/);
+                            resolve(match ? match[1] : null);
+                        });
+                    });
+                    results.ffmpeg = ffmpegVersion
+                        ? { installed: true, version: ffmpegVersion }
+                        : { installed: false };
                 } catch {
                     results.ffmpeg = { installed: false };
                 }
@@ -321,7 +356,7 @@ function registerMiscHandlers(ctx, validators) {
         });
     });
 
-    // Pip package upgrade handler
+    // Pip package upgrade handler — stops Python first to release DLL locks
     ipcMain.handle('update-pip-packages', async () => {
         const { execFile } = require('child_process');
         const pythonDir = path.join(__dirname, '..', '..', 'python');
@@ -329,28 +364,64 @@ function registerMiscHandlers(ctx, validators) {
         const venvPython = isWin
             ? path.join(pythonDir, '.venv', 'Scripts', 'python.exe')
             : path.join(pythonDir, '.venv', 'bin', 'python');
-        const reqFile = path.join(pythonDir, 'requirements.txt');
 
         if (!fs.existsSync(venvPython)) {
             return { success: false, error: 'Python venv not found' };
         }
-        if (!fs.existsSync(reqFile)) {
-            return { success: false, error: 'requirements.txt not found' };
+
+        // Stop Python backend to release DLL locks (onnxruntime, psutil, etc.)
+        const pythonBackend = ctx.getPythonBackend();
+        const wasRunning = pythonBackend?.isRunning();
+        if (wasRunning) {
+            ctx.logger.info('[Dep Update]', 'Stopping Python backend for pip upgrade...');
+            pythonBackend.stop();
+            // Wait for process to fully exit before pip install
+            await new Promise(r => setTimeout(r, 2000));
         }
 
-        return new Promise((resolve) => {
-            execFile(venvPython, ['-m', 'pip', 'install', '-r', reqFile, '--upgrade'], {
+        // Get the actual outdated package names, then upgrade them directly.
+        // (pip install -r requirements.txt --upgrade only upgrades direct deps,
+        // not transitive deps like filelock, setuptools, rdflib, etc.)
+        const outdated = await new Promise((resolve) => {
+            execFile(venvPython, ['-m', 'pip', 'list', '--outdated', '--format=json'], {
+                timeout: 30000, windowsHide: true, cwd: pythonDir
+            }, (err, stdout) => {
+                if (err) return resolve([]);
+                try { resolve(JSON.parse(stdout)); } catch { resolve([]); }
+            });
+        });
+
+        if (outdated.length === 0) {
+            if (wasRunning) ctx.startPythonVoiceMirror();
+            return { success: true };
+        }
+
+        const pkgNames = outdated.map(p => p.name);
+        ctx.logger.info('[Dep Update]', `Upgrading ${pkgNames.length} pip packages: ${pkgNames.join(', ')}`);
+
+        const result = await new Promise((resolve) => {
+            execFile(venvPython, ['-m', 'pip', 'install', '--upgrade', ...pkgNames], {
                 timeout: 300000, windowsHide: true, cwd: pythonDir
-            }, (err, _stdout, stderr) => {
+            }, (err, stdout, stderr) => {
                 if (err) {
+                    const hint = stderr?.match(/ERROR: .*/)?.[0] || err.message;
                     ctx.logger.error('[Dep Update]', 'pip upgrade failed:', err.message);
-                    resolve({ success: false, error: err.message, stderr: stderr?.slice(0, 500) });
+                    if (stderr) ctx.logger.error('[Dep Update]', 'stderr:', stderr.slice(0, 500));
+                    resolve({ success: false, error: hint.slice(0, 200) });
                 } else {
                     ctx.logger.info('[Dep Update]', 'pip packages upgraded successfully');
                     resolve({ success: true });
                 }
             });
         });
+
+        // Restart Python backend if it was running before
+        if (wasRunning) {
+            ctx.logger.info('[Dep Update]', 'Restarting Python backend...');
+            ctx.startPythonVoiceMirror();
+        }
+
+        return result;
     });
 
     // Image handling - send to Python backend
