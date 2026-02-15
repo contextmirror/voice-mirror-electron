@@ -17,10 +17,10 @@ function createUpdateChecker(options = {}) {
     let startupTimeout = null;
 
     function exec(cmd, args, timeoutMs = 30000) {
-        // On Windows, npm/npx must use .cmd extension with execFile
-        const resolvedCmd = (isWin && (cmd === 'npm' || cmd === 'npx')) ? cmd + '.cmd' : cmd;
+        // Node 22+ (Electron 40) requires shell:true for .cmd scripts on Windows
+        const useShell = isWin && (cmd === 'npm' || cmd === 'npx');
         return new Promise((resolve, reject) => {
-            execFile(resolvedCmd, args, { cwd: gitDir, timeout: timeoutMs }, (err, stdout, stderr) => {
+            execFile(cmd, args, { cwd: gitDir, timeout: timeoutMs, shell: useShell || false }, (err, stdout, stderr) => {
                 if (err) {
                     err.stderr = stderr;
                     reject(err);

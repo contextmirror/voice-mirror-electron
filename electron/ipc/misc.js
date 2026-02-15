@@ -96,12 +96,13 @@ function registerMiscHandlers(ctx, validators) {
 
         const npmPackage = ALLOWED_PACKAGES[packageName];
         const { execFile } = require('child_process');
-        const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+        const npmCmd = 'npm';
 
         return new Promise((resolve) => {
             execFile(npmCmd, ['install', '-g', npmPackage], {
                 timeout: 120000,
                 windowsHide: true,
+                shell: true,
                 env: { ...process.env }
             }, (err, _stdout, stderr) => {
                 if (err) {
@@ -118,7 +119,7 @@ function registerMiscHandlers(ctx, validators) {
     // Dependency version checking (for Dependencies settings tab)
     ipcMain.handle('check-dependency-versions', async () => {
         const { execFile } = require('child_process');
-        const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+        const npmCmd = 'npm';
         const appDir = path.join(__dirname, '..', '..');
         const results = {};
 
@@ -168,7 +169,7 @@ function registerMiscHandlers(ctx, validators) {
                 // Get installed version via npm list -g
                 const installed = await new Promise((resolve) => {
                     execFile(npmCmd, ['list', '-g', 'opencode-ai', '--depth=0', '--json'], {
-                        timeout: 15000, windowsHide: true
+                        timeout: 15000, windowsHide: true, shell: true
                     }, (err, stdout) => {
                         if (err) return resolve(null);
                         try {
@@ -184,7 +185,8 @@ function registerMiscHandlers(ctx, validators) {
                     updateAvailable: latest && installed && installed !== latest
                 };
             }
-        } catch {
+        } catch (err) {
+            ctx.logger.error('[Deps]', `OpenCode check failed: ${err.message}`);
             results.opencode = { installed: null, latest: null, updateAvailable: false, error: 'Check failed' };
         }
 
@@ -194,7 +196,7 @@ function registerMiscHandlers(ctx, validators) {
     // Dependency update handler
     ipcMain.handle('update-dependency', async (_event, depId) => {
         const { execFile } = require('child_process');
-        const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+        const npmCmd = 'npm';
         const appDir = path.join(__dirname, '..', '..');
 
         const ALLOWED = {
@@ -210,7 +212,7 @@ function registerMiscHandlers(ctx, validators) {
         const args = isGlobal
             ? ['install', '-g', pkg, '--no-audit', '--no-fund']
             : ['install', pkg, '--no-audit', '--no-fund'];
-        const opts = { timeout: 180000, windowsHide: true, cwd: isGlobal ? undefined : appDir };
+        const opts = { timeout: 180000, windowsHide: true, shell: true, cwd: isGlobal ? undefined : appDir };
 
         return new Promise((resolve) => {
             execFile(npmCmd, args, opts, (err, _stdout, stderr) => {
