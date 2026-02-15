@@ -743,7 +743,8 @@ app.whenReady().then(() => {
     updateChecker = createUpdateChecker({
         safeSend,
         log: (level, msg) => logger.log(level, msg),
-        appDir: path.join(__dirname, '..')
+        appDir: path.join(__dirname, '..'),
+        userDataDir: app.getPath('userData')
     });
     updateChecker.start();
 

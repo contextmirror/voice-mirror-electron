@@ -10,11 +10,20 @@ const path = require('path');
 const fs = require('fs');
 
 function createUpdateChecker(options = {}) {
-    const { safeSend, log, appDir } = options;
+    const { safeSend, log, appDir, userDataDir } = options;
     const gitDir = appDir || path.join(__dirname, '..', '..');
     const isWin = process.platform === 'win32';
     let checkInterval = null;
     let startupTimeout = null;
+    let updating = false; // concurrency guard — prevents parallel applyUpdate() calls
+
+    // Pending-install marker lives in userData (not node_modules) so it
+    // survives node_modules deletion, npm install failures, and git clean.
+    function getMarkerPath() {
+        if (userDataDir) return path.join(userDataDir, '.pending-install');
+        // Fallback: next to .git (still outside node_modules)
+        return path.join(gitDir, '.pending-install');
+    }
 
     function exec(cmd, args, timeoutMs = 30000) {
         // Node 22+ (Electron 40) requires shell:true for .cmd scripts on Windows
@@ -144,6 +153,11 @@ function createUpdateChecker(options = {}) {
     }
 
     async function applyUpdate() {
+        if (updating) {
+            if (log) log('APP', 'Update already in progress, ignoring duplicate request');
+            return { success: false, error: 'Update already in progress' };
+        }
+        updating = true;
         try {
             sendStatus('pulling');
 
@@ -158,6 +172,7 @@ function createUpdateChecker(options = {}) {
 
             if (beforeHash === targetHash) {
                 sendStatus('ready', { needsRestart: false });
+                updating = false;
                 return { success: true, alreadyUpToDate: true };
             }
 
@@ -187,8 +202,7 @@ function createUpdateChecker(options = {}) {
             // Write a pending-install marker so the app can retry on next launch.
             // This handles the Windows case where files are locked during update.
             if (installFailed) {
-                const markerPath = path.join(gitDir, 'node_modules', '.pending-install');
-                try { fs.writeFileSync(markerPath, Date.now().toString()); } catch (_) {}
+                try { fs.writeFileSync(getMarkerPath(), Date.now().toString()); } catch (_) {}
             }
 
             // Phase 5: Post-flight verification
@@ -215,6 +229,7 @@ function createUpdateChecker(options = {}) {
             }
 
             sendStatus('ready', { needsRestart: true, needsPip, installFailed });
+            updating = false;
             return { success: true, needsPip, installFailed };
         } catch (err) {
             if (log) log('APP', `Update failed: ${err.message}`);
@@ -226,6 +241,7 @@ function createUpdateChecker(options = {}) {
             } catch (_) { /* truly broken — user needs manual intervention */ }
 
             sendStatus('error', { message: err.message });
+            updating = false;
             return { success: false, error: err.message };
         }
     }
@@ -236,7 +252,7 @@ function createUpdateChecker(options = {}) {
      * Called once on app startup before the first update check.
      */
     async function completePendingInstall() {
-        const markerPath = path.join(gitDir, 'node_modules', '.pending-install');
+        const markerPath = getMarkerPath();
         if (!fs.existsSync(markerPath)) return false;
 
         // Check retry count — give up after 3 attempts to avoid repeated startup delays

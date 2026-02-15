@@ -13,6 +13,9 @@ build/
 *.deb
 *.rpm
 
+# Update system marker (fallback location when userData unavailable)
+.pending-install
+
 # Environment
 .env
 .env.local
