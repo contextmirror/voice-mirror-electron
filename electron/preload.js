@@ -221,8 +221,9 @@ contextBridge.exposeInMainWorld('voiceMirror', {
     quitApp: () => ipcRenderer.invoke('quit-app'),
 
     // Frameless window resize (transparent windows lack native resize edges)
-    startResize: (edge) => ipcRenderer.invoke('start-resize', edge),
-    stopResize: () => ipcRenderer.invoke('stop-resize'),
+    getWindowBounds: () => ipcRenderer.invoke('get-window-bounds'),
+    setWindowBounds: (x, y, w, h) => ipcRenderer.send('set-window-bounds', x, y, w, h),
+    saveWindowBounds: () => ipcRenderer.invoke('save-window-bounds'),
 
     // Uninstall
     runUninstall: (keepConfig) => ipcRenderer.invoke('run-uninstall', !!keepConfig),
