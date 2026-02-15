@@ -15,6 +15,14 @@ Security hardening across the entire app and upgrade from Electron 28 to Electro
 - **Ctrl+C copies selected text** — When text is selected in the terminal, Ctrl+C copies it to the clipboard instead of interrupting the running process. Matches Windows Terminal / VS Code behavior. When nothing is selected, Ctrl+C still sends the interrupt as normal
 - **Dashboard mode remembers state** — The app now restores the window mode (orb or dashboard) it was in when closed. Panel size was already saved — now the expanded/collapsed state persists too, so users don't have to re-expand every launch
 - **Security badges** — Added OpenSSF Scorecard (GitHub Action, runs weekly), Snyk (dependency vulnerability scanning), and Socket.dev (supply chain attack detection) badges to README
+- **Uninstall support** — Three ways to remove Voice Mirror cleanly:
+  - `voice-mirror uninstall` CLI command with interactive prompts (@clack/prompts)
+  - Standalone `uninstall.sh` (Linux/macOS) and `uninstall.ps1` (Windows) scripts
+  - Uninstall button in Settings > General tab with confirmation dialogs
+  - Removes desktop shortcuts, npm global link, config (optional), and FFmpeg (Windows)
+- **CONTRIBUTING.md** — Contribution guidelines for developers (coding standards, test requirements, PR workflow)
+- **OpenSSF Best Practices badge** — Self-assessment completed at 96% passing (project #11950)
+- **CodeQL static analysis** — SAST workflow scanning JavaScript/TypeScript and Python on every push to main, weekly schedule
 
 ### Security
 
@@ -24,6 +32,10 @@ Security hardening across the entire app and upgrade from Electron 28 to Electro
 - **PTY environment filtered** — Spawned terminal processes (Claude Code, OpenCode, etc.) no longer inherit the full `process.env`. A new `filtered-env.js` module allowlists only essential variables: PATH, HOME, shell config, temp dirs, and provider API key prefixes (ANTHROPIC_, CLAUDE_, OLLAMA_, OPENAI_, GEMINI_, MISTRAL_, GROQ_, XAI_, OPENROUTER_, DEEPSEEK_, MOONSHOT_)
 - **Google Fonts bundled locally** — Replaced CDN links to `fonts.googleapis.com` with 26 locally bundled woff2 font files (~710KB). The app no longer makes any external network requests on startup. 8 font families included: Inter, Roboto, Open Sans, Poppins, Ubuntu, Fira Code, JetBrains Mono, Source Code Pro
 - **PowerShell screen capture hardened** — The `displayIndex` parameter is now validated as a non-negative integer, and `outputPath` is properly escaped for PowerShell single-quoted strings, preventing potential injection if values ever came from untrusted input
+- **OpenSSF Scorecard improved from 3.1 to 5.1** — Pinned all GitHub Action versions to commit SHAs, added `permissions: read-all` to workflows, fixed script injection vulnerability in installer-test.yml
+- **GitHub Actions workflow hardening** — Moved `${{ github.head_ref }}` from `run:` blocks to `env:` blocks to prevent script injection; Dependabot configured for npm, pip, and GitHub Actions
+- **CodeQL SAST findings resolved** — Fixed issues flagged by initial static analysis scan
+- **@modelcontextprotocol/sdk** updated to ^1.26.0 for security patches
 
 ### Upgraded
 
@@ -37,11 +49,19 @@ Security hardening across the entire app and upgrade from Electron 28 to Electro
 - **Updater concurrency guard** — Prevents parallel `applyUpdate()` calls if the user double-clicks the Update button. Second call returns immediately instead of racing with git operations
 - **Pending-install marker moved to userData** — The retry marker now lives in `%APPDATA%` instead of `node_modules/`, so it survives `npm install` failures, `node_modules` deletion, and `git clean`. Includes migration from the old location for existing users
 
+### Improved
+
+- **README badges trimmed** — Reduced from 15 to 10 by removing redundant info badges (Electron, Node, Python versions, MCP tools, AI providers)
+- **Settings UI cleanup** — Removed icon card grids from all settings tabs (AI & Tools, Voice & Audio, General, Appearance) that duplicated the tab navigation
+
 ### Fixed
 
 - **npm commands fail on Node 22 (EINVAL)** — Node 22 (bundled with Electron 40) changed `execFile` behavior on Windows: calling `.cmd` scripts like `npm.cmd` directly now throws `EINVAL`. The v0.9.1 fix of appending `.cmd` to npm commands actually became the problem. Fixed by using `shell: true` instead, which lets the OS resolve npm correctly on all platforms. Affected: dependency checker, dependency updater, CLI installer, and the git-based update system
+- **Scorecard badge URL** — Updated from deprecated `securityscorecards.dev` to `scorecard.dev` in README and SECURITY.md
+- **Socket badge** — Replaced broken dynamic badge with static shields.io badge
 
 ### Technical
+- New files: `cli/uninstall.mjs`, `uninstall.sh`, `uninstall.ps1`, `CONTRIBUTING.md`, `.github/workflows/codeql.yml`
 - New files: `electron/lib/filtered-env.js`, `electron/renderer/styles/fonts.css`, `electron/assets/fonts/` (26 woff2 files)
 - `console-message` event handler updated for Electron 35+ API (event object instead of positional args)
 - CSP allows `'wasm-unsafe-eval'` for ghostty-web WASM terminal and `data:` in `connect-src` for embedded WASM binary loading
@@ -52,6 +72,7 @@ Security hardening across the entire app and upgrade from Electron 28 to Electro
 - `config.window.expanded` persists dashboard mode across sessions
 - OpenSSF Scorecard GitHub Action: `.github/workflows/scorecard.yml`
 - README badges updated: version 0.9.4, Electron 40; added screenshots (dashboard + orb states)
+- 523 tests passing (521 pass, 2 skipped, 0 failures)
 
 ---
 
