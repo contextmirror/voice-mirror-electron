@@ -136,3 +136,36 @@
 #drop-zone.visible {
     display: flex;
 }
+
+/* ========== Resize Edges (frameless window) ========== */
+/* Transparent Electron windows lack native OS resize handles.
+   These invisible edge zones provide drag-to-resize cursors. */
+
+#resize-edges {
+    display: none;
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+}
+
+#resize-edges.active {
+    display: block;
+}
+
+.resize-edge {
+    position: absolute;
+    pointer-events: auto;
+}
+
+/* Cardinal edges */
+.resize-n  { top: 0; left: 8px; right: 8px; height: 5px; cursor: n-resize; }
+.resize-s  { bottom: 0; left: 8px; right: 8px; height: 5px; cursor: s-resize; }
+.resize-w  { left: 0; top: 8px; bottom: 8px; width: 5px; cursor: w-resize; }
+.resize-e  { right: 0; top: 8px; bottom: 8px; width: 5px; cursor: e-resize; }
+
+/* Corner zones (slightly larger for easier grab) */
+.resize-nw { top: 0; left: 0; width: 8px; height: 8px; cursor: nw-resize; }
+.resize-ne { top: 0; right: 0; width: 8px; height: 8px; cursor: ne-resize; }
+.resize-sw { bottom: 0; left: 0; width: 8px; height: 8px; cursor: sw-resize; }
+.resize-se { bottom: 0; right: 0; width: 8px; height: 8px; cursor: se-resize; }

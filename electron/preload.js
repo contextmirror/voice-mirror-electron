@@ -220,6 +220,10 @@ contextBridge.exposeInMainWorld('voiceMirror', {
     minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
     quitApp: () => ipcRenderer.invoke('quit-app'),
 
+    // Frameless window resize (transparent windows lack native resize edges)
+    startResize: (edge) => ipcRenderer.invoke('start-resize', edge),
+    stopResize: () => ipcRenderer.invoke('stop-resize'),
+
     // Uninstall
     runUninstall: (keepConfig) => ipcRenderer.invoke('run-uninstall', !!keepConfig),
 

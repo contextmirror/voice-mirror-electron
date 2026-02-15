@@ -22,6 +22,7 @@ import { resolveTheme, applyTheme as applyThemeEngine, applyMessageCardOverrides
 import { handleImageBlob, handleVoiceForImage, sendImageWithPrompt, captureScreen, sendImage, cancelImage, updateCaptureButtonState } from './image-handler.js';
 import { setAIStatus, TOOL_DISPLAY_NAMES, parsePtyActivity } from './ai-status.js';
 import { handleVoiceEvent } from './voice-handler.js';
+import { initResize } from './resize.js';
 
 // DOM elements
 const orb = document.getElementById('orb');
@@ -81,13 +82,16 @@ export async function updateWelcomeMessage() {
 /**
  * Update UI based on expanded state
  */
+const resizeEdges = document.getElementById('resize-edges');
 function updateUI() {
     if (state.isExpanded) {
         orb.style.display = 'none';
         panel.classList.add('visible');
+        if (resizeEdges) resizeEdges.classList.add('active');
     } else {
         orb.style.display = 'flex';
         panel.classList.remove('visible');
+        if (resizeEdges) resizeEdges.classList.remove('active');
     }
 }
 
@@ -219,6 +223,9 @@ async function init() {
 
     // Initialize settings (loads tab templates, then wires event handlers)
     await initSettings();
+
+    // Initialize custom resize edges (transparent frameless windows lack native resize handles)
+    initResize();
 
     // Manual drag for Windows (CSS -webkit-app-region: drag is unreliable on small transparent windows)
     // Uses screen.getCursorScreenPoint() via IPC — works even when cursor leaves the 64px window.

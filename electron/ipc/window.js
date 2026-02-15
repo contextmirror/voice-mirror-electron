@@ -1,10 +1,13 @@
 /**
  * IPC handlers for window control operations.
  * Handles: toggle-expand, minimize-window, get-window-position, set-window-position,
- *          get-cursor-position, start-drag-capture, stop-drag-capture, get-state
+ *          get-cursor-position, start-drag-capture, stop-drag-capture, get-state,
+ *          start-resize, stop-resize
  */
 
 const { ipcMain, screen } = require('electron');
+
+const VALID_RESIZE_EDGES = ['n', 's', 'e', 'w', 'nw', 'ne', 'sw', 'se'];
 
 /**
  * Register window control IPC handlers.
@@ -14,6 +17,10 @@ const { ipcMain, screen } = require('electron');
 function registerWindowHandlers(ctx, validators) {
     // Local state for drag capture
     let preDragBounds = null;
+
+    // Local state for resize
+    let resizeInterval = null;
+    let resizeEdge = null;
 
     ipcMain.handle('toggle-expand', () => {
         if (ctx.getIsExpanded()) {
@@ -104,6 +111,79 @@ function registerWindowHandlers(ctx, validators) {
 
         preDragBounds = null;
         ctx.logger.info('[Window]', 'Drag capture ended at', newX, newY);
+        return { success: true };
+    });
+
+    // --- Frameless window resize via cursor polling ---
+
+    ipcMain.handle('start-resize', (event, edge) => {
+        if (typeof edge !== 'string' || !VALID_RESIZE_EDGES.includes(edge)) {
+            return { success: false, error: 'Invalid edge' };
+        }
+        const mainWindow = ctx.getMainWindow();
+        if (!mainWindow || mainWindow.isDestroyed() || !ctx.getIsExpanded()) {
+            return { success: false };
+        }
+
+        // Stop any in-progress resize
+        if (resizeInterval) {
+            clearInterval(resizeInterval);
+            resizeInterval = null;
+        }
+
+        resizeEdge = edge;
+        const startBounds = mainWindow.getBounds();
+        const startCursor = screen.getCursorScreenPoint();
+
+        resizeInterval = setInterval(() => {
+            if (!mainWindow || mainWindow.isDestroyed() || !ctx.getIsExpanded()) {
+                clearInterval(resizeInterval);
+                resizeInterval = null;
+                return;
+            }
+
+            const cursor = screen.getCursorScreenPoint();
+            const dx = cursor.x - startCursor.x;
+            const dy = cursor.y - startCursor.y;
+
+            let x = startBounds.x;
+            let y = startBounds.y;
+            let width = startBounds.width;
+            let height = startBounds.height;
+
+            if (resizeEdge.includes('e')) width = startBounds.width + dx;
+            if (resizeEdge.includes('w')) { x = startBounds.x + dx; width = startBounds.width - dx; }
+            if (resizeEdge.includes('s')) height = startBounds.height + dy;
+            if (resizeEdge.includes('n')) { y = startBounds.y + dy; height = startBounds.height - dy; }
+
+            // Enforce minimum size
+            const [minW, minH] = mainWindow.getMinimumSize();
+            if (width < minW) {
+                if (resizeEdge.includes('w')) x = startBounds.x + startBounds.width - minW;
+                width = minW;
+            }
+            if (height < minH) {
+                if (resizeEdge.includes('n')) y = startBounds.y + startBounds.height - minH;
+                height = minH;
+            }
+
+            mainWindow.setBounds({
+                x: Math.round(x),
+                y: Math.round(y),
+                width: Math.round(width),
+                height: Math.round(height)
+            });
+        }, 16); // ~60fps
+
+        return { success: true };
+    });
+
+    ipcMain.handle('stop-resize', () => {
+        if (resizeInterval) {
+            clearInterval(resizeInterval);
+            resizeInterval = null;
+        }
+        resizeEdge = null;
         return { success: true };
     });
 }
