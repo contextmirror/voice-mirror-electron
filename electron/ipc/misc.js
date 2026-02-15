@@ -347,13 +347,9 @@ function registerMiscHandlers(ctx, validators) {
         const venvPython = isWin
             ? path.join(pythonDir, '.venv', 'Scripts', 'python.exe')
             : path.join(pythonDir, '.venv', 'bin', 'python');
-        const reqFile = path.join(pythonDir, 'requirements.txt');
 
         if (!fs.existsSync(venvPython)) {
             return { success: false, error: 'Python venv not found' };
-        }
-        if (!fs.existsSync(reqFile)) {
-            return { success: false, error: 'requirements.txt not found' };
         }
 
         // Stop Python backend to release DLL locks (onnxruntime, psutil, etc.)
@@ -366,8 +362,28 @@ function registerMiscHandlers(ctx, validators) {
             await new Promise(r => setTimeout(r, 2000));
         }
 
+        // Get the actual outdated package names, then upgrade them directly.
+        // (pip install -r requirements.txt --upgrade only upgrades direct deps,
+        // not transitive deps like filelock, setuptools, rdflib, etc.)
+        const outdated = await new Promise((resolve) => {
+            execFile(venvPython, ['-m', 'pip', 'list', '--outdated', '--format=json'], {
+                timeout: 30000, windowsHide: true, cwd: pythonDir
+            }, (err, stdout) => {
+                if (err) return resolve([]);
+                try { resolve(JSON.parse(stdout)); } catch { resolve([]); }
+            });
+        });
+
+        if (outdated.length === 0) {
+            if (wasRunning) ctx.startPythonVoiceMirror();
+            return { success: true };
+        }
+
+        const pkgNames = outdated.map(p => p.name);
+        ctx.logger.info('[Dep Update]', `Upgrading ${pkgNames.length} pip packages: ${pkgNames.join(', ')}`);
+
         const result = await new Promise((resolve) => {
-            execFile(venvPython, ['-m', 'pip', 'install', '-r', reqFile, '--upgrade'], {
+            execFile(venvPython, ['-m', 'pip', 'install', '--upgrade', ...pkgNames], {
                 timeout: 300000, windowsHide: true, cwd: pythonDir
             }, (err, stdout, stderr) => {
                 if (err) {
