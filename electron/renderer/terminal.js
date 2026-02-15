@@ -431,7 +431,7 @@ export async function initTerminal() {
     term.writeln(`\x1b[36m║\x1b[0m \x1b[1;35m${paddedBanner}\x1b[0m \x1b[36m║\x1b[0m`);
     term.writeln('\x1b[36m╚════════════════════════════════════════╝\x1b[0m');
     term.writeln('');
-    term.writeln(`\x1b[90mClick "Start" to launch ${providerName}...\x1b[0m`);
+    term.writeln(`\x1b[90mStarting ${providerName}...\x1b[0m`);
     term.writeln('');
 
     log.info('Initialized');
