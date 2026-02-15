@@ -252,6 +252,7 @@ function createWindowManager(options = {}) {
 
         isExpanded = true;
         stopOverlayEnforcer();
+        updateConfig({ window: { expanded: true } });
 
         // Send state change first
         mainWindow.webContents.send('state-change', { expanded: true });
@@ -306,6 +307,7 @@ function createWindowManager(options = {}) {
 
         isExpanded = false;
         startOverlayEnforcer();
+        updateConfig({ window: { expanded: false } });
 
         // Send state change first so UI updates
         mainWindow.webContents.send('state-change', { expanded: false });

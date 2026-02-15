@@ -71,10 +71,11 @@ const DEFAULT_CONFIG = {
         dictationKey: 'MouseButton5'  // Dictation key: hold to record, release to type into focused window
     },
 
-    // Window position (remembered between sessions)
+    // Window state (remembered between sessions)
     window: {
         orbX: null,  // null = default position (bottom-right)
-        orbY: null
+        orbY: null,
+        expanded: false  // Whether the dashboard was open when the app last closed
     },
 
     // Overlay display settings (Wayland orb)

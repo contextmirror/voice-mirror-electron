@@ -184,6 +184,15 @@ function createWindow() {
     mainWindow.on('close', () => {
         app.isQuitting = true;
     });
+
+    // Restore previous mode — if the user closed while in dashboard mode, re-expand
+    // once the renderer is ready (so the state-change IPC arrives correctly).
+    const savedExpanded = appConfig?.window?.expanded;
+    if (savedExpanded) {
+        mainWindow.webContents.once('did-finish-load', () => {
+            expandPanel();
+        });
+    }
 }
 
 function createTray() {
