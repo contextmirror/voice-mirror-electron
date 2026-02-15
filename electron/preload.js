@@ -179,7 +179,10 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         checkDependencyVersions: () => ipcRenderer.invoke('check-dependency-versions'),
 
         // Update a specific dependency
-        updateDependency: (depId) => ipcRenderer.invoke('update-dependency', depId)
+        updateDependency: (depId) => ipcRenderer.invoke('update-dependency', depId),
+
+        // Update all pip packages in Python venv
+        updatePipPackages: () => ipcRenderer.invoke('update-pip-packages')
     },
 
     // Tool events (for local LLM tool system)

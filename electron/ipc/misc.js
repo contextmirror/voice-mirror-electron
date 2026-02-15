@@ -121,14 +121,13 @@ function registerMiscHandlers(ctx, validators) {
         const { execFile } = require('child_process');
         const npmCmd = 'npm';
         const appDir = path.join(__dirname, '..', '..');
-        const results = {};
 
         // Helper: fetch latest version from npm registry
         async function fetchLatest(pkg) {
             try {
                 const https = require('https');
                 return new Promise((resolve) => {
-                    const req = https.get(`https://registry.npmjs.org/${pkg}/latest`, { timeout: 10000 }, (res) => {
+                    const req = https.get(`https://registry.npmjs.org/${encodeURIComponent(pkg).replace('%40', '@')}/latest`, { timeout: 10000 }, (res) => {
                         let data = '';
                         res.on('data', chunk => { data += chunk; });
                         res.on('end', () => {
@@ -143,54 +142,148 @@ function registerMiscHandlers(ctx, validators) {
             } catch { return null; }
         }
 
-        // ghostty-web: local npm package
-        try {
-            const pkgPath = path.join(appDir, 'node_modules', 'ghostty-web', 'package.json');
-            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-            const installed = pkg.version;
-            const latest = await fetchLatest('ghostty-web');
-            results.ghosttyWeb = {
-                installed,
-                latest,
-                updateAvailable: latest && installed !== latest
-            };
-        } catch {
-            results.ghosttyWeb = { installed: null, latest: null, updateAvailable: false, error: 'Not found' };
+        // Helper: get global npm package version
+        async function getGlobalNpmVersion(npmPkg) {
+            return new Promise((resolve) => {
+                execFile(npmCmd, ['list', '-g', npmPkg, '--depth=0', '--json'], {
+                    timeout: 15000, windowsHide: true, shell: true
+                }, (err, stdout) => {
+                    if (err) return resolve(null);
+                    try {
+                        const data = JSON.parse(stdout);
+                        resolve(data.dependencies?.[npmPkg]?.version || null);
+                    } catch { resolve(null); }
+                });
+            });
         }
 
-        // OpenCode: global npm package
-        try {
-            const { isCLIAvailable } = require('../providers/cli-spawner');
-            const isInstalled = isCLIAvailable('opencode');
-            if (!isInstalled) {
-                const latest = await fetchLatest('opencode-ai');
-                results.opencode = { installed: null, latest, updateAvailable: false, notInstalled: true };
-            } else {
-                // Get installed version via npm list -g
-                const installed = await new Promise((resolve) => {
-                    execFile(npmCmd, ['list', '-g', 'opencode-ai', '--depth=0', '--json'], {
-                        timeout: 15000, windowsHide: true, shell: true
-                    }, (err, stdout) => {
-                        if (err) return resolve(null);
-                        try {
-                            const data = JSON.parse(stdout);
-                            resolve(data.dependencies?.['opencode-ai']?.version || null);
-                        } catch { resolve(null); }
-                    });
-                });
-                const latest = await fetchLatest('opencode-ai');
-                results.opencode = {
+        // Helper: check global CLI package
+        async function checkGlobalCLI(command, npmPkg, registryPkg) {
+            try {
+                const { isCLIAvailable } = require('../providers/cli-spawner');
+                const isInstalled = isCLIAvailable(command);
+                if (!isInstalled) {
+                    const latest = await fetchLatest(registryPkg);
+                    return { installed: null, latest, updateAvailable: false, notInstalled: true };
+                }
+                const installed = await getGlobalNpmVersion(npmPkg);
+                const latest = await fetchLatest(registryPkg);
+                return {
                     installed,
                     latest,
                     updateAvailable: latest && installed && installed !== latest
                 };
+            } catch (err) {
+                ctx.logger.error('[Deps]', `${command} check failed: ${err.message}`);
+                return { installed: null, latest: null, updateAvailable: false, error: 'Check failed' };
             }
-        } catch (err) {
-            ctx.logger.error('[Deps]', `OpenCode check failed: ${err.message}`);
-            results.opencode = { installed: null, latest: null, updateAvailable: false, error: 'Check failed' };
         }
 
-        return { success: true, data: results };
+        // --- Run all 3 sections in parallel ---
+        const [npm, system, pip] = await Promise.all([
+            // Section 1: npm packages
+            (async () => {
+                const results = {};
+
+                // ghostty-web: local npm package
+                try {
+                    const pkgPath = path.join(appDir, 'node_modules', 'ghostty-web', 'package.json');
+                    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+                    const installed = pkg.version;
+                    const latest = await fetchLatest('ghostty-web');
+                    results.ghosttyWeb = { installed, latest, updateAvailable: latest && installed !== latest };
+                } catch {
+                    results.ghosttyWeb = { installed: null, latest: null, updateAvailable: false, error: 'Not found' };
+                }
+
+                // OpenCode: global npm package
+                results.opencode = await checkGlobalCLI('opencode', 'opencode-ai', 'opencode-ai');
+
+                // Claude Code: global npm package
+                results.claudeCode = await checkGlobalCLI('claude', '@anthropic-ai/claude-code', '@anthropic-ai/claude-code');
+
+                return results;
+            })(),
+
+            // Section 2: System tools
+            (async () => {
+                const results = {};
+                const { isCLIAvailable } = require('../providers/cli-spawner');
+
+                // Node.js
+                results.node = { version: process.version.replace(/^v/, '') };
+
+                // Python (from venv, fallback to system)
+                const pythonDir = path.join(__dirname, '..', '..', 'python');
+                const isWin = process.platform === 'win32';
+                const venvPython = isWin
+                    ? path.join(pythonDir, '.venv', 'Scripts', 'python.exe')
+                    : path.join(pythonDir, '.venv', 'bin', 'python');
+                const pythonBin = fs.existsSync(venvPython) ? venvPython : (isWin ? 'python' : 'python3');
+                try {
+                    const version = await new Promise((resolve) => {
+                        execFile(pythonBin, ['--version'], { timeout: 10000, windowsHide: true }, (err, stdout) => {
+                            if (err) return resolve(null);
+                            const match = stdout.match(/Python (\d+\.\d+\.\d+)/);
+                            resolve(match ? match[1] : null);
+                        });
+                    });
+                    results.python = version ? { version } : { version: null, error: 'Not found' };
+                } catch {
+                    results.python = { version: null, error: 'Not found' };
+                }
+
+                // Ollama
+                results.ollama = { installed: isCLIAvailable('ollama') };
+
+                // ffmpeg
+                try {
+                    const found = await new Promise((resolve) => {
+                        execFile('ffmpeg', ['-version'], { timeout: 5000, windowsHide: true }, (err) => {
+                            resolve(!err);
+                        });
+                    });
+                    results.ffmpeg = { installed: found };
+                } catch {
+                    results.ffmpeg = { installed: false };
+                }
+
+                return results;
+            })(),
+
+            // Section 3: Python pip outdated
+            (async () => {
+                const pythonDir = path.join(__dirname, '..', '..', 'python');
+                const isWin = process.platform === 'win32';
+                const venvPython = isWin
+                    ? path.join(pythonDir, '.venv', 'Scripts', 'python.exe')
+                    : path.join(pythonDir, '.venv', 'bin', 'python');
+
+                if (!fs.existsSync(venvPython)) {
+                    return { outdated: [], error: 'Python venv not found' };
+                }
+
+                try {
+                    const outdated = await new Promise((resolve, reject) => {
+                        execFile(venvPython, ['-m', 'pip', 'list', '--outdated', '--format=json'], {
+                            timeout: 30000, windowsHide: true, cwd: pythonDir
+                        }, (err, stdout) => {
+                            if (err) return reject(err);
+                            try {
+                                const data = JSON.parse(stdout);
+                                resolve(data.map(p => ({ name: p.name, installed: p.version, latest: p.latest_version })));
+                            } catch (e) { reject(e); }
+                        });
+                    });
+                    return { outdated };
+                } catch (err) {
+                    ctx.logger.error('[Deps]', `pip outdated check failed: ${err.message}`);
+                    return { outdated: [], error: 'Check failed' };
+                }
+            })()
+        ]);
+
+        return { success: true, data: { npm, system, pip } };
     });
 
     // Dependency update handler
@@ -201,7 +294,8 @@ function registerMiscHandlers(ctx, validators) {
 
         const ALLOWED = {
             'ghostty-web': { pkg: 'ghostty-web@latest', global: false },
-            'opencode': { pkg: 'opencode-ai@latest', global: true }
+            'opencode': { pkg: 'opencode-ai@latest', global: true },
+            'claude-code': { pkg: '@anthropic-ai/claude-code@latest', global: true }
         };
 
         if (!ALLOWED[depId]) {
@@ -221,6 +315,38 @@ function registerMiscHandlers(ctx, validators) {
                     resolve({ success: false, error: err.message, stderr: stderr?.slice(0, 500) });
                 } else {
                     ctx.logger.info('[Dep Update]', `Successfully updated ${depId}`);
+                    resolve({ success: true });
+                }
+            });
+        });
+    });
+
+    // Pip package upgrade handler
+    ipcMain.handle('update-pip-packages', async () => {
+        const { execFile } = require('child_process');
+        const pythonDir = path.join(__dirname, '..', '..', 'python');
+        const isWin = process.platform === 'win32';
+        const venvPython = isWin
+            ? path.join(pythonDir, '.venv', 'Scripts', 'python.exe')
+            : path.join(pythonDir, '.venv', 'bin', 'python');
+        const reqFile = path.join(pythonDir, 'requirements.txt');
+
+        if (!fs.existsSync(venvPython)) {
+            return { success: false, error: 'Python venv not found' };
+        }
+        if (!fs.existsSync(reqFile)) {
+            return { success: false, error: 'requirements.txt not found' };
+        }
+
+        return new Promise((resolve) => {
+            execFile(venvPython, ['-m', 'pip', 'install', '-r', reqFile, '--upgrade'], {
+                timeout: 300000, windowsHide: true, cwd: pythonDir
+            }, (err, _stdout, stderr) => {
+                if (err) {
+                    ctx.logger.error('[Dep Update]', 'pip upgrade failed:', err.message);
+                    resolve({ success: false, error: err.message, stderr: stderr?.slice(0, 500) });
+                } else {
+                    ctx.logger.info('[Dep Update]', 'pip packages upgraded successfully');
                     resolve({ success: true });
                 }
             });

@@ -4,52 +4,156 @@
     <p style="color: rgba(255,255,255,0.5); font-size: 12px; margin: 0 0 16px;">
         Manage bundled and external components used by Voice Mirror.
     </p>
-    <div class="settings-group" id="dep-cards">
 
-        <!-- ghostty-web -->
-        <div class="dep-card" data-dep="ghostty-web">
-            <div class="dep-header">
-                <span class="dep-name">ghostty-web</span>
-                <span class="dep-desc">Terminal Emulator (WASM)</span>
-            </div>
-            <div class="dep-versions">
-                <div class="dep-row">
-                    <span class="dep-label">Installed</span>
-                    <span class="dep-value" id="dep-ghostty-installed">--</span>
-                </div>
-                <div class="dep-row">
-                    <span class="dep-label">Latest</span>
-                    <span class="dep-value" id="dep-ghostty-latest">--</span>
-                </div>
-            </div>
-            <div class="dep-footer">
-                <span class="dep-badge" id="dep-ghostty-badge">Checking...</span>
-                <button class="dep-update-btn" id="dep-ghostty-update" style="display:none;">Update</button>
-            </div>
+    <!-- Section 1: Packages (npm) -->
+    <div class="dep-section">
+        <div class="dep-section-header">
+            <h4 class="dep-section-title">Packages</h4>
+            <button class="dep-update-all-btn" id="dep-npm-update-all" style="display:none;">Update All</button>
         </div>
+        <div class="dep-section-cards" id="dep-npm-cards">
 
-        <!-- OpenCode -->
-        <div class="dep-card" data-dep="opencode">
-            <div class="dep-header">
-                <span class="dep-name">OpenCode</span>
-                <span class="dep-desc">AI CLI Provider</span>
-            </div>
-            <div class="dep-versions">
-                <div class="dep-row">
-                    <span class="dep-label">Installed</span>
-                    <span class="dep-value" id="dep-opencode-installed">--</span>
+            <!-- ghostty-web -->
+            <div class="dep-card" data-dep="ghostty-web">
+                <div class="dep-header">
+                    <span class="dep-name">ghostty-web</span>
+                    <span class="dep-desc">Terminal Emulator (WASM)</span>
                 </div>
-                <div class="dep-row">
-                    <span class="dep-label">Latest</span>
-                    <span class="dep-value" id="dep-opencode-latest">--</span>
+                <div class="dep-versions">
+                    <div class="dep-row">
+                        <span class="dep-label">Installed</span>
+                        <span class="dep-value" id="dep-ghostty-installed">--</span>
+                    </div>
+                    <div class="dep-row">
+                        <span class="dep-label">Latest</span>
+                        <span class="dep-value" id="dep-ghostty-latest">--</span>
+                    </div>
+                </div>
+                <div class="dep-footer">
+                    <span class="dep-badge" id="dep-ghostty-badge">Checking...</span>
+                    <button class="dep-update-btn" id="dep-ghostty-update" style="display:none;">Update</button>
                 </div>
             </div>
-            <div class="dep-footer">
-                <span class="dep-badge" id="dep-opencode-badge">Checking...</span>
-                <button class="dep-update-btn" id="dep-opencode-update" style="display:none;">Update</button>
+
+            <!-- OpenCode -->
+            <div class="dep-card" data-dep="opencode">
+                <div class="dep-header">
+                    <span class="dep-name">OpenCode</span>
+                    <span class="dep-desc">AI CLI Provider</span>
+                </div>
+                <div class="dep-versions">
+                    <div class="dep-row">
+                        <span class="dep-label">Installed</span>
+                        <span class="dep-value" id="dep-opencode-installed">--</span>
+                    </div>
+                    <div class="dep-row">
+                        <span class="dep-label">Latest</span>
+                        <span class="dep-value" id="dep-opencode-latest">--</span>
+                    </div>
+                </div>
+                <div class="dep-footer">
+                    <span class="dep-badge" id="dep-opencode-badge">Checking...</span>
+                    <button class="dep-update-btn" id="dep-opencode-update" style="display:none;">Update</button>
+                </div>
             </div>
+
+            <!-- Claude Code -->
+            <div class="dep-card" data-dep="claude-code">
+                <div class="dep-header">
+                    <span class="dep-name">Claude Code</span>
+                    <span class="dep-desc">AI CLI Agent</span>
+                </div>
+                <div class="dep-versions">
+                    <div class="dep-row">
+                        <span class="dep-label">Installed</span>
+                        <span class="dep-value" id="dep-claude-installed">--</span>
+                    </div>
+                    <div class="dep-row">
+                        <span class="dep-label">Latest</span>
+                        <span class="dep-value" id="dep-claude-latest">--</span>
+                    </div>
+                </div>
+                <div class="dep-footer">
+                    <span class="dep-badge" id="dep-claude-badge">Checking...</span>
+                    <button class="dep-update-btn" id="dep-claude-update" style="display:none;">Update</button>
+                </div>
+            </div>
+
         </div>
+    </div>
 
+    <!-- Section 2: System (read-only diagnostic) -->
+    <div class="dep-section">
+        <div class="dep-section-header">
+            <h4 class="dep-section-title">System</h4>
+        </div>
+        <div class="dep-section-cards" id="dep-system-cards">
+
+            <div class="dep-card dep-card-compact" data-dep="node">
+                <div class="dep-header">
+                    <span class="dep-name">Node.js</span>
+                    <span class="dep-value" id="dep-node-version">--</span>
+                </div>
+                <div class="dep-footer">
+                    <span class="dep-badge" id="dep-node-badge">Checking...</span>
+                </div>
+            </div>
+
+            <div class="dep-card dep-card-compact" data-dep="python">
+                <div class="dep-header">
+                    <span class="dep-name">Python</span>
+                    <span class="dep-value" id="dep-python-version">--</span>
+                </div>
+                <div class="dep-footer">
+                    <span class="dep-badge" id="dep-python-badge">Checking...</span>
+                </div>
+            </div>
+
+            <div class="dep-card dep-card-compact" data-dep="ollama">
+                <div class="dep-header">
+                    <span class="dep-name">Ollama</span>
+                    <span class="dep-value" id="dep-ollama-version">--</span>
+                </div>
+                <div class="dep-footer">
+                    <span class="dep-badge" id="dep-ollama-badge">Checking...</span>
+                </div>
+            </div>
+
+            <div class="dep-card dep-card-compact" data-dep="ffmpeg">
+                <div class="dep-header">
+                    <span class="dep-name">ffmpeg</span>
+                    <span class="dep-value" id="dep-ffmpeg-version">--</span>
+                </div>
+                <div class="dep-footer">
+                    <span class="dep-badge" id="dep-ffmpeg-badge">Checking...</span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Section 3: Python Environment -->
+    <div class="dep-section">
+        <div class="dep-section-header">
+            <h4 class="dep-section-title">Python Environment</h4>
+            <button class="dep-update-all-btn" id="dep-pip-update-all" style="display:none;">Update All</button>
+        </div>
+        <div id="dep-pip-status" class="dep-pip-status">
+            <span class="dep-badge checking" id="dep-pip-summary">Checking...</span>
+        </div>
+        <div id="dep-pip-table-container" style="display:none;">
+            <table class="dep-pip-table" id="dep-pip-table">
+                <thead>
+                    <tr>
+                        <th>Package</th>
+                        <th>Installed</th>
+                        <th>Latest</th>
+                    </tr>
+                </thead>
+                <tbody id="dep-pip-tbody">
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <!-- Actions -->
@@ -150,5 +254,86 @@
     .dep-update-btn:disabled {
         opacity: 0.5;
         cursor: not-allowed;
+    }
+
+    /* Section grouping */
+    .dep-section {
+        margin-bottom: 20px;
+    }
+    .dep-section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+    }
+    .dep-section-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.5);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin: 0;
+    }
+
+    /* Update All button */
+    .dep-update-all-btn {
+        padding: 4px 12px;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 500;
+        background: rgba(251, 191, 36, 0.2);
+        color: #fbbf24;
+        transition: all 0.2s;
+    }
+    .dep-update-all-btn:hover {
+        background: rgba(251, 191, 36, 0.35);
+    }
+    .dep-update-all-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Compact cards (System section) */
+    .dep-card-compact {
+        padding: 10px 16px;
+    }
+    .dep-card-compact .dep-header {
+        margin-bottom: 6px;
+        justify-content: space-between;
+    }
+    .dep-card-compact .dep-footer {
+        justify-content: flex-start;
+    }
+
+    /* Pip outdated table */
+    .dep-pip-status {
+        margin-bottom: 8px;
+    }
+    .dep-pip-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+    }
+    .dep-pip-table th {
+        text-align: left;
+        padding: 6px 10px;
+        color: rgba(255, 255, 255, 0.5);
+        font-weight: 500;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .dep-pip-table td {
+        padding: 5px 10px;
+        color: rgba(255, 255, 255, 0.8);
+        font-family: var(--font-mono, 'SF Mono', monospace);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+    .dep-pip-table tr:last-child td {
+        border-bottom: none;
+    }
+    #dep-pip-table-container {
+        max-height: 300px;
+        overflow-y: auto;
     }
 </style>
