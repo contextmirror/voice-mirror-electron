@@ -36,13 +36,15 @@ import uuid
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
-from shared.paths import get_data_dir
+from shared.paths import get_data_dir, safe_path
 
 
 def get_sender_name() -> str:
     """Get the user's configured sender name from voice_config.json, default 'user'."""
     try:
-        config_path = get_data_dir() / "voice_config.json"
+        data_dir = get_data_dir()
+        config_path = data_dir / "voice_config.json"
+        safe_path(config_path, data_dir)
         if config_path.exists():
             with open(config_path, encoding='utf-8') as f:
                 name = json.load(f).get("userName")
@@ -118,6 +120,7 @@ def init_log_file():
         log_dir = get_data_dir()
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / "vmr.log"
+        safe_path(log_path, log_dir)
         # Append mode so both Electron and Python can write
         _log_file = open(log_path, 'a', encoding='utf-8')
         write_log('INFO', 'Voice Mirror started')
@@ -402,8 +405,10 @@ async def process_commands(agent):
                 images_dir = get_data_dir() / "images"
                 images_dir.mkdir(parents=True, exist_ok=True)
 
+                data_dir = get_data_dir()
                 image_filename = f"screen_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.png"
                 image_path = images_dir / image_filename
+                safe_path(image_path, data_dir)
 
                 with open(image_path, 'wb') as f:
                     f.write(base64.b64decode(image_data))
@@ -412,6 +417,7 @@ async def process_commands(agent):
 
                 # Send to Claude via MCP inbox
                 inbox_path = get_data_dir() / "inbox.json"
+                safe_path(inbox_path, data_dir)
 
                 if inbox_path.exists():
                     try:
@@ -450,12 +456,14 @@ async def process_commands(agent):
                 if image:
                     # Handle image query - save to persistent location
                     # Save to ~/.context-mirror/images/ for persistence
-                    images_dir = get_data_dir() / "images"
+                    data_dir = get_data_dir()
+                    images_dir = data_dir / "images"
                     images_dir.mkdir(parents=True, exist_ok=True)
 
                     # Unique filename with timestamp
                     filename = f"screen_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.png"
                     image_path = images_dir / filename
+                    safe_path(image_path, data_dir)
 
                     with open(image_path, 'wb') as f:
                         f.write(base64.b64decode(image))
@@ -463,7 +471,8 @@ async def process_commands(agent):
                     emit_event("image_received", {"path": str(image_path)})
 
                     # Send image to Claude via MCP inbox
-                    inbox_path = get_data_dir() / "inbox.json"
+                    inbox_path = data_dir / "inbox.json"
+                    safe_path(inbox_path, data_dir)
                     inbox_path.parent.mkdir(parents=True, exist_ok=True)
 
                     # Load existing messages
@@ -499,7 +508,9 @@ async def process_commands(agent):
                 elif text:
                     # Text-only query - route through inbox (same pipeline as voice)
                     # Don't emit transcription event — the input bar already shows the user's message
-                    inbox_path = get_data_dir() / "inbox.json"
+                    data_dir = get_data_dir()
+                    inbox_path = data_dir / "inbox.json"
+                    safe_path(inbox_path, data_dir)
                     inbox_path.parent.mkdir(parents=True, exist_ok=True)
 
                     if inbox_path.exists():
@@ -532,7 +543,9 @@ async def process_commands(agent):
             elif command == "set_mode":
                 mode = cmd.get("mode", "auto")
                 # Write to voice_mode.json
-                mode_path = get_data_dir() / "voice_mode.json"
+                data_dir = get_data_dir()
+                mode_path = data_dir / "voice_mode.json"
+                safe_path(mode_path, data_dir)
                 mode_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(mode_path, 'w', encoding='utf-8') as f:
                     json.dump({"mode": mode}, f)
@@ -543,7 +556,9 @@ async def process_commands(agent):
                 cfg = cmd.get("config", {})
 
                 # Write config to file for voice_agent to read
-                config_path = get_data_dir() / "voice_config.json"
+                data_dir = get_data_dir()
+                config_path = data_dir / "voice_config.json"
+                safe_path(config_path, data_dir)
                 config_path.parent.mkdir(parents=True, exist_ok=True)
 
                 # Merge with existing config
@@ -616,7 +631,8 @@ async def process_commands(agent):
 
                 if has_voice_changes:
                     # Update voice_settings.json (read by voice_agent)
-                    settings_path = get_data_dir() / "voice_settings.json"
+                    settings_path = data_dir / "voice_settings.json"
+                    safe_path(settings_path, data_dir)
                     try:
                         voice_settings = {}
                         if settings_path.exists():
@@ -695,7 +711,9 @@ async def process_commands(agent):
             elif command == "start_recording":
                 # Push-to-talk: start recording immediately
                 # Don't emit here - ElectronOutputCapture will emit when voice_agent prints
-                ptt_path = get_data_dir() / "ptt_trigger.json"
+                data_dir = get_data_dir()
+                ptt_path = data_dir / "ptt_trigger.json"
+                safe_path(ptt_path, data_dir)
                 ptt_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(ptt_path, 'w', encoding='utf-8') as f:
                     json.dump({"action": "start", "timestamp": datetime.now().isoformat()}, f)
@@ -703,7 +721,9 @@ async def process_commands(agent):
             elif command == "stop_recording":
                 # Push-to-talk: stop recording
                 # Don't emit here - ElectronOutputCapture will emit when voice_agent prints
-                ptt_path = get_data_dir() / "ptt_trigger.json"
+                data_dir = get_data_dir()
+                ptt_path = data_dir / "ptt_trigger.json"
+                safe_path(ptt_path, data_dir)
                 with open(ptt_path, 'w', encoding='utf-8') as f:
                     json.dump({"action": "stop", "timestamp": datetime.now().isoformat()}, f)
 

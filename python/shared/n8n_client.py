@@ -20,7 +20,13 @@ N8N_API_URL = "http://localhost:5678"
 import platform as _platform
 if _platform.system() == "Windows":
     import os as _os
-    N8N_API_KEY_FILE = Path(_os.environ.get("APPDATA", "")) / "n8n" / "api_key"
+    _appdata = _os.environ.get("APPDATA", "")
+    _n8n_base = Path(_appdata) / "n8n"
+    N8N_API_KEY_FILE = _n8n_base / "api_key"
+    _resolved = os.path.realpath(str(N8N_API_KEY_FILE))
+    _base_resolved = os.path.realpath(str(_n8n_base))
+    if _resolved != _base_resolved and not _resolved.startswith(_base_resolved + os.sep):
+        raise ValueError(f"n8n API key path escapes expected directory: {N8N_API_KEY_FILE}")
 elif _platform.system() == "Darwin":
     N8N_API_KEY_FILE = Path.home() / "Library" / "Application Support" / "n8n" / "api_key"
 else:

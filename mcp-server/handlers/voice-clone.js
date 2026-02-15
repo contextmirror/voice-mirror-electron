@@ -16,6 +16,75 @@ if (!fs.existsSync(VOICES_DIR)) {
 }
 
 /**
+ * Validate a URL to prevent SSRF attacks.
+ * Only allows http/https schemes and blocks private/internal IP ranges.
+ */
+function validateAudioUrl(urlStr) {
+    let parsed;
+    try {
+        parsed = new URL(urlStr);
+    } catch {
+        return 'Invalid URL format';
+    }
+
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return `Unsupported URL scheme: ${parsed.protocol} (only http/https allowed)`;
+    }
+
+    const hostname = parsed.hostname.toLowerCase();
+
+    // Block localhost and loopback
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]') {
+        return 'URLs pointing to localhost/loopback are not allowed';
+    }
+
+    // Block private IP ranges (10.x, 172.16-31.x, 192.168.x, 169.254.x)
+    const ipv4Match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+    if (ipv4Match) {
+        const [, a, b] = ipv4Match.map(Number);
+        if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || a === 0) {
+            return 'URLs pointing to private/internal networks are not allowed';
+        }
+    }
+
+    return null; // valid
+}
+
+/**
+ * Validate an audio file path to prevent path traversal.
+ * Resolved path must be within HOME_DATA_DIR or common user directories.
+ */
+function validateAudioPath(filePath) {
+    const resolved = path.resolve(filePath);
+
+    // Allow paths within HOME_DATA_DIR (app data) or user's home directory
+    const homeDir = require('os').homedir();
+    const allowedRoots = [
+        path.resolve(HOME_DATA_DIR),
+        path.resolve(homeDir)
+    ];
+
+    const withinAllowed = allowedRoots.some(root => resolved.startsWith(root + path.sep) || resolved === root);
+    if (!withinAllowed) {
+        return `Path not allowed: must be within user home directory or app data directory`;
+    }
+
+    return null; // valid
+}
+
+/**
+ * Validate voice name to prevent path traversal in constructed file paths.
+ */
+function validateVoiceName(name) {
+    if (!name || typeof name !== 'string') return 'voice_name is required';
+    if (/[\/\\:*?"<>|]/.test(name) || name.includes('..')) {
+        return 'voice_name contains invalid characters';
+    }
+    if (name.length > 64) return 'voice_name too long (max 64 characters)';
+    return null; // valid
+}
+
+/**
  * clone_voice - Clone a voice from audio sample
  * Uses file-based IPC to communicate with Python voice agent
  */
@@ -33,6 +102,28 @@ async function handleCloneVoice(args) {
                 content: [{ type: 'text', text: 'Error: Either audio_url or audio_path is required' }],
                 isError: true
             };
+        }
+
+        // Validate voice_name to prevent path traversal in constructed file paths
+        const nameErr = validateVoiceName(voiceName);
+        if (nameErr) {
+            return { content: [{ type: 'text', text: `Error: ${nameErr}` }], isError: true };
+        }
+
+        // Validate URL to prevent SSRF
+        if (audioUrl) {
+            const urlErr = validateAudioUrl(audioUrl);
+            if (urlErr) {
+                return { content: [{ type: 'text', text: `Error: ${urlErr}` }], isError: true };
+            }
+        }
+
+        // Validate file path to prevent path traversal
+        if (audioPath) {
+            const pathErr = validateAudioPath(audioPath);
+            if (pathErr) {
+                return { content: [{ type: 'text', text: `Error: ${pathErr}` }], isError: true };
+            }
         }
 
         let sourceAudioPath = audioPath;
@@ -66,12 +157,18 @@ async function handleCloneVoice(args) {
                         execFileSync('curl', ['-L', '-o', downloadPath, audioUrl], { timeout: 30000 });
                     } catch {
                         const https = require('https');
-                        const http = require('http');
+                        // Use HTTPS for external downloads to prevent cleartext transmission
+                        if (!audioUrl.startsWith('https')) {
+                            throw new Error('HTTPS required for audio downloads from external URLs');
+                        }
                         await new Promise((resolve, reject) => {
-                            const mod = audioUrl.startsWith('https') ? https : http;
                             const follow = (url) => {
-                                mod.get(url, (res) => {
+                                https.get(url, (res) => {
                                     if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                                        // Only follow HTTPS redirects
+                                        if (!res.headers.location.startsWith('https')) {
+                                            return reject(new Error('Redirect to non-HTTPS URL not allowed'));
+                                        }
                                         follow(res.headers.location);
                                         return;
                                     }

@@ -54,22 +54,27 @@ SILENCE_TIMEOUT = 10.0  # seconds of silence before stopping recording
 CONVERSATION_WINDOW = 5.0  # seconds to wait for follow-up without wake word
 
 # Voice Mirror data directory (cross-platform)
-from shared.paths import get_data_dir
+from shared.paths import get_data_dir, safe_path
 VM_DATA_DIR = get_data_dir()
 VM_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # MCP inbox path
 INBOX_PATH = VM_DATA_DIR / "inbox.json"
+safe_path(INBOX_PATH, VM_DATA_DIR)
 
 # Push-to-talk trigger file (written by Electron)
 PTT_TRIGGER_PATH = VM_DATA_DIR / "ptt_trigger.json"
+safe_path(PTT_TRIGGER_PATH, VM_DATA_DIR)
 
 # Dictation trigger file (written by Electron)
 DICTATION_TRIGGER_PATH = VM_DATA_DIR / "dictation_trigger.json"
+safe_path(DICTATION_TRIGGER_PATH, VM_DATA_DIR)
 
 # Voice cloning IPC files (written by MCP server)
 VOICE_CLONE_REQUEST_PATH = VM_DATA_DIR / "voice_clone_request.json"
+safe_path(VOICE_CLONE_REQUEST_PATH, VM_DATA_DIR)
 VOICE_CLONE_RESPONSE_PATH = VM_DATA_DIR / "voice_clone_response.json"
+safe_path(VOICE_CLONE_RESPONSE_PATH, VM_DATA_DIR)
 
 # Audio settings
 SAMPLE_RATE = 16000
@@ -103,6 +108,7 @@ class VoiceMirror:
         def _get_sender_name():
             try:
                 config_path = VM_DATA_DIR / "voice_config.json"
+                safe_path(config_path, VM_DATA_DIR)
                 if config_path.exists():
                     with open(config_path, encoding='utf-8') as f:
                         name = json.load(f).get("userName")
@@ -304,6 +310,7 @@ class VoiceMirror:
 
         try:
             if PTT_TRIGGER_PATH.exists():
+                safe_path(PTT_TRIGGER_PATH, VM_DATA_DIR)
                 with open(PTT_TRIGGER_PATH, encoding='utf-8') as f:
                     data = json.load(f)
                     action = data.get("action")
@@ -343,6 +350,7 @@ class VoiceMirror:
 
         try:
             if DICTATION_TRIGGER_PATH.exists():
+                safe_path(DICTATION_TRIGGER_PATH, VM_DATA_DIR)
                 with open(DICTATION_TRIGGER_PATH, encoding='utf-8') as f:
                     data = json.load(f)
                     action = data.get("action")
@@ -381,6 +389,7 @@ class VoiceMirror:
             if not VOICE_CLONE_REQUEST_PATH.exists():
                 return
 
+            safe_path(VOICE_CLONE_REQUEST_PATH, VM_DATA_DIR)
             with open(VOICE_CLONE_REQUEST_PATH, encoding='utf-8') as f:
                 request = json.load(f)
 
@@ -492,6 +501,7 @@ class VoiceMirror:
         if transcript:
             response['transcript'] = transcript
 
+        safe_path(VOICE_CLONE_RESPONSE_PATH, VM_DATA_DIR)
         with open(VOICE_CLONE_RESPONSE_PATH, 'w', encoding='utf-8') as f:
             json.dump(response, f, indent=2)
 
@@ -783,6 +793,8 @@ class VoiceMirror:
         self._voice_config = {}
         try:
             from providers.config import ELECTRON_CONFIG_PATH
+            from shared.paths import get_config_base
+            safe_path(ELECTRON_CONFIG_PATH, get_config_base() / "voice-mirror-electron")
             if ELECTRON_CONFIG_PATH.exists():
                 with open(ELECTRON_CONFIG_PATH, encoding='utf-8') as f:
                     self._voice_config = json.load(f).get("voice", {})
@@ -861,6 +873,8 @@ class VoiceMirror:
             try:
                 from global_hotkey import GlobalHotkeyListener
                 from providers.config import ELECTRON_CONFIG_PATH
+                from shared.paths import get_config_base
+                safe_path(ELECTRON_CONFIG_PATH, get_config_base() / "voice-mirror-electron")
 
                 config = {}
                 if ELECTRON_CONFIG_PATH.exists():

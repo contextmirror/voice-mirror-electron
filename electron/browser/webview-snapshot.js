@@ -111,7 +111,7 @@ async function takeRoleSnapshot(opts = {}) {
     const stats = getRoleSnapshotStats(built.snapshot, built.refs);
 
     // Compute hash for ifChanged optimization
-    const snapshotHash = crypto.createHash('md5').update(built.snapshot).digest('hex');
+    const snapshotHash = crypto.createHash('sha256').update(built.snapshot).digest('hex');
     if (opts.ifChanged && lastSnapshotHash === snapshotHash) {
         return { ok: true, unchanged: true, stats: lastSnapshotStats || stats };
     }

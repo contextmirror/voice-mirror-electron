@@ -631,7 +631,16 @@ class GlobalHotkeyListener:
         voice_agent from reading a partially-written JSON file.
         """
         try:
+            resolved = os.path.realpath(str(trigger_path))
+            base = os.path.realpath(str(self._data_dir))
+            if resolved != base and not resolved.startswith(base + os.sep):
+                print(f"[GlobalHotkey] Refusing to write outside data dir: {trigger_path}")
+                return
             temp_path = str(trigger_path) + '.tmp'
+            resolved_tmp = os.path.realpath(temp_path)
+            if resolved_tmp != base and not resolved_tmp.startswith(base + os.sep):
+                print(f"[GlobalHotkey] Refusing to write temp outside data dir: {temp_path}")
+                return
             with open(temp_path, 'w', encoding='utf-8') as f:
                 json.dump({
                     "action": action,

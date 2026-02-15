@@ -397,7 +397,8 @@ export async function runSetup(opts = {}) {
         spin9.stop(chalk.red('Python setup failed'));
         p.log.error(venvResult.error);
     } else {
-        const pipResult = installRequirements(venvResult.binary, PROJECT_DIR, { update: (m) => spin9.message(m) });
+        const venvBinary = detectPythonVenv(PROJECT_DIR).binary;
+        const pipResult = installRequirements(venvBinary, PROJECT_DIR, { update: (m) => spin9.message(m) });
         if (pipResult.ok) {
             spin9.stop('Python backend ready');
 
@@ -405,7 +406,7 @@ export async function runSetup(opts = {}) {
             if (!detectTTSModel(PROJECT_DIR)) {
                 const spin9b = p.spinner();
                 spin9b.start('Downloading TTS models...');
-                const ttsResult = await downloadTTSModels(venvResult.binary, PROJECT_DIR, { update: (m) => spin9b.message(m) });
+                const ttsResult = await downloadTTSModels(venvBinary, PROJECT_DIR, { update: (m) => spin9b.message(m) });
                 spin9b.stop(ttsResult.ok ? 'TTS models ready' : chalk.yellow('TTS models download skipped (will auto-download on first run)'));
             }
         } else {
@@ -483,7 +484,8 @@ async function runDependencySetup(config) {
         spin.start('Setting up Python backend...');
         const result = createVenv(PROJECT_DIR, { update: (m) => spin.message(m) });
         if (result.ok) {
-            installRequirements(result.binary, PROJECT_DIR, { update: (m) => spin.message(m) });
+            const venvBinary = detectPythonVenv(PROJECT_DIR).binary;
+            installRequirements(venvBinary, PROJECT_DIR, { update: (m) => spin.message(m) });
         }
         spin.stop('Python ready');
     }

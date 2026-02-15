@@ -90,6 +90,13 @@ class OpenAIProvider {
         return new Promise((resolve, reject) => {
             const url = new URL(endpoint, this.baseUrl);
             const isHttps = url.protocol === 'https:';
+            const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '::1';
+
+            // Enforce HTTPS for non-localhost URLs to prevent cleartext transmission of API keys
+            if (!isHttps && !isLocalhost) {
+                return reject(new Error(`HTTPS required for non-localhost embedding API: ${url.hostname}`));
+            }
+
             const lib = isHttps ? https : http;
 
             const options = {

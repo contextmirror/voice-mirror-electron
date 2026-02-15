@@ -21,6 +21,7 @@ const os = require('os');
 // Configuration
 // ============================================
 
+// n8n runs locally — HTTP to localhost is intentional and acceptable
 const N8N_API_URL = 'http://localhost:5678';
 const N8N_API_KEY_FILE = path.join(os.homedir(), '.config', 'n8n', 'api_key');
 
@@ -93,6 +94,13 @@ function apiRequest(endpoint, method = 'GET', data = null) {
 function rawRequest(url, method = 'POST', data = null, headers = {}, timeout = 60000) {
     return new Promise((resolve, reject) => {
         const parsed = new URL(url);
+        const isLocalhost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '::1';
+
+        // Enforce HTTPS for non-localhost URLs to prevent cleartext transmission
+        if (!isLocalhost && parsed.protocol !== 'https:') {
+            return reject(new Error(`HTTPS required for non-localhost URL: ${parsed.hostname}`));
+        }
+
         const isHttps = parsed.protocol === 'https:';
         const transport = isHttps ? https : http;
 
