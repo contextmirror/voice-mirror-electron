@@ -27,9 +27,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/status-alpha-orange" alt="Alpha">
-  <img src="https://img.shields.io/badge/version-0.9.4-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.9.5-blue" alt="Version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-blue" alt="Platform">
-  <img src="https://img.shields.io/badge/tests-519_passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-568_passing-brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <a href="https://discord.com/invite/JBpsSFB7EQ"><img src="https://img.shields.io/badge/Discord-Join%20us-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
 </p>
