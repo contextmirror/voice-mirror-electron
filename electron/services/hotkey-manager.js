@@ -115,6 +115,7 @@ function createHotkeyManager(options = {}) {
     let healthCheckInterval = null;
     let uiohookListenersAttached = false;
     let initialized = false;
+    let _uiohookDeferTimer = null;
 
     // --- uiohook key event handlers ---
 
@@ -271,10 +272,19 @@ function createHotkeyManager(options = {}) {
     function start() {
         if (initialized) return;
         initialized = true;
-        setupUiohook();
         setupPowerMonitor();
         startHealthCheck();
-        log('HOTKEY', `Initialized (uiohook=${uiohookShared.isAvailable()}, platform=${process.platform})`);
+        // Defer uiohook to avoid mouse lag during startup burst.
+        // The OS-level hook intercepts every input event system-wide;
+        // when the event loop is busy with startup work, mouse events
+        // queue up causing visible stutter. globalShortcut covers hotkeys
+        // during the deferral window.
+        _uiohookDeferTimer = setTimeout(() => {
+            _uiohookDeferTimer = null;
+            setupUiohook();
+            log('HOTKEY', 'uiohook layer activated (deferred)');
+        }, 4000);
+        log('HOTKEY', `Initialized (platform=${process.platform}, uiohook=deferred)`);
     }
 
     /**
@@ -357,6 +367,7 @@ function createHotkeyManager(options = {}) {
      * Stop the hotkey manager. Call on app shutdown.
      */
     function stop() {
+        if (_uiohookDeferTimer) { clearTimeout(_uiohookDeferTimer); _uiohookDeferTimer = null; }
         stopHealthCheck();
         // Remove powerMonitor listeners to prevent leaks
         if (_onResume) { powerMonitor.removeListener('resume', _onResume); _onResume = null; }
