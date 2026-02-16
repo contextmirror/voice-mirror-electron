@@ -128,6 +128,65 @@ class MarkdownStore {
     }
 
     /**
+     * Append multiple memories in a single file read/write cycle
+     * @param {Array<{text: string, tier: string}>} items - Memories to append
+     */
+    async appendMemoryBatch(items) {
+        if (!items || items.length === 0) return;
+        await this.init();
+        const { content } = await this.readMemory();
+
+        const sectionHeaders = {
+            core: '## Core (Permanent)',
+            stable: '## Stable (7 days)',
+            notes: '## Notes'
+        };
+
+        const lines = content.split('\n');
+        const timestamp = new Date().toISOString();
+
+        // Group items by tier for efficient insertion
+        const byTier = {};
+        for (const item of items) {
+            const tier = item.tier || 'stable';
+            if (!byTier[tier]) byTier[tier] = [];
+            byTier[tier].push(`- ${item.text} <!-- ${timestamp} -->`);
+        }
+
+        // Insert each tier's lines into the appropriate section (in reverse order
+        // so that earlier insertions don't shift indices for later ones)
+        const tiers = ['notes', 'stable', 'core'];
+        for (const tier of tiers) {
+            const memoryLines = byTier[tier];
+            if (!memoryLines) continue;
+
+            const header = sectionHeaders[tier] || sectionHeaders.stable;
+            const headerIndex = lines.findIndex(line => line.startsWith(header));
+
+            if (headerIndex === -1) {
+                // Section not found, append at end
+                lines.push('', header, ...memoryLines);
+            } else {
+                // Find end of section (before next ## header)
+                let insertIndex = headerIndex + 1;
+                while (insertIndex < lines.length && lines[insertIndex].startsWith('<!--')) {
+                    insertIndex++;
+                }
+                while (insertIndex < lines.length && lines[insertIndex].trim() === '') {
+                    insertIndex++;
+                }
+                let endIndex = insertIndex;
+                while (endIndex < lines.length && !lines[endIndex].startsWith('## ')) {
+                    endIndex++;
+                }
+                lines.splice(endIndex, 0, ...memoryLines);
+            }
+        }
+
+        await this.writeMemory(lines.join('\n'));
+    }
+
+    /**
      * Get the path to today's daily log
      * @returns {string} Path to today's log file
      */

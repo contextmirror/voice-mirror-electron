@@ -149,6 +149,11 @@ class TUIRenderer {
 
         // Layout cache (computed on render / resize)
         this._layout = null;
+
+        // Cached non-stream chat lines (invalidated on appendMessage/resize)
+        this._cachedChatLinesNoStream = null;
+        this._cachedChatLinesWidth = 0;
+        this._cachedMessageCount = 0;
     }
 
     // ── Layout calculation ──────────────────────────────────────────────
@@ -403,28 +408,9 @@ class TUIRenderer {
     // ── Chat lines builder ──────────────────────────────────────────────
 
     _buildChatLines(width) {
-        const lines = [];
-        for (const msg of this.messages) {
-            const ts = formatTime(msg.timestamp);
-            const isUser = msg.role === 'user';
-            const nameColor = isUser ? THEME.user : THEME.assistant;
-            const name = isUser ? 'You' : this.model.split(':')[0];
-
-            // Header line: " ▸ Name                    8:34 PM"
-            const headerLabel = `  ▸ ${name}`;
-            const tsStr = `${THEME.dim}${ts}${RESET}`;
-            const headerPad = Math.max(1, width - headerLabel.length - ts.length);
-            lines.push(`${nameColor}${headerLabel}${RESET}${' '.repeat(headerPad)}${tsStr}`);
-
-            // Message text, wrapped
-            const wrapped = wrapText(msg.text, width - 2);
-            for (const wl of wrapped) {
-                lines.push('  ' + wl);
-            }
-
-            // Blank line after message
-            lines.push('');
-        }
+        // Reuse cached non-stream lines instead of rebuilding
+        const baseLines = this._buildChatLinesNoStream(width);
+        const lines = baseLines.slice(); // shallow copy for appending stream
 
         // Streaming indicator
         if (this.streaming && this.streamBuffer) {
@@ -518,7 +504,7 @@ class TUIRenderer {
             this._spinnerTimer = setInterval(() => {
                 this._spinnerIdx = (this._spinnerIdx + 1) % SPINNER.length;
                 this._renderToolPanel();
-            }, 80);
+            }, 150);
         } else if (!this._hasRunningTools() && this._spinnerTimer) {
             clearInterval(this._spinnerTimer);
             this._spinnerTimer = null;
@@ -575,6 +561,7 @@ class TUIRenderer {
         this.cols = Math.max(cols || 80, 40);
         this.rows = Math.max(rows || 24, 15);
         this._firstRender = true; // clear screen on resize
+        this._cachedChatLinesNoStream = null; // invalidate cache on resize
         this.render();
     }
 
@@ -584,6 +571,8 @@ class TUIRenderer {
             text: text || '',
             timestamp: timestamp || new Date(),
         });
+        // Invalidate chat lines cache
+        this._cachedChatLinesNoStream = null;
         // Auto-scroll to bottom
         this.scrollOffset = 0;
         this.render();
@@ -601,33 +590,45 @@ class TUIRenderer {
         const L = this._layout;
         const width = L.leftInner - 2; // 2 for indent
 
-        // Wrap the full stream buffer to know where cursor should be
-        const wrapped = wrapText(this.streamBuffer, width);
-        const lastWrapped = wrapped[wrapped.length - 1] || '';
+        // Optimization: only re-wrap the last raw line of the stream buffer
+        // (previous lines are already finalized by newlines)
+        const lastNewline = this.streamBuffer.lastIndexOf('\n');
+        const lastRawLine = lastNewline >= 0 ? this.streamBuffer.slice(lastNewline + 1) : this.streamBuffer;
+        const linesBeforeLastRaw = lastNewline >= 0 ? this.streamBuffer.slice(0, lastNewline).split('\n').length : 0;
+
+        // Count wrapped lines for all finalized lines (up to last newline)
+        let wrappedCountBefore = 0;
+        if (lastNewline >= 0) {
+            const finalizedLines = this.streamBuffer.slice(0, lastNewline).split('\n');
+            for (const line of finalizedLines) {
+                wrappedCountBefore += wrapText(line, width).length;
+            }
+        }
+
+        // Wrap only the last raw line
+        const lastWrappedLines = wrapText(lastRawLine, width);
+        const totalWrappedCount = wrappedCountBefore + lastWrappedLines.length;
+        const lastWrapped = lastWrappedLines[lastWrappedLines.length - 1] || '';
 
         // Determine how many content rows are available for chat
         const visibleRows = L.contentEndRow - L.contentStartRow - 1;
 
-        // We need to know total chat lines to position the stream text.
-        // Build chat lines without stream, then add stream lines.
+        // Reuse cached non-stream chat lines
         const chatLinesNoStream = this._buildChatLinesNoStream(L.leftInner);
         const totalBefore = chatLinesNoStream.length;
 
-        // Stream lines (indented)
-        const streamDisplayLines = wrapped.map(wl => '  ' + wl);
-
         // If adding streaming would push past visible area, do full render
-        const totalWithStream = totalBefore + streamDisplayLines.length;
-        if (totalWithStream > visibleRows && this._streamWrappedLines !== wrapped.length) {
-            this._streamWrappedLines = wrapped.length;
+        const totalWithStream = totalBefore + totalWrappedCount;
+        if (totalWithStream > visibleRows && this._streamWrappedLines !== totalWrappedCount) {
+            this._streamWrappedLines = totalWrappedCount;
             this.render();
             return;
         }
-        this._streamWrappedLines = wrapped.length;
+        this._streamWrappedLines = totalWrappedCount;
 
         // Write only the last line of the stream at the correct position
         const streamStartRow = L.contentStartRow + 1 + totalBefore;
-        const cursorRow = streamStartRow + wrapped.length - 1;
+        const cursorRow = streamStartRow + totalWrappedCount - 1;
 
         if (cursorRow > L.contentEndRow - 1) {
             // Would overflow — full render with scroll
@@ -644,6 +645,13 @@ class TUIRenderer {
     }
 
     _buildChatLinesNoStream(width) {
+        // Return cached result if messages haven't changed
+        if (this._cachedChatLinesNoStream &&
+            this._cachedChatLinesWidth === width &&
+            this._cachedMessageCount === this.messages.length) {
+            return this._cachedChatLinesNoStream;
+        }
+
         const lines = [];
         for (const msg of this.messages) {
             const ts = formatTime(msg.timestamp);
@@ -662,6 +670,10 @@ class TUIRenderer {
             }
             lines.push('');
         }
+
+        this._cachedChatLinesNoStream = lines;
+        this._cachedChatLinesWidth = width;
+        this._cachedMessageCount = this.messages.length;
         return lines;
     }
 

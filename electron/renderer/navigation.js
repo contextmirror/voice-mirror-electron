@@ -119,10 +119,7 @@ async function loadSidebarState() {
  */
 async function saveSidebarState() {
     try {
-        const config = await window.voiceMirror.config.get();
-        config.sidebar = config.sidebar || {};
-        config.sidebar.collapsed = state.sidebarCollapsed;
-        await window.voiceMirror.config.set(config);
+        await window.voiceMirror.config.set({ sidebar: { collapsed: state.sidebarCollapsed } });
     } catch (err) {
         log.error('Failed to save sidebar state:', err);
     }

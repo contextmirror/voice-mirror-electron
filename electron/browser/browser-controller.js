@@ -180,7 +180,8 @@ async function screenshotTab(opts = {}) {
  */
 function trackConsoleMessage(msg) {
     consoleState.console.push(msg);
-    if (consoleState.console.length > 500) {
+    // Hysteresis: only slice when well past the limit (avoids slicing every message)
+    if (consoleState.console.length > 550) {
         consoleState.console = consoleState.console.slice(-500);
     }
 }

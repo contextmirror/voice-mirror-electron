@@ -262,7 +262,7 @@ function createInboxWatcher(options = {}) {
      * Called on provider switch so that old messages aren't re-forwarded
      * to the new provider, but new messages arriving after the switch are.
      */
-    function clearProcessedUserMessageIds() {
+    async function clearProcessedUserMessageIds() {
         processedUserMessageIds.clear();
         displayedMessageIds.clear();
 
@@ -270,21 +270,22 @@ function createInboxWatcher(options = {}) {
         const contextMirrorDir = dataDir || require('./platform-paths').getDataDir();
         const inboxPath = path.join(contextMirrorDir, 'inbox.json');
         try {
-            if (fs.existsSync(inboxPath)) {
-                const data = JSON.parse(fs.readFileSync(inboxPath, 'utf-8'));
-                const messages = data.messages || [];
-                for (const msg of messages) {
-                    if (msg.id) {
-                        displayedMessageIds.add(msg.id);
-                        if (msg.from === _senderName()) {
-                            processedUserMessageIds.add(msg.id);
-                        }
+            const raw = await fsPromises.readFile(inboxPath, 'utf-8');
+            const data = JSON.parse(raw);
+            const messages = data.messages || [];
+            for (const msg of messages) {
+                if (msg.id) {
+                    displayedMessageIds.add(msg.id);
+                    if (msg.from === _senderName()) {
+                        processedUserMessageIds.add(msg.id);
                     }
                 }
-                logger.info('[InboxWatcher]', `Re-seeded ${displayedMessageIds.size} display IDs, ${processedUserMessageIds.size} user message IDs for provider switch`);
             }
+            logger.info('[InboxWatcher]', `Re-seeded ${displayedMessageIds.size} display IDs, ${processedUserMessageIds.size} user message IDs for provider switch`);
         } catch (err) {
-            logger.error('[InboxWatcher]', 'Failed to re-seed message IDs:', err);
+            if (err.code !== 'ENOENT') {
+                logger.error('[InboxWatcher]', 'Failed to re-seed message IDs:', err);
+            }
         }
     }
 
@@ -662,7 +663,7 @@ function stripEchoedContent(response) {
  * @param {string} providerName - Display name of the provider
  * @param {string} replyToId - ID of the message being replied to
  */
-function writeResponseToInbox(dataDir, response, providerName, replyToId) {
+async function writeResponseToInbox(dataDir, response, providerName, replyToId) {
     // Diagnostic trace: response written to inbox
     try {
         const dc = require('./diagnostic-collector');
@@ -679,13 +680,12 @@ function writeResponseToInbox(dataDir, response, providerName, replyToId) {
     const inboxPath = path.join(dataDir, 'inbox.json');
 
     let data = { messages: [] };
-    if (fs.existsSync(inboxPath)) {
-        try {
-            data = JSON.parse(fs.readFileSync(inboxPath, 'utf-8'));
-            if (!data.messages) data.messages = [];
-        } catch {
-            data = { messages: [] };
-        }
+    try {
+        const raw = await fsPromises.readFile(inboxPath, 'utf-8');
+        data = JSON.parse(raw);
+        if (!data.messages) data.messages = [];
+    } catch {
+        data = { messages: [] };
     }
 
     // Create sender ID from provider name (e.g., "Ollama (qwen-coder)" -> "ollama-qwen-coder")
@@ -702,7 +702,7 @@ function writeResponseToInbox(dataDir, response, providerName, replyToId) {
     };
 
     data.messages.push(newMessage);
-    fs.writeFileSync(inboxPath, JSON.stringify(data));
+    await fsPromises.writeFile(inboxPath, JSON.stringify(data));
 
     logger.info('[InboxWatcher]', `Wrote response to inbox from ${senderId}`);
 }

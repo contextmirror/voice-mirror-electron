@@ -25,10 +25,12 @@ class TestInit:
     def test_reset_clears_state(self):
         vad = SileroVAD()
         # Feed some data into the buffer
-        vad._buffer = np.ones(100, dtype=np.float32)
+        vad._chunks = [np.ones(100, dtype=np.float32)]
+        vad._chunks_samples = 100
         vad._state = np.ones((2, 1, 128), dtype=np.float32)
         vad.reset()
-        assert len(vad._buffer) == 0
+        assert len(vad._chunks) == 0
+        assert vad._chunks_samples == 0
         assert np.all(vad._state == 0)
 
 
@@ -89,7 +91,7 @@ class TestReframing:
         is_speech, prob = vad.process(audio, "recording")
 
         assert vad._session.run.call_count == 2
-        assert len(vad._buffer) == 256  # 1280 - 2*512
+        assert vad._chunks_samples == 256  # 1280 - 2*512
         assert is_speech is True
         assert prob == pytest.approx(0.8)
 
@@ -99,7 +101,7 @@ class TestReframing:
         vad.process(audio, "recording")
 
         assert vad._session.run.call_count == 1
-        assert len(vad._buffer) == 0
+        assert vad._chunks_samples == 0
 
     def test_short_chunk_buffered(self):
         """Chunks shorter than 512 are buffered, no inference runs."""
@@ -108,7 +110,7 @@ class TestReframing:
         is_speech, prob = vad.process(audio, "recording")
 
         assert vad._session.run.call_count == 0
-        assert len(vad._buffer) == 256
+        assert vad._chunks_samples == 256
         assert prob == 0.0
         assert is_speech is False
 
@@ -119,12 +121,12 @@ class TestReframing:
         # First call: 300 samples -> buffered, no inference
         vad.process(np.random.randn(300).astype(np.float32), "recording")
         assert vad._session.run.call_count == 0
-        assert len(vad._buffer) == 300
+        assert vad._chunks_samples == 300
 
         # Second call: 300 samples -> total 600, one 512-window, 88 remainder
         vad.process(np.random.randn(300).astype(np.float32), "recording")
         assert vad._session.run.call_count == 1
-        assert len(vad._buffer) == 88
+        assert vad._chunks_samples == 88
 
 
 # ---------------------------------------------------------------------------

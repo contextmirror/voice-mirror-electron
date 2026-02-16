@@ -17,6 +17,10 @@ const { DEFAULT_ENDPOINTS } = require('../constants');
 const { createLogger } = require('../services/logger');
 const logger = createLogger();
 
+// Hoist diagnostic-collector require to module level (was 4x inline requires)
+let diagnosticCollector;
+try { diagnosticCollector = require('../services/diagnostic-collector'); } catch { diagnosticCollector = null; }
+
 // Limit conversation history to prevent context overflow in local LLMs
 const MAX_HISTORY_MESSAGES = 20;
 
@@ -45,6 +49,16 @@ class OpenAIProvider extends BaseProvider {
         // Callback for tool events (set by main.js)
         this.onToolCall = null;
         this.onToolResult = null;
+
+        // Cached tool definitions (tools don't change mid-session)
+        this._cachedTools = null;
+    }
+
+    _getTools() {
+        if (!this._cachedTools) {
+            this._cachedTools = toOpenAITools();
+        }
+        return this._cachedTools;
     }
 
     getDisplayName() {
@@ -153,7 +167,7 @@ class OpenAIProvider extends BaseProvider {
                 rows: options.rows || 30
             }
         );
-        this.tui.updateInfo('toolCount', `${Object.keys(toOpenAITools()).length}`);
+        this.tui.updateInfo('toolCount', `${Object.keys(this._getTools()).length}`);
         this.tui.render();
 
         logger.info('[OpenAIProvider]', `${this.providerName} started with model: ${this.model}`);
@@ -275,17 +289,16 @@ class OpenAIProvider extends BaseProvider {
             // Add native tool definitions for cloud providers
             const useNativeTools = this.supportsTools() && this.supportsNativeTools();
             if (useNativeTools) {
-                body.tools = toOpenAITools();
+                body.tools = this._getTools();
                 body.tool_choice = 'auto';
             }
 
             // Diagnostic trace: capture what the model receives
             try {
-                const dc = require('../services/diagnostic-collector');
-                if (dc.hasActiveTrace()) {
+                if (diagnosticCollector?.hasActiveTrace()) {
                     const contentLength = (c) => typeof c === 'string' ? c.length : Array.isArray(c) ? c.reduce((s, p) => s + (p.text || '').length, 0) : 0;
                     const contentPreview = (c) => typeof c === 'string' ? c.substring(0, 200) : Array.isArray(c) ? `(multimodal: ${c.map(p => p.type).join('+')})` : '(unknown)';
-                    dc.addActiveStage('provider_request', {
+                    diagnosticCollector.addActiveStage('provider_request', {
                         message_count: this.messages.length,
                         total_chars: this.messages.reduce((s, m) => s + contentLength(m.content), 0),
                         messages: this.messages.map(m => ({
@@ -386,9 +399,8 @@ class OpenAIProvider extends BaseProvider {
 
             // Diagnostic trace: model response complete
             try {
-                const dc = require('../services/diagnostic-collector');
-                if (dc.hasActiveTrace()) {
-                    dc.addActiveStage('model_response', {
+                if (diagnosticCollector?.hasActiveTrace()) {
+                    diagnosticCollector.addActiveStage('model_response', {
                         is_tool_followup: isToolFollowUp,
                         response_length: fullResponse.length,
                         response_text: fullResponse
@@ -434,9 +446,8 @@ class OpenAIProvider extends BaseProvider {
 
                     // Diagnostic trace
                     try {
-                        const dc = require('../services/diagnostic-collector');
-                        if (dc.hasActiveTrace()) {
-                            dc.addActiveStage('tool_call_detected', {
+                        if (diagnosticCollector?.hasActiveTrace()) {
+                            diagnosticCollector.addActiveStage('tool_call_detected', {
                                 tool: tc.name, args: tc.args, native: true,
                                 raw_response_length: fullResponse.length,
                                 raw_response_preview: fullResponse.substring(0, 300)
@@ -465,10 +476,9 @@ class OpenAIProvider extends BaseProvider {
 
                     // Diagnostic trace
                     try {
-                        const dc = require('../services/diagnostic-collector');
-                        if (dc.hasActiveTrace()) {
+                        if (diagnosticCollector?.hasActiveTrace()) {
                             const ctxChars = (c) => typeof c === 'string' ? c.length : Array.isArray(c) ? c.reduce((s, p) => s + (p.text || '').length, 0) : 0;
-                            dc.addActiveStage('tool_result_injected', {
+                            diagnosticCollector.addActiveStage('tool_result_injected', {
                                 tool: tc.name, success: result.success, native: true,
                                 result_message_length: resultText.length,
                                 result_message_preview: resultText.substring(0, 500),
@@ -557,9 +567,8 @@ class OpenAIProvider extends BaseProvider {
 
                     // Diagnostic trace: tool call detected
                     try {
-                        const dc = require('../services/diagnostic-collector');
-                        if (dc.hasActiveTrace()) {
-                            dc.addActiveStage('tool_call_detected', {
+                        if (diagnosticCollector?.hasActiveTrace()) {
+                            diagnosticCollector.addActiveStage('tool_call_detected', {
                                 tool: toolCall.tool,
                                 args: toolCall.args,
                                 raw_response_length: fullResponse.length,
@@ -624,11 +633,10 @@ class OpenAIProvider extends BaseProvider {
 
                     // Diagnostic trace: tool result injected
                     try {
-                        const dc = require('../services/diagnostic-collector');
-                        if (dc.hasActiveTrace()) {
+                        if (diagnosticCollector?.hasActiveTrace()) {
                             const rmText = typeof resultMessage === 'object' ? resultMessage.text : resultMessage;
                             const ctxChars = (c) => typeof c === 'string' ? c.length : Array.isArray(c) ? c.reduce((s, p) => s + (p.text || '').length, 0) : 0;
-                            dc.addActiveStage('tool_result_injected', {
+                            diagnosticCollector.addActiveStage('tool_result_injected', {
                                 tool: toolCall.tool,
                                 success: result.success,
                                 has_image: typeof resultMessage === 'object' && !!resultMessage.image_data_url,
@@ -696,17 +704,45 @@ class OpenAIProvider extends BaseProvider {
     _limitMessageHistory() {
         if (this.messages.length <= MAX_HISTORY_MESSAGES) return;
 
-        const system = this.messages.filter(m => m.role === 'system');
-        const nonSystem = this.messages.filter(m => m.role !== 'system');
-        let recent = nonSystem.slice(-MAX_HISTORY_MESSAGES);
-
-        // Ensure we don't start with an orphaned role:"tool" message
-        // (tool messages must follow their assistant+tool_calls message)
-        while (recent.length > 0 && recent[0].role === 'tool') {
-            recent = recent.slice(1);
+        // Find system messages and non-system messages using index-based approach
+        let systemEnd = 0;
+        while (systemEnd < this.messages.length && this.messages[systemEnd].role === 'system') {
+            systemEnd++;
         }
 
-        this.messages = [...system, ...recent];
+        const nonSystemCount = this.messages.length - systemEnd;
+        let startIdx = this.messages.length - Math.min(nonSystemCount, MAX_HISTORY_MESSAGES);
+
+        // Ensure we don't start with an orphaned role:"tool" message
+        while (startIdx < this.messages.length && this.messages[startIdx].role === 'tool') {
+            startIdx++;
+        }
+
+        // Build trimmed array: system messages + recent non-system
+        const trimmed = [];
+        for (let i = 0; i < systemEnd; i++) trimmed.push(this.messages[i]);
+        for (let i = startIdx; i < this.messages.length; i++) trimmed.push(this.messages[i]);
+        this.messages = trimmed;
+
+        // Strip base64 images from older messages (keep last 4 messages intact)
+        const IMAGE_KEEP_RECENT = 4;
+        const stripBefore = this.messages.length - IMAGE_KEEP_RECENT;
+        for (let i = 0; i < stripBefore; i++) {
+            const msg = this.messages[i];
+            if (Array.isArray(msg.content)) {
+                msg.content = msg.content.map(part => {
+                    if (part.type === 'image_url') {
+                        return { type: 'text', text: '[image]' };
+                    }
+                    return part;
+                });
+            }
+            // Strip Ollama-style images array
+            if (msg.images) {
+                delete msg.images;
+            }
+        }
+
         logger.info('[OpenAIProvider]', `Trimmed history to ${this.messages.length} messages`);
     }
 

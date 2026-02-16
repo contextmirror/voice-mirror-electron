@@ -3,7 +3,7 @@
  * Handles sending text messages, toggling voice, clearing and saving chat history.
  */
 
-import { addMessage, isDuplicate, autoScroll } from './messages.js';
+import { addMessage, isDuplicate, autoScroll, clearMessagesArray } from './messages.js';
 import { state } from './state.js';
 import { triggerAutoName } from './chat-store.js';
 import { createLog } from './log.js';
@@ -47,6 +47,8 @@ export function clearChat() {
         if (el.id === 'welcome-message') continue;
         el.remove();
     }
+
+    clearMessagesArray();
 
     if (welcomeMessage) {
         welcomeMessage.style.display = '';

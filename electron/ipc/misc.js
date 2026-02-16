@@ -11,6 +11,7 @@
 const { app, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const fsPromises = fs.promises;
 const { ensureWithin } = require('../lib/safe-path');
 
 /**
@@ -490,12 +491,12 @@ function registerMiscHandlers(ctx, validators) {
 
     ipcMain.handle('chat-list', async () => {
         try {
-            if (!fs.existsSync(chatsDir)) return { success: true, data: [] };
-            const files = fs.readdirSync(chatsDir).filter(f => f.endsWith('.json'));
+            try { await fsPromises.access(chatsDir); } catch { return { success: true, data: [] }; }
+            const files = (await fsPromises.readdir(chatsDir)).filter(f => f.endsWith('.json'));
             const chats = [];
             for (const file of files) {
                 try {
-                    const data = JSON.parse(fs.readFileSync(path.join(chatsDir, file), 'utf-8'));
+                    const data = JSON.parse(await fsPromises.readFile(path.join(chatsDir, file), 'utf-8'));
                     chats.push({
                         id: data.id,
                         name: data.name || 'Untitled',
@@ -516,8 +517,8 @@ function registerMiscHandlers(ctx, validators) {
     ipcMain.handle('chat-load', async (_event, id) => {
         try {
             const filePath = ensureWithin(chatsDir, `${id}.json`);
-            if (!fs.existsSync(filePath)) return { success: false, error: 'Chat not found' };
-            const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            try { await fsPromises.access(filePath); } catch { return { success: false, error: 'Chat not found' }; }
+            const data = JSON.parse(await fsPromises.readFile(filePath, 'utf-8'));
             return { success: true, data };
         } catch (err) {
             ctx.logger.error('[Chat]', 'Failed to load chat:', err);
@@ -528,10 +529,10 @@ function registerMiscHandlers(ctx, validators) {
     ipcMain.handle('chat-save', async (_event, chat) => {
         try {
             if (!chat || !chat.id) return { success: false, error: 'Invalid chat data' };
-            if (!fs.existsSync(chatsDir)) fs.mkdirSync(chatsDir, { recursive: true });
+            await fsPromises.mkdir(chatsDir, { recursive: true });
             const filePath = ensureWithin(chatsDir, `${chat.id}.json`);
             chat.updated = new Date().toISOString();
-            fs.writeFileSync(filePath, JSON.stringify(chat, null, 2), 'utf-8');
+            await fsPromises.writeFile(filePath, JSON.stringify(chat, null, 2), 'utf-8');
             return { success: true };
         } catch (err) {
             ctx.logger.error('[Chat]', 'Failed to save chat:', err);
@@ -542,7 +543,7 @@ function registerMiscHandlers(ctx, validators) {
     ipcMain.handle('chat-delete', async (_event, id) => {
         try {
             const filePath = ensureWithin(chatsDir, `${id}.json`);
-            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+            await fsPromises.unlink(filePath).catch(() => {});
             return { success: true };
         } catch (err) {
             ctx.logger.error('[Chat]', 'Failed to delete chat:', err);
@@ -553,11 +554,12 @@ function registerMiscHandlers(ctx, validators) {
     ipcMain.handle('chat-rename', async (_event, id, name) => {
         try {
             const filePath = ensureWithin(chatsDir, `${id}.json`);
-            if (!fs.existsSync(filePath)) return { success: false, error: 'Chat not found' };
-            const chat = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            let raw;
+            try { raw = await fsPromises.readFile(filePath, 'utf-8'); } catch { return { success: false, error: 'Chat not found' }; }
+            const chat = JSON.parse(raw);
             chat.name = name;
             chat.updated = new Date().toISOString();
-            fs.writeFileSync(filePath, JSON.stringify(chat, null, 2), 'utf-8');
+            await fsPromises.writeFile(filePath, JSON.stringify(chat, null, 2), 'utf-8');
             return { success: true };
         } catch (err) {
             ctx.logger.error('[Chat]', 'Failed to rename chat:', err);

@@ -22,6 +22,7 @@ class WakeWordProcessor:
         self.chunk_samples = chunk_samples
         self.model = None
         self.buffer = []
+        self._total_samples = 0
 
     def load(self, script_dir: Path | None = None) -> bool:
         """
@@ -69,15 +70,15 @@ class WakeWordProcessor:
 
         # Accumulate audio in buffer
         self.buffer.append(audio_chunk)
-        total_samples = sum(len(chunk) for chunk in self.buffer)
+        self._total_samples += len(audio_chunk)
 
         # Process when we have enough samples
-        while total_samples >= self.chunk_samples:
+        while self._total_samples >= self.chunk_samples:
             combined = np.concatenate(self.buffer)
             chunk = combined[:self.chunk_samples]
             remainder = combined[self.chunk_samples:]
             self.buffer = [remainder] if len(remainder) > 0 else []
-            total_samples = len(remainder)
+            self._total_samples = len(remainder)
 
             # Convert to int16 for OpenWakeWord
             chunk_int16 = (chunk * 32767).astype(np.int16)
@@ -98,6 +99,7 @@ class WakeWordProcessor:
     def clear_buffer(self):
         """Clear the audio buffer."""
         self.buffer = []
+        self._total_samples = 0
 
     @property
     def is_loaded(self) -> bool:

@@ -9,6 +9,10 @@
 const { createLogger } = require('../services/logger');
 const logger = createLogger();
 
+// Real Chrome User-Agent to avoid bot detection.
+// Matches the Chromium version bundled with Electron 40.
+const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
+
 /** @type {Electron.WebContents | null} */
 let guestContents = null;
 
@@ -36,6 +40,11 @@ function attachDebugger(webContents) {
         guestContents.debugger.attach('1.3');
         debuggerAttached = true;
         logger.info('[webview-cdp]', 'Debugger attached');
+
+        // Apply stealth measures to avoid bot detection (Google CAPTCHA etc.)
+        applyStealthMeasures().catch(err => {
+            logger.warn('[webview-cdp]', 'Stealth measures failed (non-fatal):', err.message);
+        });
     } catch (err) {
         logger.error('[webview-cdp]', 'Failed to attach debugger:', err.message);
         debuggerAttached = false;
@@ -58,6 +67,60 @@ function attachDebugger(webContents) {
         logger.info('[webview-cdp]', 'Debugger detached:', reason);
         debuggerAttached = false;
     });
+}
+
+/**
+ * Apply stealth measures to make the webview look like a regular browser.
+ * Hides automation signals that trigger CAPTCHAs on Google etc.
+ */
+async function applyStealthMeasures() {
+    if (!debuggerAttached || !guestContents) return;
+
+    const cmd = (method, params = {}) =>
+        guestContents.debugger.sendCommand(method, params);
+
+    // 1. Override User-Agent to hide "Electron" and "HeadlessChrome"
+    await cmd('Network.setUserAgentOverride', {
+        userAgent: CHROME_UA,
+        acceptLanguage: 'en-US,en;q=0.9',
+        platform: 'Win32'
+    });
+
+    // 2. Set the webview's actual UA string (affects JS navigator.userAgent)
+    guestContents.setUserAgent(CHROME_UA);
+
+    // 3. Inject stealth script on every new page
+    await cmd('Page.enable');
+    await cmd('Page.addScriptToEvaluateOnNewDocument', {
+        source: `
+            // Hide webdriver flag
+            Object.defineProperty(navigator, 'webdriver', { get: () => false });
+
+            // Fake plugins (headless Chrome has none)
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [1, 2, 3, 4, 5]
+            });
+
+            // Fake languages
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['en-US', 'en']
+            });
+
+            // Hide automation via Chrome runtime
+            window.chrome = { runtime: {}, loadTimes: () => ({}), csi: () => ({}) };
+
+            // Fake permissions query
+            const origQuery = window.navigator.permissions?.query?.bind(window.navigator.permissions);
+            if (origQuery) {
+                window.navigator.permissions.query = (params) =>
+                    params.name === 'notifications'
+                        ? Promise.resolve({ state: Notification.permission })
+                        : origQuery(params);
+            }
+        `
+    });
+
+    logger.info('[webview-cdp]', 'Stealth measures applied');
 }
 
 /**
@@ -218,6 +281,46 @@ async function captureScreenshot(opts = {}) {
 }
 
 /**
+ * Capture a screenshot and return as base64 string (no Buffer conversion).
+ * @param {Object} [opts={}]
+ * @param {'png'|'jpeg'} [opts.format='png']
+ * @param {number} [opts.quality]
+ * @param {boolean} [opts.fullPage]
+ * @returns {Promise<string>} Base64 encoded image data
+ */
+async function captureScreenshotBase64(opts = {}) {
+    await sendCommand('Page.enable');
+
+    let clip;
+    if (opts.fullPage) {
+        const metrics = await sendCommand('Page.getLayoutMetrics');
+        const size = metrics?.cssContentSize || metrics?.contentSize;
+        const width = Number(size?.width || 0);
+        const height = Number(size?.height || 0);
+        if (width > 0 && height > 0) {
+            clip = { x: 0, y: 0, width, height, scale: 1 };
+        }
+    }
+
+    const format = opts.format || 'png';
+    const quality = format === 'jpeg'
+        ? Math.max(0, Math.min(100, Math.round(opts.quality ?? 85)))
+        : undefined;
+
+    const result = await sendCommand('Page.captureScreenshot', {
+        format,
+        ...(quality !== undefined ? { quality } : {}),
+        fromSurface: true,
+        captureBeyondViewport: !!opts.fullPage,
+        ...(clip ? { clip } : {})
+    });
+
+    const base64 = result?.data;
+    if (!base64) throw new Error('Screenshot failed: missing data');
+    return base64;
+}
+
+/**
  * Evaluate JavaScript in the page.
  * @param {string} expression
  * @param {Object} [options={}]
@@ -240,14 +343,28 @@ async function evaluate(expression, options = {}) {
     return { result, exceptionDetails: evaluated.exceptionDetails };
 }
 
+/** Cached AX tree result for rapid repeat calls */
+let _axTreeCache = null;
+let _axTreeCacheTime = 0;
+const AX_TREE_CACHE_TTL = 2000; // 2s TTL
+
 /**
  * Get the accessibility tree.
+ * Uses a short TTL cache to avoid redundant full-tree fetches
+ * when multiple callers request the tree in quick succession.
  * @returns {Promise<Array>} Raw AX tree nodes
  */
 async function getAccessibilityTree() {
+    const now = Date.now();
+    if (_axTreeCache && (now - _axTreeCacheTime) < AX_TREE_CACHE_TTL) {
+        return _axTreeCache;
+    }
     await sendCommand('Accessibility.enable').catch(() => {});
     const res = await sendCommand('Accessibility.getFullAXTree');
-    return Array.isArray(res?.nodes) ? res.nodes : [];
+    const nodes = Array.isArray(res?.nodes) ? res.nodes : [];
+    _axTreeCache = nodes;
+    _axTreeCacheTime = now;
+    return nodes;
 }
 
 module.exports = {
@@ -261,6 +378,7 @@ module.exports = {
     getUrl,
     getTitle,
     captureScreenshot,
+    captureScreenshotBase64,
     evaluate,
     getAccessibilityTree
 };

@@ -29,12 +29,16 @@ contextBridge.exposeInMainWorld('voiceMirror', {
 
     // Listen for state changes
     onStateChange: (callback) => {
-        ipcRenderer.on('state-change', (event, data) => callback(data));
+        const handler = (_event, data) => callback(data);
+        ipcRenderer.on('state-change', handler);
+        return () => ipcRenderer.removeListener('state-change', handler);
     },
 
     // Listen for voice events (wake, recording, speaking, idle)
     onVoiceEvent: (callback) => {
-        ipcRenderer.on('voice-event', (event, data) => callback(data));
+        const handler = (_event, data) => callback(data);
+        ipcRenderer.on('voice-event', handler);
+        return () => ipcRenderer.removeListener('voice-event', handler);
     },
 
     // Configuration API
@@ -86,7 +90,9 @@ contextBridge.exposeInMainWorld('voiceMirror', {
 
     // Listen for chat messages (transcriptions and responses)
     onChatMessage: (callback) => {
-        ipcRenderer.on('chat-message', (event, data) => callback(data));
+        const handler = (_event, data) => callback(data);
+        ipcRenderer.on('chat-message', handler);
+        return () => ipcRenderer.removeListener('chat-message', handler);
     },
 
     // Python backend control
@@ -132,7 +138,9 @@ contextBridge.exposeInMainWorld('voiceMirror', {
 
         // Listen for Claude terminal output (raw PTY data for terminal)
         onOutput: (callback) => {
-            ipcRenderer.on('claude-terminal', (event, data) => callback(data));
+            const handler = (_event, data) => callback(data);
+            ipcRenderer.on('claude-terminal', handler);
+            return () => ipcRenderer.removeListener('claude-terminal', handler);
         },
 
         // Send input to Claude PTY (keyboard input from terminal)
@@ -151,7 +159,9 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         getStatus: () => ipcRenderer.invoke('browser-get-status'),
         popOut: () => ipcRenderer.invoke('browser-pop-out'),
         onStatusChange: (callback) => {
-            ipcRenderer.on('browser-status', (event, data) => callback(data));
+            const handler = (_event, data) => callback(data);
+            ipcRenderer.on('browser-status', handler);
+            return () => ipcRenderer.removeListener('browser-status', handler);
         }
     },
 
@@ -189,17 +199,23 @@ contextBridge.exposeInMainWorld('voiceMirror', {
     tools: {
         // Listen for tool call events (when model invokes a tool)
         onToolCall: (callback) => {
-            ipcRenderer.on('tool-call', (event, data) => callback(data));
+            const handler = (_event, data) => callback(data);
+            ipcRenderer.on('tool-call', handler);
+            return () => ipcRenderer.removeListener('tool-call', handler);
         },
 
         // Listen for tool result events (when tool execution completes)
         onToolResult: (callback) => {
-            ipcRenderer.on('tool-result', (event, data) => callback(data));
+            const handler = (_event, data) => callback(data);
+            ipcRenderer.on('tool-result', handler);
+            return () => ipcRenderer.removeListener('tool-result', handler);
         },
 
         // Listen for MCP tool activity events (Claude Code file IPC watchers)
         onToolActivity: (callback) => {
-            ipcRenderer.on('tool-activity', (event, data) => callback(data));
+            const handler = (_event, data) => callback(data);
+            ipcRenderer.on('tool-activity', handler);
+            return () => ipcRenderer.removeListener('tool-activity', handler);
         }
     },
 
@@ -245,27 +261,39 @@ contextBridge.exposeInMainWorld('voiceMirror', {
 
     // Listen for open-settings command from tray menu
     onOpenSettings: (callback) => {
-        ipcRenderer.on('open-settings', () => callback());
+        const handler = () => callback();
+        ipcRenderer.on('open-settings', handler);
+        return () => ipcRenderer.removeListener('open-settings', handler);
     },
 
     // Performance monitor
     onPerfStats: (callback) => {
-        ipcRenderer.on('perf-stats', (event, data) => callback(data));
+        const handler = (_event, data) => callback(data);
+        ipcRenderer.on('perf-stats', handler);
+        return () => ipcRenderer.removeListener('perf-stats', handler);
     },
     onContextUsage: (callback) => {
-        ipcRenderer.on('context-usage', (event, data) => callback(data));
+        const handler = (_event, data) => callback(data);
+        ipcRenderer.on('context-usage', handler);
+        return () => ipcRenderer.removeListener('context-usage', handler);
     },
     togglePerfMonitor: () => ipcRenderer.send('toggle-perf-monitor'),
     onToggleStatsBar: (callback) => {
-        ipcRenderer.on('toggle-stats-bar', () => callback());
+        const handler = () => callback();
+        ipcRenderer.on('toggle-stats-bar', handler);
+        return () => ipcRenderer.removeListener('toggle-stats-bar', handler);
     },
 
     // Update checker
     onUpdateAvailable: (callback) => {
-        ipcRenderer.on('update-available', (event, data) => callback(data));
+        const handler = (_event, data) => callback(data);
+        ipcRenderer.on('update-available', handler);
+        return () => ipcRenderer.removeListener('update-available', handler);
     },
     onUpdateStatus: (callback) => {
-        ipcRenderer.on('update-status', (event, data) => callback(data));
+        const handler = (_event, data) => callback(data);
+        ipcRenderer.on('update-status', handler);
+        return () => ipcRenderer.removeListener('update-status', handler);
     },
     applyUpdate: () => ipcRenderer.invoke('apply-update'),
     relaunch: () => ipcRenderer.invoke('app-relaunch'),

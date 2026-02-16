@@ -1,0 +1,76 @@
+name: Antivirus Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 7 * * 1' # Weekly on Monday at 07:00 UTC
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clamav:
+    name: ClamAV (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install ClamAV
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clamav clamav-daemon
+
+      - name: Update virus definitions
+        run: |
+          sudo systemctl stop clamav-freshclam || true
+          sudo freshclam
+
+      - name: Run ClamAV scan
+        run: |
+          clamscan --recursive --infected --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=__pycache__ . | tee scan-results.txt
+          if grep -q "Infected files: 0" scan-results.txt; then
+            echo "No threats detected."
+          else
+            echo "::error::ClamAV detected infected files!"
+            exit 1
+          fi
+
+  windows-defender:
+    name: Windows Defender
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Update Windows Defender definitions
+        run: |
+          Write-Host "Updating Windows Defender signatures..."
+          Update-MpSignature
+        shell: pwsh
+
+      - name: Run Windows Defender scan
+        run: |
+          $scanPath = (Get-Location).Path
+          Write-Host "Scanning $scanPath ..."
+          Start-MpScan -ScanType CustomScan -ScanPath $scanPath
+          Write-Host "Scan completed."
+
+          # Check for detected threats
+          $threats = Get-MpThreatDetection 2>$null
+          if ($threats) {
+            Write-Host "::error::Windows Defender detected threats!"
+            $threats | Format-Table -AutoSize
+            exit 1
+          } else {
+            Write-Host "No threats detected."
+          }
+        shell: pwsh

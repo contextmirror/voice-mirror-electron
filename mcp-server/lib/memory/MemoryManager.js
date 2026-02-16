@@ -443,17 +443,31 @@ class MemoryManager {
         // Append to MEMORY.md
         await this.store.appendMemory(content, tier);
 
-        // Re-index MEMORY.md
+        // Incremental re-index: only embed new/changed chunks
         const memoryFile = this.store.memoryFile;
         const fileMeta = await this.store.readFileWithMeta(memoryFile);
-        const chunks = Chunker.chunkMarkdown(fileMeta.content, this.config.chunking);
+        const newChunks = Chunker.chunkMarkdown(fileMeta.content, this.config.chunking);
 
-        // Clear old chunks for this file and re-index
+        // Get existing chunk hashes for this file
         const db = this.index.getDb();
-        db.prepare('DELETE FROM chunks WHERE path = ?').run(memoryFile);
+        const existingRows = db.prepare('SELECT id, hash FROM chunks WHERE path = ?').all(memoryFile);
+        const existingHashes = new Set(existingRows.map(r => r.hash));
+        const newHashes = new Set(newChunks.map(c => c.hash));
 
-        for (const chunk of chunks) {
-            await this.indexChunk(memoryFile, chunk, tier);
+        // Delete chunks whose hash no longer exists in the new set
+        const toDelete = existingRows.filter(r => !newHashes.has(r.hash));
+        if (toDelete.length > 0) {
+            const deleteStmt = db.prepare('DELETE FROM chunks WHERE id = ?');
+            for (const row of toDelete) {
+                deleteStmt.run(row.id);
+            }
+        }
+
+        // Only embed chunks that are new (hash not in existing set)
+        for (const chunk of newChunks) {
+            if (!existingHashes.has(chunk.hash)) {
+                await this.indexChunk(memoryFile, chunk, tier);
+            }
         }
 
         this.index.upsertFile(memoryFile, fileMeta.hash, fileMeta.mtime, fileMeta.size);
@@ -491,16 +505,30 @@ class MemoryManager {
         const deleted = await this.store.deleteMemory(content);
 
         if (deleted) {
-            // Re-index MEMORY.md
+            // Incremental re-index: only remove stale chunks, embed new ones
             const memoryFile = this.store.memoryFile;
             const fileMeta = await this.store.readFileWithMeta(memoryFile);
+            const newChunks = Chunker.chunkMarkdown(fileMeta.content, this.config.chunking);
 
             const db = this.index.getDb();
-            db.prepare('DELETE FROM chunks WHERE path = ?').run(memoryFile);
+            const existingRows = db.prepare('SELECT id, hash FROM chunks WHERE path = ?').all(memoryFile);
+            const existingHashes = new Set(existingRows.map(r => r.hash));
+            const newHashes = new Set(newChunks.map(c => c.hash));
 
-            const chunks = Chunker.chunkMarkdown(fileMeta.content, this.config.chunking);
-            for (const chunk of chunks) {
-                await this.indexChunk(memoryFile, chunk, 'stable');
+            // Delete chunks whose hash no longer exists
+            const toDelete = existingRows.filter(r => !newHashes.has(r.hash));
+            if (toDelete.length > 0) {
+                const deleteStmt = db.prepare('DELETE FROM chunks WHERE id = ?');
+                for (const row of toDelete) {
+                    deleteStmt.run(row.id);
+                }
+            }
+
+            // Only embed new chunks
+            for (const chunk of newChunks) {
+                if (!existingHashes.has(chunk.hash)) {
+                    await this.indexChunk(memoryFile, chunk, 'stable');
+                }
             }
 
             this.index.upsertFile(memoryFile, fileMeta.hash, fileMeta.mtime, fileMeta.size);
@@ -551,49 +579,63 @@ class MemoryManager {
     async flushBeforeCompaction(context = {}) {
         await this.init();
 
-        let flushed = 0;
+        // Collect all memories to append in one batch
+        const pending = []; // { text, tier }
 
-        // Write decisions as core memories (they're important long-term)
         if (context.decisions?.length > 0) {
             for (const decision of context.decisions) {
-                await this.store.appendMemory(`Decision: ${decision}`, 'core');
-                flushed++;
+                pending.push({ text: `Decision: ${decision}`, tier: 'core' });
             }
         }
 
-        // Write summary and topics as stable memories
         if (context.summary) {
-            await this.store.appendMemory(`Session summary: ${context.summary}`, 'stable');
-            flushed++;
+            pending.push({ text: `Session summary: ${context.summary}`, tier: 'stable' });
         }
 
         if (context.topics?.length > 0) {
-            await this.store.appendMemory(`Topics discussed: ${context.topics.join(', ')}`, 'stable');
-            flushed++;
+            pending.push({ text: `Topics discussed: ${context.topics.join(', ')}`, tier: 'stable' });
         }
 
-        // Write action items as notes (short-lived reminders)
         if (context.actionItems?.length > 0) {
             for (const item of context.actionItems) {
-                await this.store.appendMemory(`TODO: ${item}`, 'notes');
-                flushed++;
+                pending.push({ text: `TODO: ${item}`, tier: 'notes' });
             }
         }
 
-        // Re-index MEMORY.md after flush
-        if (flushed > 0) {
-            const memoryFile = this.store.memoryFile;
-            const fileMeta = await this.store.readFileWithMeta(memoryFile);
-            const chunks = Chunker.chunkMarkdown(fileMeta.content, this.config.chunking);
+        if (pending.length === 0) return { flushed: 0 };
 
-            this.index.deleteChunksForFile(memoryFile);
-            for (const chunk of chunks) {
+        // Batch write: single file read, append all lines, single file write
+        await this.store.appendMemoryBatch(pending);
+
+        // Incremental re-index
+        const memoryFile = this.store.memoryFile;
+        const fileMeta = await this.store.readFileWithMeta(memoryFile);
+        const newChunks = Chunker.chunkMarkdown(fileMeta.content, this.config.chunking);
+
+        const db = this.index.getDb();
+        const existingRows = db.prepare('SELECT id, hash FROM chunks WHERE path = ?').all(memoryFile);
+        const existingHashes = new Set(existingRows.map(r => r.hash));
+        const newHashes = new Set(newChunks.map(c => c.hash));
+
+        // Delete stale chunks
+        const toDelete = existingRows.filter(r => !newHashes.has(r.hash));
+        if (toDelete.length > 0) {
+            const deleteStmt = db.prepare('DELETE FROM chunks WHERE id = ?');
+            for (const row of toDelete) {
+                deleteStmt.run(row.id);
+            }
+        }
+
+        // Only embed new chunks
+        for (const chunk of newChunks) {
+            if (!existingHashes.has(chunk.hash)) {
                 await this.indexChunk(memoryFile, chunk, 'stable');
             }
-            this.index.upsertFile(memoryFile, fileMeta.hash, fileMeta.mtime, fileMeta.size);
         }
 
-        return { flushed };
+        this.index.upsertFile(memoryFile, fileMeta.hash, fileMeta.mtime, fileMeta.size);
+
+        return { flushed: pending.length };
     }
 
     /**

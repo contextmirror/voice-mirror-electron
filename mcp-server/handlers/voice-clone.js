@@ -16,6 +16,63 @@ if (!fs.existsSync(VOICES_DIR)) {
 }
 
 /**
+ * Watch for a response file using fs.watch with poll fallback
+ * @param {string} responsePath - Path to the response file
+ * @param {number} timeoutMs - Max wait time
+ * @returns {Promise<{response: object|null, timedOut: boolean}>}
+ */
+function watchForResponse(responsePath, timeoutMs) {
+    const dir = path.dirname(responsePath);
+    const expectedFilename = path.basename(responsePath);
+
+    return new Promise((resolve) => {
+        let settled = false;
+        let watcher = null;
+        let fallbackInterval = null;
+        let fallbackTimeout = null;
+
+        function tryRead() {
+            if (settled) return;
+            if (fs.existsSync(responsePath)) {
+                try {
+                    const data = JSON.parse(fs.readFileSync(responsePath, 'utf-8'));
+                    settled = true;
+                    cleanup();
+                    resolve({ response: data, timedOut: false });
+                } catch {
+                    // Partial write, wait for next event
+                }
+            }
+        }
+
+        function cleanup() {
+            if (watcher) { try { watcher.close(); } catch {} watcher = null; }
+            if (fallbackInterval) { clearInterval(fallbackInterval); fallbackInterval = null; }
+            if (fallbackTimeout) { clearTimeout(fallbackTimeout); fallbackTimeout = null; }
+        }
+
+        try {
+            watcher = fs.watch(dir, (event, filename) => {
+                if (filename === expectedFilename) tryRead();
+            });
+            watcher.on('error', () => {});
+        } catch {}
+
+        fallbackInterval = setInterval(tryRead, 500);
+
+        fallbackTimeout = setTimeout(() => {
+            if (!settled) {
+                settled = true;
+                cleanup();
+                resolve({ response: null, timedOut: true });
+            }
+        }, timeoutMs);
+
+        tryRead();
+    });
+}
+
+/**
  * Validate a URL to prevent SSRF attacks.
  * Only allows http/https schemes and blocks private/internal IP ranges.
  */
@@ -239,55 +296,44 @@ async function handleCloneVoice(args) {
         fs.writeFileSync(VOICE_CLONE_REQUEST_PATH, JSON.stringify(request, null, 2), 'utf-8');
         console.error(`[clone_voice] Request written, waiting for Python response...`);
 
-        // Wait for Python response (up to 60 seconds)
-        const startTime = Date.now();
-        const timeoutMs = 60000;
+        // Wait for Python response (up to 60 seconds) using fs.watch + poll fallback
+        const cloneResult = await watchForResponse(VOICE_CLONE_RESPONSE_PATH, 60000);
 
-        while (Date.now() - startTime < timeoutMs) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            if (fs.existsSync(VOICE_CLONE_RESPONSE_PATH)) {
-                try {
-                    const response = JSON.parse(fs.readFileSync(VOICE_CLONE_RESPONSE_PATH, 'utf-8'));
-
-                    if (response.success) {
-                        // Save voice metadata
-                        const voiceMetaPath = path.join(VOICES_DIR, `${voiceName}.json`);
-                        fs.writeFileSync(voiceMetaPath, JSON.stringify({
-                            name: voiceName,
-                            audio_path: processedPath,
-                            transcript: response.transcript || transcript,
-                            created_at: new Date().toISOString()
-                        }, null, 2), 'utf-8');
-
-                        return {
-                            content: [{
-                                type: 'text',
-                                text: `Voice "${voiceName}" cloned successfully!\n` +
-                                      `Audio: ${processedPath}\n` +
-                                      `Transcript: "${response.transcript || transcript}"\n\n` +
-                                      `The TTS will now use this voice. Try speaking to hear it!`
-                            }]
-                        };
-                    } else {
-                        return {
-                            content: [{ type: 'text', text: `Voice cloning failed: ${response.error}` }],
-                            isError: true
-                        };
-                    }
-                } catch (parseErr) {
-                    // Continue waiting
-                }
-            }
+        if (cloneResult.timedOut) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: 'Voice cloning request timed out. Is the Python voice agent running with Qwen3-TTS?'
+                }],
+                isError: true
+            };
         }
 
-        return {
-            content: [{
-                type: 'text',
-                text: 'Voice cloning request timed out. Is the Python voice agent running with Qwen3-TTS?'
-            }],
-            isError: true
-        };
+        const response = cloneResult.response;
+        if (response.success) {
+            const voiceMetaPath = path.join(VOICES_DIR, `${voiceName}.json`);
+            fs.writeFileSync(voiceMetaPath, JSON.stringify({
+                name: voiceName,
+                audio_path: processedPath,
+                transcript: response.transcript || transcript,
+                created_at: new Date().toISOString()
+            }, null, 2), 'utf-8');
+
+            return {
+                content: [{
+                    type: 'text',
+                    text: `Voice "${voiceName}" cloned successfully!\n` +
+                          `Audio: ${processedPath}\n` +
+                          `Transcript: "${response.transcript || transcript}"\n\n` +
+                          `The TTS will now use this voice. Try speaking to hear it!`
+                }]
+            };
+        } else {
+            return {
+                content: [{ type: 'text', text: `Voice cloning failed: ${response.error}` }],
+                isError: true
+            };
+        }
 
     } catch (err) {
         return {
@@ -312,23 +358,15 @@ async function handleClearVoiceClone(args) {
         };
         fs.writeFileSync(VOICE_CLONE_REQUEST_PATH, JSON.stringify(request, null, 2), 'utf-8');
 
-        const startTime = Date.now();
-        const timeoutMs = 5000;
+        const clearResult = await watchForResponse(VOICE_CLONE_RESPONSE_PATH, 5000);
 
-        while (Date.now() - startTime < timeoutMs) {
-            await new Promise(resolve => setTimeout(resolve, 200));
-
-            if (fs.existsSync(VOICE_CLONE_RESPONSE_PATH)) {
-                const response = JSON.parse(fs.readFileSync(VOICE_CLONE_RESPONSE_PATH, 'utf-8'));
-                if (response.success) {
-                    return {
-                        content: [{
-                            type: 'text',
-                            text: 'Voice clone cleared. TTS will now use the default preset voice.'
-                        }]
-                    };
-                }
-            }
+        if (!clearResult.timedOut && clearResult.response?.success) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: 'Voice clone cleared. TTS will now use the default preset voice.'
+                }]
+            };
         }
 
         return {

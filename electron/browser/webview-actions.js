@@ -713,15 +713,13 @@ async function screenshotAction(opts) {
             ...(clip ? { clip } : {}),
             fromSurface: true
         });
-        const buffer = Buffer.from(result.data, 'base64');
-        return { ok: true, action: 'screenshot', buffer, base64: result.data, contentType: type === 'jpeg' ? 'image/jpeg' : 'image/png' };
+        return { ok: true, action: 'screenshot', base64: result.data, contentType: type === 'jpeg' ? 'image/jpeg' : 'image/png' };
     }
 
-    const buffer = await cdp.captureScreenshot({ format: type, fullPage: opts.fullPage });
+    const base64 = await cdp.captureScreenshotBase64({ format: type, fullPage: opts.fullPage });
     return {
         ok: true, action: 'screenshot',
-        buffer,
-        base64: buffer.toString('base64'),
+        base64,
         contentType: type === 'jpeg' ? 'image/jpeg' : 'image/png'
     };
 }

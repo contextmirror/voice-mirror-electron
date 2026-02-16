@@ -19,6 +19,8 @@ class SQLiteIndex {
         this.ftsAvailable = false;
         this.vectorReady = false;
         this._initialized = false;
+        /** @type {Map<string, number[]>|null} Cache for fallback vector search */
+        this.embeddingCache = null;
     }
 
     /**
@@ -51,7 +53,68 @@ class SQLiteIndex {
             this.vectorReady = true;
         }
 
+        // Migrate text embeddings to BLOB format if needed
+        this._migrateEmbeddingsToBlob();
+
         this._initialized = true;
+    }
+
+    /**
+     * Migrate embeddings from JSON text to BLOB (Float32Array) format.
+     * Only runs if existing data uses text format.
+     */
+    _migrateEmbeddingsToBlob() {
+        // Check if migration is needed by sampling the first row
+        const sample = this.db.prepare('SELECT embedding FROM chunks LIMIT 1').get();
+        if (!sample || !sample.embedding) return;
+
+        // If it's a Buffer/Uint8Array, it's already BLOB format
+        if (Buffer.isBuffer(sample.embedding) || sample.embedding instanceof Uint8Array) return;
+
+        // If it's a string starting with '[', it's JSON text — migrate
+        if (typeof sample.embedding === 'string' && sample.embedding.startsWith('[')) {
+            console.error('[SQLiteIndex] Migrating embeddings from JSON text to BLOB format...');
+            const migrate = this.db.transaction(() => {
+                const rows = this.db.prepare('SELECT id, embedding FROM chunks WHERE embedding IS NOT NULL').all();
+                const update = this.db.prepare('UPDATE chunks SET embedding = ? WHERE id = ?');
+                let migrated = 0;
+                for (const row of rows) {
+                    if (typeof row.embedding === 'string') {
+                        try {
+                            const arr = JSON.parse(row.embedding);
+                            const blob = Buffer.from(new Float32Array(arr).buffer);
+                            update.run(blob, row.id);
+                            migrated++;
+                        } catch { /* skip invalid rows */ }
+                    }
+                }
+                console.error(`[SQLiteIndex] Migrated ${migrated} embeddings to BLOB format`);
+            });
+            migrate();
+
+            // Also migrate embedding_cache table
+            const cacheSample = this.db.prepare('SELECT embedding FROM embedding_cache LIMIT 1').get();
+            if (cacheSample && typeof cacheSample.embedding === 'string' && cacheSample.embedding.startsWith('[')) {
+                console.error('[SQLiteIndex] Migrating embedding_cache from JSON text to BLOB format...');
+                const migrateCache = this.db.transaction(() => {
+                    const rows = this.db.prepare('SELECT provider, model, text_hash, embedding FROM embedding_cache WHERE embedding IS NOT NULL').all();
+                    const update = this.db.prepare('UPDATE embedding_cache SET embedding = ? WHERE provider = ? AND model = ? AND text_hash = ?');
+                    let migrated = 0;
+                    for (const row of rows) {
+                        if (typeof row.embedding === 'string') {
+                            try {
+                                const arr = JSON.parse(row.embedding);
+                                const blob = Buffer.from(new Float32Array(arr).buffer);
+                                update.run(blob, row.provider, row.model, row.text_hash);
+                                migrated++;
+                            } catch { /* skip invalid rows */ }
+                        }
+                    }
+                    console.error(`[SQLiteIndex] Migrated ${migrated} cached embeddings to BLOB format`);
+                });
+                migrateCache();
+            }
+        }
     }
 
     /**
@@ -122,54 +185,62 @@ class SQLiteIndex {
      */
     upsertChunk(chunk) {
         const now = Date.now();
-        const embeddingJson = JSON.stringify(chunk.embedding);
+        const embeddingBlob = chunk.embedding
+            ? Buffer.from(new Float32Array(chunk.embedding).buffer)
+            : null;
 
-        this.db.prepare(`
-            INSERT INTO chunks (id, path, start_line, end_line, hash, model, text, embedding, tier, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                hash = excluded.hash,
-                model = excluded.model,
-                text = excluded.text,
-                embedding = excluded.embedding,
-                tier = excluded.tier,
-                updated_at = excluded.updated_at
-        `).run(
-            chunk.id,
-            chunk.path,
-            chunk.startLine,
-            chunk.endLine,
-            chunk.hash,
-            chunk.model,
-            chunk.text,
-            embeddingJson,
-            chunk.tier || 'stable',
-            now
-        );
+        const doUpsert = this.db.transaction(() => {
+            this.db.prepare(`
+                INSERT INTO chunks (id, path, start_line, end_line, hash, model, text, embedding, tier, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    hash = excluded.hash,
+                    model = excluded.model,
+                    text = excluded.text,
+                    embedding = excluded.embedding,
+                    tier = excluded.tier,
+                    updated_at = excluded.updated_at
+            `).run(
+                chunk.id,
+                chunk.path,
+                chunk.startLine,
+                chunk.endLine,
+                chunk.hash,
+                chunk.model,
+                chunk.text,
+                embeddingBlob,
+                chunk.tier || 'stable',
+                now
+            );
 
-        // Update vector index
-        if (this.vectorReady && chunk.embedding && chunk.embedding.length > 0) {
-            try {
-                upsertVector(this.db, chunk.id, chunk.embedding);
-            } catch (err) {
-                // Vector table may not be initialized yet for this dimension
+            // Update vector index
+            if (this.vectorReady && chunk.embedding && chunk.embedding.length > 0) {
+                try {
+                    upsertVector(this.db, chunk.id, chunk.embedding);
+                } catch (err) {
+                    // Vector table may not be initialized yet for this dimension
+                }
             }
-        }
 
-        // Update FTS
-        if (this.ftsAvailable) {
-            try {
-                // Delete existing FTS entry
-                this.db.prepare('DELETE FROM chunks_fts WHERE id = ?').run(chunk.id);
-
-                // Insert new FTS entry
-                this.db.prepare(`
-                    INSERT INTO chunks_fts (text, id, path, start_line, end_line)
-                    VALUES (?, ?, ?, ?, ?)
-                `).run(chunk.text, chunk.id, chunk.path, chunk.startLine, chunk.endLine);
-            } catch (err) {
-                console.warn('FTS update failed:', err.message);
+            // Update FTS
+            if (this.ftsAvailable) {
+                try {
+                    this.db.prepare('DELETE FROM chunks_fts WHERE id = ?').run(chunk.id);
+                    this.db.prepare(`
+                        INSERT INTO chunks_fts (text, id, path, start_line, end_line)
+                        VALUES (?, ?, ?, ?, ?)
+                    `).run(chunk.text, chunk.id, chunk.path, chunk.startLine, chunk.endLine);
+                } catch (err) {
+                    console.warn('FTS update failed:', err.message);
+                }
             }
+        });
+
+        doUpsert();
+
+        // Invalidate embedding cache for this chunk
+        if (this.embeddingCache) {
+            this.embeddingCache.delete(chunk.id);
         }
     }
 
@@ -178,25 +249,29 @@ class SQLiteIndex {
      * @param {string} filePath
      */
     deleteChunksForFile(filePath) {
-        // Delete vectors
-        if (this.vectorReady) {
-            try {
-                const chunkIds = this.db.prepare('SELECT id FROM chunks WHERE path = ?').all(filePath);
-                for (const { id } of chunkIds) {
-                    deleteVector(this.db, id);
-                }
-            } catch { /* vector table may not exist */ }
-        }
-
-        if (this.ftsAvailable) {
-            try {
-                this.db.prepare('DELETE FROM chunks_fts WHERE path = ?').run(filePath);
-            } catch {
-                // FTS might fail
+        const doDelete = this.db.transaction(() => {
+            // Batch delete vectors with single statement
+            if (this.vectorReady) {
+                try {
+                    this.db.prepare('DELETE FROM chunks_vec WHERE id IN (SELECT id FROM chunks WHERE path = ?)').run(filePath);
+                } catch { /* vector table may not exist */ }
             }
-        }
 
-        this.db.prepare('DELETE FROM chunks WHERE path = ?').run(filePath);
+            if (this.ftsAvailable) {
+                try {
+                    this.db.prepare('DELETE FROM chunks_fts WHERE path = ?').run(filePath);
+                } catch {
+                    // FTS might fail
+                }
+            }
+
+            this.db.prepare('DELETE FROM chunks WHERE path = ?').run(filePath);
+        });
+
+        doDelete();
+
+        // Invalidate entire embedding cache since we don't know which IDs were deleted
+        this.embeddingCache = null;
     }
 
     /**
@@ -215,7 +290,7 @@ class SQLiteIndex {
 
         return {
             ...row,
-            embedding: JSON.parse(row.embedding)
+            embedding: this._deserializeEmbedding(row.embedding)
         };
     }
 
@@ -233,7 +308,7 @@ class SQLiteIndex {
 
         return rows.map(row => ({
             ...row,
-            embedding: JSON.parse(row.embedding)
+            embedding: this._deserializeEmbedding(row.embedding)
         }));
     }
 
@@ -252,7 +327,7 @@ class SQLiteIndex {
 
         if (!row) return null;
 
-        return JSON.parse(row.embedding);
+        return this._deserializeEmbedding(row.embedding);
     }
 
     /**
@@ -264,7 +339,7 @@ class SQLiteIndex {
      */
     cacheEmbedding(provider, model, textHash, embedding) {
         const now = Date.now();
-        const embeddingJson = JSON.stringify(embedding);
+        const embeddingBlob = Buffer.from(new Float32Array(embedding).buffer);
 
         this.db.prepare(`
             INSERT INTO embedding_cache (provider, model, text_hash, embedding, dims, updated_at)
@@ -273,7 +348,7 @@ class SQLiteIndex {
                 embedding = excluded.embedding,
                 dims = excluded.dims,
                 updated_at = excluded.updated_at
-        `).run(provider, model, textHash, embeddingJson, embedding.length, now);
+        `).run(provider, model, textHash, embeddingBlob, embedding.length, now);
     }
 
     /**
@@ -358,6 +433,32 @@ class SQLiteIndex {
         } catch {
             return null;
         }
+    }
+
+    /**
+     * Deserialize an embedding from BLOB or legacy JSON text format
+     * @param {Buffer|string|null} data - Raw embedding data from DB
+     * @returns {number[]|null}
+     */
+    _deserializeEmbedding(data) {
+        if (!data) return null;
+        if (Buffer.isBuffer(data) || data instanceof Uint8Array) {
+            // BLOB format: interpret as Float32Array
+            const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+            return Array.from(new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4));
+        }
+        // Legacy JSON text fallback
+        if (typeof data === 'string') {
+            return JSON.parse(data);
+        }
+        return null;
+    }
+
+    /**
+     * Invalidate the in-memory embedding cache (for fallback vector search)
+     */
+    invalidateEmbeddingCache() {
+        this.embeddingCache = null;
     }
 
     /**

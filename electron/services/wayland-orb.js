@@ -85,7 +85,7 @@ function createWaylandOrb(options = {}) {
         try {
             proc = spawn(binPath, args, {
                 stdio: ['pipe', 'pipe', 'pipe'],
-                env: { ...process.env }
+                env: process.env
             });
 
             // Parse JSON lines from stdout

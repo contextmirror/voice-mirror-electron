@@ -44,10 +44,8 @@ const DEBUG_LOG_PATH = path.join(_getDataDir(), '..', 'claude-spawner-debug.log'
 function debugLog(msg) {
     const timestamp = new Date().toISOString();
     const line = `[${timestamp}] ${msg}\n`;
-    // Only write to debug log file, not console (reduces startup noise)
-    try {
-        fs.appendFileSync(DEBUG_LOG_PATH, line);
-    } catch (e) {}
+    // Async write to debug log file (non-blocking, fire-and-forget)
+    fs.promises.appendFile(DEBUG_LOG_PATH, line).catch(() => {});
 }
 
 /**
@@ -57,6 +55,9 @@ function debugLog(msg) {
  */
 const fsPromises = fs.promises;
 
+// Cache hash of last-written MCP config to skip redundant writes
+let _lastMcpConfigHash = null;
+
 async function configureMCPServer(appConfig) {
     // Resolve enabled groups from active tool profile
     const profileName = appConfig?.ai?.toolProfile || 'voice-assistant';
@@ -65,6 +66,14 @@ async function configureMCPServer(appConfig) {
     const enabledGroups = groups.join(',');
 
     logger.info('[Claude Spawner]', `Tool profile: "${profileName}" - groups: ${enabledGroups}`);
+
+    // Hash check: skip writes if config hasn't changed
+    const crypto = require('crypto');
+    const configHash = crypto.createHash('sha256').update(enabledGroups).digest('hex');
+    if (_lastMcpConfigHash === configHash) {
+        logger.info('[Claude Spawner]', 'MCP config unchanged, skipping writes');
+        return;
+    }
 
     const serverEntry = {
         command: 'node',
@@ -118,8 +127,12 @@ async function configureMCPServer(appConfig) {
     );
 
     await Promise.all(writePromises);
+    _lastMcpConfigHash = configHash;
     logger.info('[Claude Spawner]', `MCP settings written to ${writtenCount} locations`);
 }
+
+// Cache existsSync results for status line config (paths don't change at runtime)
+let _statusLineExistsCache = null;
 
 /**
  * Configure claude-pulse status line for Claude Code.
@@ -130,8 +143,16 @@ async function configureStatusLine() {
     const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
     const scriptPath = path.join(__dirname, '..', '..', 'vendor', 'claude-pulse', 'claude_status.py');
 
+    // Cache existsSync results after first call
+    if (!_statusLineExistsCache) {
+        _statusLineExistsCache = {};
+    }
+    if (!(scriptPath in _statusLineExistsCache)) {
+        _statusLineExistsCache[scriptPath] = fs.existsSync(scriptPath);
+    }
+
     // Only configure if the bundled script exists
-    if (!fs.existsSync(scriptPath)) {
+    if (!_statusLineExistsCache[scriptPath]) {
         debugLog('claude-pulse script not found, skipping status line config');
         return;
     }
@@ -165,10 +186,18 @@ async function configureStatusLine() {
 
     for (const cmd of ['pulse.md', 'setup.md']) {
         const dest = path.join(commandsDir, cmd);
-        if (!fs.existsSync(dest)) {
+        // Use cache for existsSync checks
+        if (!(dest in _statusLineExistsCache)) {
+            _statusLineExistsCache[dest] = fs.existsSync(dest);
+        }
+        if (!_statusLineExistsCache[dest]) {
             const src = path.join(__dirname, '..', '..', 'vendor', 'claude-pulse', 'commands', cmd);
-            if (fs.existsSync(src)) {
+            if (!(src in _statusLineExistsCache)) {
+                _statusLineExistsCache[src] = fs.existsSync(src);
+            }
+            if (_statusLineExistsCache[src]) {
                 await fsPromises.copyFile(src, dest);
+                _statusLineExistsCache[dest] = true; // update cache
                 debugLog(`Installed slash command: ${cmd}`);
             }
         }
@@ -315,6 +344,7 @@ async function spawnClaude(options = {}) {
                 if (hasPrompt) {
                     isReady = true;
                     debugLog(`TUI ready detected. Buffer length: ${outputBuffer.length}`);
+                    outputBuffer = ''; // Free the buffer immediately
 
                     // Call all waiting callbacks
                     debugLog(`Calling ${readyCallbacks.length} ready callbacks`);

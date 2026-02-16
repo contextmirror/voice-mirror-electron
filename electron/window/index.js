@@ -4,7 +4,7 @@
  */
 
 const { BrowserWindow, screen } = require('electron');
-const { execFileSync } = require('child_process');
+const { execFileSync, execFile } = require('child_process');
 const path = require('path');
 const { createLogger } = require('../services/logger');
 const logger = createLogger();
@@ -52,6 +52,7 @@ function createWindowManager(options = {}) {
     let isExpanded = false;
     let overlayInterval = null;
     let x11WindowId = null;
+    let moveDebounce = null;
 
     /**
      * Get orb size from config.
@@ -153,12 +154,16 @@ function createWindowManager(options = {}) {
         startOverlayEnforcer();
 
         // Save position when window is moved (only when collapsed to orb)
+        // Debounced to avoid disk writes on every frame during drag
         mainWindow.on('moved', () => {
             if (!isExpanded) {
-                const [rawX, rawY] = mainWindow.getPosition();
-                const orbSz = getOrbSize();
-                const { x, y } = clampToVisibleArea(rawX, rawY, orbSz, orbSz);
-                updateConfig({ window: { orbX: x, orbY: y } });
+                clearTimeout(moveDebounce);
+                moveDebounce = setTimeout(() => {
+                    const [rawX, rawY] = mainWindow.getPosition();
+                    const orbSz = getOrbSize();
+                    const { x, y } = clampToVisibleArea(rawX, rawY, orbSz, orbSz);
+                    updateConfig({ window: { orbX: x, orbY: y } });
+                }, 500);
             }
         });
 
@@ -203,11 +208,9 @@ function createWindowManager(options = {}) {
      */
     function raiseWindow() {
         if (process.platform === 'linux' && x11WindowId) {
-            try {
-                execFileSync('xdotool', ['windowraise', x11WindowId], { timeout: 1000, stdio: 'ignore' });
-            } catch (e) {
+            execFile('xdotool', ['windowraise', x11WindowId], { timeout: 1000, stdio: 'ignore' }, () => {
                 // Silently fail — window may have been recreated
-            }
+            });
         }
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.setAlwaysOnTop(true, 'screen-saver');
@@ -215,8 +218,9 @@ function createWindowManager(options = {}) {
     }
 
     /**
-     * Start periodic always-on-top enforcement (Wayland workaround).
-     * Uses xdotool windowraise + Electron setAlwaysOnTop every 2s.
+     * Start periodic always-on-top enforcement.
+     * Linux: xdotool windowraise (async) + Electron setAlwaysOnTop every 2s.
+     * Windows/macOS: just setAlwaysOnTop every 2s (cheap, needed after provider switches).
      */
     function startOverlayEnforcer() {
         stopOverlayEnforcer();

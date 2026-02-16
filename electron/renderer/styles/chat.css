@@ -461,6 +461,7 @@
     -webkit-background-clip: text;
     background-clip: text;
     animation: ai-status-shine 2s linear infinite;
+    will-change: background-position;
 }
 
 @keyframes ai-status-shine {
