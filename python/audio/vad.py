@@ -30,7 +30,8 @@ class SileroVAD:
     def __init__(self):
         self._session = None
         self._state = np.zeros((2, 1, 128), dtype=np.float32)
-        self._buffer = np.array([], dtype=np.float32)
+        self._chunks: list[np.ndarray] = []
+        self._chunks_samples = 0
 
     @property
     def is_loaded(self) -> bool:
@@ -64,7 +65,8 @@ class SileroVAD:
     def reset(self):
         """Clear LSTM hidden state and sample buffer."""
         self._state = np.zeros((2, 1, 128), dtype=np.float32)
-        self._buffer = np.array([], dtype=np.float32)
+        self._chunks = []
+        self._chunks_samples = 0
 
     def _infer_window(self, window: np.ndarray) -> float:
         """Run a single 512-sample window through the model. Returns speech probability."""
@@ -95,16 +97,28 @@ class SileroVAD:
         if not self.is_loaded:
             return self._energy_fallback(audio_chunk, mode)
 
-        # Append to buffer
-        self._buffer = np.concatenate([self._buffer, audio_chunk.astype(np.float32)])
+        # Accumulate chunks in a list (avoids repeated np.concatenate)
+        chunk = audio_chunk.astype(np.float32)
+        self._chunks.append(chunk)
+        self._chunks_samples += len(chunk)
 
         max_prob = 0.0
-        while len(self._buffer) >= _WINDOW_SIZE:
-            window = self._buffer[:_WINDOW_SIZE]
-            self._buffer = self._buffer[_WINDOW_SIZE:]
-            prob = self._infer_window(window)
-            if prob > max_prob:
-                max_prob = prob
+        if self._chunks_samples >= _WINDOW_SIZE:
+            # Only concatenate once when we have enough data
+            buf = np.concatenate(self._chunks)
+            while len(buf) >= _WINDOW_SIZE:
+                window = buf[:_WINDOW_SIZE]
+                buf = buf[_WINDOW_SIZE:]
+                prob = self._infer_window(window)
+                if prob > max_prob:
+                    max_prob = prob
+            # Keep remainder
+            if len(buf) > 0:
+                self._chunks = [buf]
+                self._chunks_samples = len(buf)
+            else:
+                self._chunks = []
+                self._chunks_samples = 0
 
         threshold = _THRESHOLDS.get(mode, 0.5)
         return (max_prob >= threshold, max_prob)

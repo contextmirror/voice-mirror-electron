@@ -90,6 +90,7 @@
         const btnScroll = document.getElementById('btn-scroll');
         const btnClear = document.getElementById('btn-clear');
         let autoScroll = true;
+        const MAX_LINES = 2000;
 
         // ANSI escape code to CSS class mapping
         const ANSI_MAP = {
@@ -134,11 +135,16 @@
             return result;
         }
 
+        function trimLines() {
+            while (output.children.length > MAX_LINES) output.removeChild(output.firstChild);
+        }
+
         function appendLine(rawLine) {
             const div = document.createElement('div');
             div.className = 'line';
             div.innerHTML = ansiToHtml(rawLine);
             output.appendChild(div);
+            trimLines();
             if (autoScroll) output.scrollTop = output.scrollHeight;
         }
 
@@ -153,6 +159,7 @@
                 frag.appendChild(div);
             }
             output.appendChild(frag);
+            trimLines();
             if (autoScroll) output.scrollTop = output.scrollHeight;
         }
 

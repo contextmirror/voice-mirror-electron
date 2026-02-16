@@ -38,7 +38,7 @@ function isRedactedKey(value) {
  */
 function redactConfigKeys(config) {
     if (!config) return config;
-    const redacted = JSON.parse(JSON.stringify(config));
+    const redacted = structuredClone(config);
 
     // Redact ai.apiKeys.*
     if (redacted.ai?.apiKeys) {

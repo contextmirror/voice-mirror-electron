@@ -3,8 +3,8 @@
  * Manages saving/loading conversations via IPC and rendering the chat list.
  */
 
-import { addMessage } from './messages.js';
-import { getAllMessages, clearChat } from './chat-input.js';
+import { addMessage, getMessagesArray, clearMessagesArray } from './messages.js';
+import { clearChat } from './chat-input.js';
 import { createLog } from './log.js';
 const log = createLog('[ChatStore]');
 
@@ -199,7 +199,7 @@ export async function deleteChat(id) {
 export async function autoSave() {
     if (!currentChatId) return;
 
-    const messages = getAllMessages();
+    const messages = getMessagesArray();
     if (messages.length === 0) return;
 
     // Auto-name from first user message if still "New Chat"
@@ -283,12 +283,7 @@ function getOrCreateContextMenu() {
     renameBtn.className = 'context-menu-item';
     renameBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg> Rename`;
 
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'context-menu-item';
-    deleteBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg> Delete`;
-
     contextMenuEl.appendChild(renameBtn);
-    contextMenuEl.appendChild(deleteBtn);
     document.body.appendChild(contextMenuEl);
 
     // Dismiss on click outside
@@ -319,16 +314,11 @@ function showChatContextMenu(x, y, chatId) {
         }
     });
 
-    // Wire up actions for this chat
-    const [renameBtn, deleteBtn] = menu.querySelectorAll('.context-menu-item');
-
+    // Wire up rename action for this chat
+    const renameBtn = menu.querySelector('.context-menu-item');
     renameBtn.onclick = () => {
         hideChatContextMenu();
         startInlineRename(chatId);
-    };
-    deleteBtn.onclick = () => {
-        hideChatContextMenu();
-        deleteChat(chatId);
     };
 }
 

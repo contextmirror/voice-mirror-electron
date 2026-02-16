@@ -86,51 +86,89 @@ async function handleCaptureScreen(args) {
         timestamp: new Date().toISOString()
     }, null, 2));
 
-    // Wait for Electron to capture (up to 10 seconds)
-    const startTime = Date.now();
+    // Wait for Electron to capture (up to 10 seconds) using fs.watch + poll fallback
     const timeoutMs = 10000;
+    const dir = path.dirname(responsePath);
+    const expectedFilename = path.basename(responsePath);
 
-    while (Date.now() - startTime < timeoutMs) {
-        await new Promise(resolve => setTimeout(resolve, 200));
+    const result = await new Promise((resolve) => {
+        let settled = false;
+        let watcher = null;
+        let fallbackInterval = null;
+        let fallbackTimeout = null;
 
-        if (fs.existsSync(responsePath)) {
-            try {
-                const response = JSON.parse(fs.readFileSync(responsePath, 'utf-8'));
-
-                if (response.success) {
-                    const displaysInfo = response.displays_available > 1
-                        ? `\n${response.displays_available} displays available. Use display parameter (0-${response.displays_available - 1}) to capture a different monitor.`
-                        : '';
-                    return {
-                        content: [{
-                            type: 'text',
-                            text: `Screenshot captured and saved to: ${response.image_path}\n` +
-                                  `You can now analyze this image. The path is: ${response.image_path}` +
-                                  displaysInfo
-                        }]
-                    };
-                } else {
-                    return {
-                        content: [{
-                            type: 'text',
-                            text: `Screenshot failed: ${response.error}`
-                        }],
-                        isError: true
-                    };
+        function tryRead() {
+            if (settled) return;
+            if (fs.existsSync(responsePath)) {
+                try {
+                    const response = JSON.parse(fs.readFileSync(responsePath, 'utf-8'));
+                    settled = true;
+                    cleanup();
+                    resolve({ response, timedOut: false });
+                } catch {
+                    // Partial write, wait for next event
                 }
-            } catch (err) {
-                // Continue waiting
             }
         }
+
+        function cleanup() {
+            if (watcher) { try { watcher.close(); } catch {} watcher = null; }
+            if (fallbackInterval) { clearInterval(fallbackInterval); fallbackInterval = null; }
+            if (fallbackTimeout) { clearTimeout(fallbackTimeout); fallbackTimeout = null; }
+        }
+
+        try {
+            watcher = fs.watch(dir, (event, filename) => {
+                if (filename === expectedFilename) tryRead();
+            });
+            watcher.on('error', () => {});
+        } catch {}
+
+        fallbackInterval = setInterval(tryRead, 500);
+
+        fallbackTimeout = setTimeout(() => {
+            if (!settled) {
+                settled = true;
+                cleanup();
+                resolve({ response: null, timedOut: true });
+            }
+        }, timeoutMs);
+
+        tryRead();
+    });
+
+    if (result.timedOut) {
+        return {
+            content: [{
+                type: 'text',
+                text: 'Screenshot request timed out. Is the Electron app running?'
+            }],
+            isError: true
+        };
     }
 
-    return {
-        content: [{
-            type: 'text',
-            text: 'Screenshot request timed out. Is the Electron app running?'
-        }],
-        isError: true
-    };
+    const response = result.response;
+    if (response.success) {
+        const displaysInfo = response.displays_available > 1
+            ? `\n${response.displays_available} displays available. Use display parameter (0-${response.displays_available - 1}) to capture a different monitor.`
+            : '';
+        return {
+            content: [{
+                type: 'text',
+                text: `Screenshot captured and saved to: ${response.image_path}\n` +
+                      `You can now analyze this image. The path is: ${response.image_path}` +
+                      displaysInfo
+            }]
+        };
+    } else {
+        return {
+            content: [{
+                type: 'text',
+                text: `Screenshot failed: ${response.error}`
+            }],
+            isError: true
+        };
+    }
 }
 
 module.exports = { handleCaptureScreen };

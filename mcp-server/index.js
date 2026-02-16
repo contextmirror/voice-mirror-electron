@@ -119,6 +119,25 @@ let totalCallCount = 0;
 const groupLastUsed = {}; // { groupName: callCount }
 const IDLE_CALLS_THRESHOLD = 15;
 
+// Pre-compiled keyword regexes for autoLoadByIntent (optimization: single regex per group)
+const groupKeywordRegex = {};
+for (const [groupName, group] of Object.entries(TOOL_GROUPS)) {
+    if (group.keywords && group.keywords.length > 0) {
+        // Escape regex special chars in keywords, join with |
+        const escaped = group.keywords.map(kw => kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        groupKeywordRegex[groupName] = new RegExp(escaped.join('|'), 'i');
+    }
+}
+
+// Destructive tools set (module scope to avoid re-creation per call)
+const DESTRUCTIVE_TOOLS = new Set([
+    'memory_forget',
+    'n8n_delete_workflow',
+    'n8n_delete_credential',
+    'n8n_delete_tag',
+    'n8n_delete_execution',
+]);
+
 // ============================================
 // Auto-load / Auto-unload
 // ============================================
@@ -128,17 +147,15 @@ const IDLE_CALLS_THRESHOLD = 15;
  */
 async function autoLoadByIntent(text) {
     if (!text) return [];
-    const lower = text.toLowerCase();
     const loaded = [];
 
     for (const [groupName, group] of Object.entries(TOOL_GROUPS)) {
         if (group.alwaysLoaded || loadedGroups.has(groupName)) continue;
-        if (!group.keywords) continue;
+        if (!groupKeywordRegex[groupName]) continue;
         // If a tool profile restricts groups, skip groups not in the allowed set
         if (allowedGroups && !allowedGroups.has(groupName)) continue;
 
-        const matched = group.keywords.some(kw => lower.includes(kw));
-        if (!matched) continue;
+        if (!groupKeywordRegex[groupName].test(text)) continue;
 
         loadedGroups.add(groupName);
         loaded.push(groupName);
@@ -314,16 +331,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (calledGroup) {
         groupLastUsed[calledGroup] = totalCallCount;
     }
-
-    // Destructive tools that require explicit confirmation.
-    // If called without confirmed:true, return a warning instead of executing.
-    const DESTRUCTIVE_TOOLS = new Set([
-        'memory_forget',
-        'n8n_delete_workflow',
-        'n8n_delete_credential',
-        'n8n_delete_tag',
-        'n8n_delete_execution',
-    ]);
 
     if (DESTRUCTIVE_TOOLS.has(name) && !args?.confirmed) {
         return {

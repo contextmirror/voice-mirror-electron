@@ -281,6 +281,46 @@ async function captureScreenshot(opts = {}) {
 }
 
 /**
+ * Capture a screenshot and return as base64 string (no Buffer conversion).
+ * @param {Object} [opts={}]
+ * @param {'png'|'jpeg'} [opts.format='png']
+ * @param {number} [opts.quality]
+ * @param {boolean} [opts.fullPage]
+ * @returns {Promise<string>} Base64 encoded image data
+ */
+async function captureScreenshotBase64(opts = {}) {
+    await sendCommand('Page.enable');
+
+    let clip;
+    if (opts.fullPage) {
+        const metrics = await sendCommand('Page.getLayoutMetrics');
+        const size = metrics?.cssContentSize || metrics?.contentSize;
+        const width = Number(size?.width || 0);
+        const height = Number(size?.height || 0);
+        if (width > 0 && height > 0) {
+            clip = { x: 0, y: 0, width, height, scale: 1 };
+        }
+    }
+
+    const format = opts.format || 'png';
+    const quality = format === 'jpeg'
+        ? Math.max(0, Math.min(100, Math.round(opts.quality ?? 85)))
+        : undefined;
+
+    const result = await sendCommand('Page.captureScreenshot', {
+        format,
+        ...(quality !== undefined ? { quality } : {}),
+        fromSurface: true,
+        captureBeyondViewport: !!opts.fullPage,
+        ...(clip ? { clip } : {})
+    });
+
+    const base64 = result?.data;
+    if (!base64) throw new Error('Screenshot failed: missing data');
+    return base64;
+}
+
+/**
  * Evaluate JavaScript in the page.
  * @param {string} expression
  * @param {Object} [options={}]
@@ -303,14 +343,28 @@ async function evaluate(expression, options = {}) {
     return { result, exceptionDetails: evaluated.exceptionDetails };
 }
 
+/** Cached AX tree result for rapid repeat calls */
+let _axTreeCache = null;
+let _axTreeCacheTime = 0;
+const AX_TREE_CACHE_TTL = 2000; // 2s TTL
+
 /**
  * Get the accessibility tree.
+ * Uses a short TTL cache to avoid redundant full-tree fetches
+ * when multiple callers request the tree in quick succession.
  * @returns {Promise<Array>} Raw AX tree nodes
  */
 async function getAccessibilityTree() {
+    const now = Date.now();
+    if (_axTreeCache && (now - _axTreeCacheTime) < AX_TREE_CACHE_TTL) {
+        return _axTreeCache;
+    }
     await sendCommand('Accessibility.enable').catch(() => {});
     const res = await sendCommand('Accessibility.getFullAXTree');
-    return Array.isArray(res?.nodes) ? res.nodes : [];
+    const nodes = Array.isArray(res?.nodes) ? res.nodes : [];
+    _axTreeCache = nodes;
+    _axTreeCacheTime = now;
+    return nodes;
 }
 
 module.exports = {
@@ -324,6 +378,7 @@ module.exports = {
     getUrl,
     getTitle,
     captureScreenshot,
+    captureScreenshotBase64,
     evaluate,
     getAccessibilityTree
 };

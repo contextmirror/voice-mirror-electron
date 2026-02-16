@@ -484,6 +484,11 @@ app.whenReady().then(() => {
                 }
             });
             setTimeout(() => doStartupGreeting(), 2000);
+
+            // Start AI provider directly now that Python is ready
+            // (event-driven — replaces the old 300ms polling interval)
+            if (aiStartupTimeout) { clearTimeout(aiStartupTimeout); aiStartupTimeout = null; }
+            doStartAI();
         }
 
         // Handle chat messages from transcription/response events
@@ -761,6 +766,20 @@ app.whenReady().then(() => {
     startDockerServices();
 
     // Auto-start Voice Mirror (Python + AI provider) on app launch
+    // doStartAI is hoisted so the Python 'ready' event handler can call it directly
+    let aiStarted = false;
+    const doStartAI = () => {
+        if (aiStarted) return;
+        aiStarted = true;
+        try {
+            // Use last known terminal dimensions so TUI renders at correct size
+            const dims = ipcCtx._getLastTermDims ? ipcCtx._getLastTermDims() : {};
+            startAIProvider(dims.cols, dims.rows);
+        } catch (err) {
+            logger.error('[Voice Mirror]', 'Failed to start AI provider:', err.message);
+        }
+    };
+
     try {
         const providerName = appConfig?.ai?.provider || 'claude';
         logger.info('[Voice Mirror]', `Auto-starting Python and AI provider (${providerName})...`);
@@ -775,33 +794,8 @@ app.whenReady().then(() => {
 
         startPythonVoiceMirror();
 
-        // Start AI provider after Python is ready, or after 5s fallback
-        // (Python ready event fires in ~2-4s; this gives graceful degradation)
-        let aiStarted = false;
-        const doStartAI = () => {
-            if (aiStarted) return;
-            aiStarted = true;
-            try {
-                // Use last known terminal dimensions so TUI renders at correct size
-                const dims = ipcCtx._getLastTermDims ? ipcCtx._getLastTermDims() : {};
-                startAIProvider(dims.cols, dims.rows);
-            } catch (err) {
-                logger.error('[Voice Mirror]', 'Failed to start AI provider:', err.message);
-            }
-        };
-
-        // Fallback: start AI after 5 seconds regardless
+        // Fallback: start AI after 5 seconds if Python ready event hasn't fired
         aiStartupTimeout = setTimeout(doStartAI, 5000);
-
-        // Watch for Python ready to start AI sooner
-        aiReadyCheckInterval = setInterval(() => {
-            // pythonReadyTimeout is set to null when Python sends 'ready'
-            if (pythonReadyTimeout === null || !pythonBackend?.isRunning()) {
-                clearInterval(aiReadyCheckInterval); aiReadyCheckInterval = null;
-                clearTimeout(aiStartupTimeout); aiStartupTimeout = null;
-                doStartAI();
-            }
-        }, 300);
     } catch (err) {
         logger.error('[Voice Mirror]', 'Auto-start failed:', err.message);
     }

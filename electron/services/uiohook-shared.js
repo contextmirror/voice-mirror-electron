@@ -17,6 +17,7 @@ const logger = createLogger();
 let uIOhook = null;
 let started = false;
 let loadError = null;
+let loadAttempted = false;
 
 // Health monitoring state
 let lastEventSeen = 0;
@@ -26,14 +27,20 @@ let canaryAttached = false;
 const HEALTH_INTERVAL_MS = 10000;   // Check every 10s
 const STALE_THRESHOLD_MS = 120000;  // 120s with no events = likely dead (avoid false restarts)
 
-// Try to load uiohook-napi once
-try {
-    const mod = require('uiohook-napi');
-    uIOhook = mod.uIOhook;
-    logger.info('[uiohook]', 'uiohook-napi loaded successfully');
-} catch (err) {
-    loadError = err;
-    logger.warn('[uiohook]', 'uiohook-napi not available:', err.message);
+/**
+ * Lazily load uiohook-napi on first use. Caches the result.
+ */
+function loadUiohook() {
+    if (loadAttempted) return;
+    loadAttempted = true;
+    try {
+        const mod = require('uiohook-napi');
+        uIOhook = mod.uIOhook;
+        logger.info('[uiohook]', 'uiohook-napi loaded successfully');
+    } catch (err) {
+        loadError = err;
+        logger.warn('[uiohook]', 'uiohook-napi not available:', err.message);
+    }
 }
 
 /**
@@ -47,7 +54,6 @@ function attachCanary() {
     uIOhook.on('keyup', touch);
     uIOhook.on('mousedown', touch);
     uIOhook.on('mouseup', touch);
-    uIOhook.on('mousemove', touch);
     canaryAttached = true;
 }
 
@@ -71,6 +77,7 @@ function startHealthMonitor() {
  * @returns {boolean} true if running
  */
 function ensureStarted() {
+    loadUiohook();
     if (!uIOhook) return false;
     if (started) return true;
     try {
@@ -130,10 +137,10 @@ function stop() {
 }
 
 /** @returns {Object|null} The uIOhook instance or null */
-function getHook() { return uIOhook; }
+function getHook() { loadUiohook(); return uIOhook; }
 
 /** @returns {boolean} Whether uiohook-napi loaded successfully */
-function isAvailable() { return uIOhook !== null; }
+function isAvailable() { loadUiohook(); return uIOhook !== null; }
 
 /** @returns {boolean} Whether uiohook is currently running */
 function isStarted() { return started; }

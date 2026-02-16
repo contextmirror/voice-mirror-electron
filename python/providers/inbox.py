@@ -2,12 +2,17 @@
 
 import asyncio
 import json
+import os
 import threading
 import time
 import uuid
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+
+# Inbox limits
+_MAX_MESSAGES = 100  # Trim oldest when exceeded
+_CLEANUP_INTERVAL = 1800  # 30 minutes between periodic cleanups
 
 
 def cleanup_inbox(inbox_path: Path, max_age_hours: float = 2.0) -> int:
@@ -87,6 +92,72 @@ class InboxManager:
         self._last_seen_message_id = None
         self.awaiting_response = False  # True while wait_for_response() is active
         self.speaking_response = False  # True while TTS is speaking a response (prevents double-speak)
+        # Cached inbox data with mtime check
+        self._cached_data: dict | None = None
+        self._cached_mtime: float = 0.0
+        # Periodic cleanup tracking
+        self._last_cleanup_time: float = time.time()
+
+    def _read_inbox(self) -> dict:
+        """Read inbox data with mtime-based caching. Caller must hold self._lock."""
+        if not self.inbox_path.exists():
+            return {"messages": []}
+        try:
+            mtime = os.path.getmtime(self.inbox_path)
+            if mtime == self._cached_mtime and self._cached_data is not None:
+                return self._cached_data
+            with open(self.inbox_path, encoding='utf-8') as f:
+                data = json.load(f)
+            if "messages" not in data:
+                data = {"messages": []}
+            self._cached_data = data
+            self._cached_mtime = mtime
+            return data
+        except (json.JSONDecodeError, KeyError):
+            return {"messages": []}
+
+    def _invalidate_cache(self):
+        """Invalidate the inbox cache after a write. Caller must hold self._lock."""
+        self._cached_mtime = 0.0
+        self._cached_data = None
+
+    def _maybe_cleanup(self, max_age_hours: float = 2.0):
+        """Run periodic cleanup if enough time has passed. Caller must hold self._lock."""
+        now = time.time()
+        if now - self._last_cleanup_time < _CLEANUP_INTERVAL:
+            return
+        self._last_cleanup_time = now
+
+        data = self._read_inbox()
+        messages = data.get("messages", [])
+        if not messages:
+            return
+
+        original_count = len(messages)
+        cutoff = now - (max_age_hours * 3600)
+
+        # Filter old messages
+        recent = []
+        for msg in messages:
+            try:
+                ts = msg.get("timestamp", "")
+                msg_time = datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+                if msg_time > cutoff:
+                    recent.append(msg)
+            except (ValueError, TypeError):
+                recent.append(msg)
+
+        # Enforce max message cap
+        if len(recent) > _MAX_MESSAGES:
+            recent = recent[-_MAX_MESSAGES:]
+
+        removed = original_count - len(recent)
+        if removed > 0:
+            data["messages"] = recent
+            with open(self.inbox_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+            self._invalidate_cache()
+            print(f"[CLEAN] Periodic cleanup: removed {removed} old message(s)")
 
     @staticmethod
     def _sender_matches(sender: str, provider_id: str) -> bool:
@@ -126,17 +197,11 @@ class InboxManager:
 
             self.inbox_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Load existing messages
-            if self.inbox_path.exists():
-                try:
-                    with open(self.inbox_path, encoding='utf-8') as f:
-                        data = json.load(f)
-                    if "messages" not in data:
-                        data = {"messages": []}
-                except (json.JSONDecodeError, KeyError):
-                    data = {"messages": []}
-            else:
-                data = {"messages": []}
+            # Periodic cleanup
+            self._maybe_cleanup()
+
+            # Load existing messages (cached)
+            data = self._read_inbox()
 
             # Create new message
             msg = {
@@ -150,8 +215,13 @@ class InboxManager:
 
             data["messages"].append(msg)
 
+            # Enforce max message cap
+            if len(data["messages"]) > _MAX_MESSAGES:
+                data["messages"] = data["messages"][-_MAX_MESSAGES:]
+
             with open(self.inbox_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2)
+            self._invalidate_cache()
 
             print(f"[NOTIFY] Sent to inbox: {message[:50]}...")
             return msg["id"]
@@ -185,16 +255,10 @@ class InboxManager:
             await asyncio.sleep(poll_interval)
 
             with self._lock:
-                if not self.inbox_path.exists():
-                    continue
-
-                try:
-                    with open(self.inbox_path, encoding='utf-8') as f:
-                        data = json.load(f)
-                except (json.JSONDecodeError, KeyError):
-                    continue
-
+                data = self._read_inbox()
                 messages = data.get("messages", [])
+                if not messages:
+                    continue
 
                 # Find my message index
                 my_msg_idx = None
@@ -230,14 +294,7 @@ class InboxManager:
             response: Response text to write
         """
         with self._lock:
-            if self.inbox_path.exists():
-                try:
-                    with open(self.inbox_path, encoding='utf-8') as f:
-                        data = json.load(f)
-                except Exception:
-                    data = {"messages": []}
-            else:
-                data = {"messages": []}
+            data = self._read_inbox()
 
             ai_provider = self._get_ai_provider()
             provider_id = ai_provider['provider']
@@ -254,6 +311,7 @@ class InboxManager:
 
             with open(self.inbox_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2)
+            self._invalidate_cache()
 
             print("[NOTIFY] Response saved to inbox")
 
@@ -265,15 +323,7 @@ class InboxManager:
             Tuple of (message_id, message_text) or (None, None) if no message
         """
         with self._lock:
-            if not self.inbox_path.exists():
-                return None, None
-
-            try:
-                with open(self.inbox_path, encoding='utf-8') as f:
-                    data = json.load(f)
-            except (json.JSONDecodeError, KeyError):
-                return None, None
-
+            data = self._read_inbox()
             messages = data.get("messages", [])
             if not messages:
                 return None, None
@@ -296,15 +346,7 @@ class InboxManager:
             Tuple of (event_id, event_data) or (None, None) if no event
         """
         with self._lock:
-            if not self.inbox_path.exists():
-                return None, None
-
-            try:
-                with open(self.inbox_path, encoding='utf-8') as f:
-                    data = json.load(f)
-            except (json.JSONDecodeError, KeyError):
-                return None, None
-
+            data = self._read_inbox()
             messages = data if isinstance(data, list) else data.get("messages", [])
             if not messages:
                 return None, None
@@ -325,13 +367,8 @@ class InboxManager:
             event_id: ID of the compaction event to mark
         """
         with self._lock:
-            if not self.inbox_path.exists():
-                return
-
             try:
-                with open(self.inbox_path, encoding='utf-8') as f:
-                    data = json.load(f)
-
+                data = self._read_inbox()
                 messages = data if isinstance(data, list) else data.get("messages", [])
 
                 for msg in messages:
@@ -341,6 +378,7 @@ class InboxManager:
 
                 with open(self.inbox_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=2)
+                self._invalidate_cache()
             except Exception as e:
                 print(f"[WARN] Error marking compaction read: {e}")
 

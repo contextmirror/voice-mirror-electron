@@ -47,13 +47,19 @@ const LOG_STYLES = {
 // Category padding for aligned output
 const CAT_PAD = 8;
 
+let _singleton = null;
+
 /**
- * Create a logger instance.
+ * Create (or return) the singleton logger instance.
+ * First call creates the instance; subsequent calls return the same one.
+ * Call init() once (in main.js) to open the log file handle.
  * @param {Object} options - Logger options
  * @param {string} options.dataDir - Directory to store log file (defaults to ~/.config/voice-mirror-electron/data)
- * @returns {Object} Logger instance
+ * @returns {Object} Logger instance (singleton)
  */
 function createLogger(options = {}) {
+    if (_singleton) return _singleton;
+
     let logFile = null;
     let logFilePath = null;
     const listeners = [];
@@ -207,7 +213,7 @@ function createLogger(options = {}) {
         log('LOG', message);
     }
 
-    return {
+    _singleton = {
         init,
         log,
         devlog,
@@ -223,6 +229,8 @@ function createLogger(options = {}) {
             if (idx !== -1) listeners.splice(idx, 1);
         },
     };
+
+    return _singleton;
 }
 
 module.exports = {

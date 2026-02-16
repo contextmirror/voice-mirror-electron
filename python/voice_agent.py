@@ -19,6 +19,7 @@ import json
 import os
 import signal
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -124,6 +125,14 @@ class VoiceMirror:
         self._activation_mode = ActivationMode.WAKE_WORD  # Will be set in load_models
         self._ai_provider = {"provider": "claude", "name": "Claude", "model": None}  # Will be set in load_models
 
+        # Thread-safe events for trigger polling (set in main loop, read in audio callback)
+        self._ptt_action: str | None = None  # Set by main loop from check_ptt_trigger()
+        self._dictation_action: str | None = None  # Set by main loop from check_dictation_trigger()
+
+        # Deferred model loading state
+        self._stt_settings: dict = {}  # STT kwargs saved from load_models
+        self._tts_settings: dict = {}  # TTS kwargs saved from load_models
+
     def get_listening_status(self) -> str:
         """Get the appropriate listening status message based on activation mode."""
         if self._activation_mode == ActivationMode.WAKE_WORD:
@@ -228,7 +237,7 @@ class VoiceMirror:
         else:
             print("Silero VAD not available, using energy fallback")
 
-        # Load STT adapter from settings
+        # Create STT adapter (deferred loading — loads on first transcribe())
         settings = load_voice_settings()
         adapter_name = settings.get("stt_adapter", "parakeet")
         model_name = settings.get("stt_model", None)
@@ -243,17 +252,11 @@ class VoiceMirror:
             stt_kwargs["model_name"] = settings["stt_model_name"]
 
         try:
-            print(f"Loading STT adapter: {adapter_name}")
+            print(f"STT adapter: {adapter_name} (deferred load)")
             if model_name:
                 print(f"  Model: {model_name}")
-            else:
-                print("  Using default model")
 
             self.stt_adapter = create_stt_adapter(adapter_name, model_name, **stt_kwargs)
-
-            # Load the adapter (async, so we'll do it in the event loop later)
-            # For now just create the instance
-            print("  (First run may download model, please wait...)")
 
         except Exception as e:
             print(f"[ERR] Failed to create STT adapter: {e}")
@@ -263,7 +266,7 @@ class VoiceMirror:
             except Exception:
                 self.stt_adapter = None
 
-        # Load TTS adapter from settings
+        # Create TTS adapter (deferred loading — loads on first speak())
         tts_adapter = settings.get("tts_adapter", "kokoro")
         tts_voice = settings.get("tts_voice", TTS_VOICE)
         tts_model_size = settings.get("tts_model_size", "0.6B")
@@ -278,7 +281,7 @@ class VoiceMirror:
             tts_kwargs["model_path"] = settings["tts_model_path"]
 
         try:
-            print(f"Loading TTS adapter: {tts_adapter}")
+            print(f"TTS adapter: {tts_adapter} (deferred load)")
             print(f"  Voice: {tts_voice}")
             if tts_adapter == "qwen":
                 print(f"  Model size: {tts_model_size}")
@@ -287,14 +290,6 @@ class VoiceMirror:
             print(f"[WARN] {e}")
             print("   Falling back to kokoro")
             self.tts = create_tts_adapter("kokoro", voice=tts_voice)
-
-        # Load TTS model
-        try:
-            self.tts.load()
-        except Exception as e:
-            print(f"[WARN] TTS failed to load: {e}")
-            print("   Voice output will be unavailable. Run setup to fix.")
-            self.tts = None
 
     def check_ptt_trigger(self) -> str | None:
         """
@@ -512,6 +507,22 @@ class VoiceMirror:
 
     async def speak(self, text: str, enter_conversation_mode: bool = True):
         """Convert text to speech and play it using TTSManager."""
+        # Lazy load TTS on first use
+        if self.tts and not self.tts.is_loaded:
+            try:
+                from electron_bridge import emit_event
+                emit_event('tts_loading')
+            except Exception:
+                pass
+            print("[TTS] Loading model (first use)...")
+            try:
+                self.tts.load()
+            except Exception as e:
+                print(f"[WARN] TTS failed to load: {e}")
+                print("   Voice output will be unavailable. Run setup to fix.")
+                self.tts = None
+                return
+
         def on_speech_start():
             self.audio_state.is_listening = False
 
@@ -538,8 +549,14 @@ class VoiceMirror:
             print("[ERR] No STT adapter available")
             return ""
 
-        # Load adapter if not already loaded
+        # Lazy load adapter on first use
         if not self.stt_adapter.is_loaded:
+            try:
+                from electron_bridge import emit_event
+                emit_event('stt_loading')
+            except Exception:
+                pass
+            print("[STT] Loading model (first use)...")
             loaded = await self.stt_adapter.load()
             if not loaded:
                 print("[ERR] Failed to load STT adapter")
@@ -577,21 +594,18 @@ class VoiceMirror:
             self._audio_debug_counter = 0
         self._audio_debug_counter += 1
 
-        level = np.abs(indata).max()
-        energy = np.abs(indata[:, 0]).mean()
-
-        # Print audio debug every ~1 second
+        # Only compute audio levels when needed (every 60th frame)
         if self._audio_debug_counter % 60 == 0:
+            level = np.abs(indata).max()
+            energy = np.abs(indata[:, 0]).mean()
             print(f"[MIC] Audio: level={level:.4f}, energy={energy:.4f}, listening={self.audio_state.is_listening}")
-
-        if level > 0.05:
-            bars = int(level * 20)
-            print(f"[TTS] {'#' * bars}", end="\r")
 
         audio = indata[:, 0].copy()  # Mono
 
-        # Check for push-to-talk trigger (from Electron)
-        ptt_action = self.check_ptt_trigger()
+        # Read trigger actions (set by main loop, avoids file I/O in audio callback)
+        ptt_action = self._ptt_action
+        if ptt_action:
+            self._ptt_action = None
         if ptt_action == "start" and not self.audio_state.is_recording:
             # Interrupt TTS if speaking
             if self.tts.is_speaking:
@@ -620,8 +634,10 @@ class VoiceMirror:
                 self.audio_state.is_processing = True
                 self.audio_state.ptt_process_pending = True
 
-        # Check for dictation trigger (from Electron) - works in ALL modes
-        dictation_action = self.check_dictation_trigger()
+        # Read dictation trigger (set by main loop, avoids file I/O in audio callback)
+        dictation_action = self._dictation_action
+        if dictation_action:
+            self._dictation_action = None
         if dictation_action == "start" and not self.audio_state.is_recording:
             if self.tts.is_speaking:
                 self.tts.stop_speaking()
@@ -782,13 +798,6 @@ class VoiceMirror:
         """Main loop."""
         self.load_models()
 
-        # Pre-load STT model to avoid first-use delay
-        if self.stt_adapter and not self.stt_adapter.is_loaded:
-            try:
-                await self.stt_adapter.load()
-            except Exception as e:
-                print(f"[WARN] STT pre-load failed (will retry on first use): {e}")
-
         # Load voice config for device selection
         self._voice_config = {}
         try:
@@ -931,6 +940,14 @@ class VoiceMirror:
             try:
                 while True:
                     await asyncio.sleep(0.1)
+
+                    # Poll trigger files in main loop (not in audio callback)
+                    ptt = self.check_ptt_trigger()
+                    if ptt:
+                        self._ptt_action = ptt
+                    dictation = self.check_dictation_trigger()
+                    if dictation:
+                        self._dictation_action = dictation
 
                     # Check for voice clone requests from MCP server
                     await self.check_voice_clone_request()

@@ -25,13 +25,20 @@ const os = require('os');
 const N8N_API_URL = 'http://localhost:5678';
 const N8N_API_KEY_FILE = path.join(os.homedir(), '.config', 'n8n', 'api_key');
 
+let _cachedApiKey = null;
+
 function getApiKey() {
+    if (_cachedApiKey) return _cachedApiKey;
     try {
         if (fs.existsSync(N8N_API_KEY_FILE)) {
-            return fs.readFileSync(N8N_API_KEY_FILE, 'utf-8').trim();
+            _cachedApiKey = fs.readFileSync(N8N_API_KEY_FILE, 'utf-8').trim();
+            return _cachedApiKey;
         }
-    } catch {}
-    return process.env.N8N_API_KEY || null;
+    } catch {
+        _cachedApiKey = null;
+    }
+    _cachedApiKey = process.env.N8N_API_KEY || null;
+    return _cachedApiKey;
 }
 
 // ============================================
@@ -62,9 +69,10 @@ function apiRequest(endpoint, method = 'GET', data = null) {
         };
 
         const req = transport.request(options, (res) => {
-            let body = '';
-            res.on('data', chunk => body += chunk);
+            const chunks = [];
+            res.on('data', chunk => chunks.push(chunk));
             res.on('end', () => {
+                const body = chunks.join('');
                 if (res.statusCode >= 200 && res.statusCode < 300) {
                     try {
                         resolve(JSON.parse(body));
@@ -114,9 +122,10 @@ function rawRequest(url, method = 'POST', data = null, headers = {}, timeout = 6
         };
 
         const req = transport.request(options, (res) => {
-            let body = '';
-            res.on('data', chunk => body += chunk);
+            const chunks = [];
+            res.on('data', chunk => chunks.push(chunk));
             res.on('end', () => {
+                const body = chunks.join('');
                 if (res.statusCode >= 200 && res.statusCode < 300) {
                     try { resolve(JSON.parse(body)); } catch { resolve(body); }
                 } else {

@@ -10,6 +10,27 @@ const { createLogger } = require('../services/logger');
 const logger = createLogger();
 
 /**
+ * Wait for page load via CDP lifecycle event, with a fallback timeout.
+ * After load fires, waits a short settle time for dynamic content.
+ * @param {number} [maxWaitMs=5000] - Max time to wait for load event
+ * @param {number} [settleMs=500] - Settle time after load
+ */
+async function waitForPageLoad(maxWaitMs = 5000, settleMs = 500) {
+    await new Promise(resolve => {
+        let resolved = false;
+        const done = () => { if (!resolved) { resolved = true; resolve(); } };
+
+        const onLoad = () => done();
+        cdp.onEvent('Page.loadEventFired', onLoad);
+
+        // Fallback timeout
+        setTimeout(done, maxWaitMs);
+    });
+    // Short settle for dynamic content rendering
+    await new Promise(r => setTimeout(r, settleMs));
+}
+
+/**
  * Search the web via the embedded webview.
  *
  * @param {Object} args - Search arguments
@@ -55,7 +76,7 @@ async function searchGoogle(query, maxResults) {
     try {
         const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&hl=en`;
         await cdp.navigate(searchUrl);
-        await new Promise(r => setTimeout(r, 2500));
+        await waitForPageLoad(5000, 500);
 
         // Check for CAPTCHA before extracting results
         const { result: urlResult } = await cdp.evaluate('window.location.href');
@@ -116,7 +137,7 @@ async function searchDuckDuckGo(query, maxResults) {
     try {
         const searchUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}&ia=web`;
         await cdp.navigate(searchUrl);
-        await new Promise(r => setTimeout(r, 3000));
+        await waitForPageLoad(5000, 500);
 
         const { result } = await cdp.evaluate(`
             (function() {
