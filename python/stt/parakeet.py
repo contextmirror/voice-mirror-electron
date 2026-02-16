@@ -1,6 +1,7 @@
 """Parakeet STT adapter (NVIDIA NeMo model via onnx-asr)."""
 
 import asyncio
+import io
 import os
 import struct
 import tempfile
@@ -75,29 +76,40 @@ class ParakeetAdapter(STTAdapter):
             )
             wav_data = wav_header + audio_bytes
 
-            # Save temp WAV file for onnx-asr
-            temp_path = None
+            # Try in-memory BytesIO first, fall back to temp file if API needs a path
+            loop = asyncio.get_event_loop()
             try:
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-                    f.write(wav_data)
-                    temp_path = f.name
-
-                # Run in thread pool to not block async loop
-                loop = asyncio.get_event_loop()
+                wav_io = io.BytesIO(wav_data)
+                wav_io.name = "audio.wav"  # Some APIs check for .name attribute
                 result = await loop.run_in_executor(
                     None,
-                    lambda: self.model.recognize(temp_path)
+                    lambda: self.model.recognize(wav_io)
                 )
-
                 if result and result.strip():
                     return result.strip()
                 return ""
-            finally:
-                if temp_path and os.path.exists(temp_path):
-                    try:
-                        os.unlink(temp_path)
-                    except OSError:
-                        pass
+            except (TypeError, AttributeError, ValueError):
+                # API requires a file path — use SpooledTemporaryFile (in-memory up to 1MB)
+                temp_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                        f.write(wav_data)
+                        temp_path = f.name
+
+                    result = await loop.run_in_executor(
+                        None,
+                        lambda: self.model.recognize(temp_path)
+                    )
+
+                    if result and result.strip():
+                        return result.strip()
+                    return ""
+                finally:
+                    if temp_path and os.path.exists(temp_path):
+                        try:
+                            os.unlink(temp_path)
+                        except OSError:
+                            pass
 
         except Exception as e:
             print(f"[ERR] Parakeet STT error: {e}")

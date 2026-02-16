@@ -8,50 +8,50 @@
  * @param {Object} [overrides] - Extra env vars to merge on top
  * @returns {Object} Filtered environment object
  */
+// Exact-match keys to forward
+const ALLOWED_KEYS = [
+    // Path & shell basics
+    'PATH', 'HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH',
+    'SHELL', 'TERM', 'COLORTERM', 'LANG', 'LC_ALL',
+
+    // Windows system
+    'SystemRoot', 'SYSTEMROOT', 'COMSPEC',
+    'TEMP', 'TMP', 'APPDATA', 'LOCALAPPDATA',
+
+    // Node / app
+    'NODE_ENV',
+
+    // SSH (for git)
+    'SSH_AUTH_SOCK',
+
+    // Editor preferences
+    'EDITOR', 'VISUAL',
+
+    // Voice Mirror session flag
+    'VOICE_MIRROR_SESSION',
+
+    // Program Files paths (needed for tool resolution on Windows)
+    'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432',
+];
+
+// Prefix patterns to forward — pre-computed as uppercase once at module scope
+const UPPER_PREFIXES = [
+    'ANTHROPIC_',   // Anthropic API auth
+    'CLAUDE_',      // Claude CLI config
+    'OLLAMA_',      // Ollama config (host, models, origins)
+    'OPENAI_',      // OpenAI / LM Studio / Jan API config
+    'GEMINI_',      // Google Gemini API
+    'MISTRAL_',     // Mistral API
+    'GROQ_',        // Groq API
+    'XAI_',         // xAI / Grok API
+    'OPENROUTER_',  // OpenRouter API
+    'DEEPSEEK_',    // DeepSeek API
+    'MOONSHOT_',    // Moonshot / Kimi API
+    'XDG_',         // Linux XDG base directories
+].map(p => p.toUpperCase());
+
 function buildFilteredEnv(overrides = {}) {
     const env = {};
-
-    // Exact-match keys to forward
-    const ALLOWED_KEYS = [
-        // Path & shell basics
-        'PATH', 'HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH',
-        'SHELL', 'TERM', 'COLORTERM', 'LANG', 'LC_ALL',
-
-        // Windows system
-        'SystemRoot', 'SYSTEMROOT', 'COMSPEC',
-        'TEMP', 'TMP', 'APPDATA', 'LOCALAPPDATA',
-
-        // Node / app
-        'NODE_ENV',
-
-        // SSH (for git)
-        'SSH_AUTH_SOCK',
-
-        // Editor preferences
-        'EDITOR', 'VISUAL',
-
-        // Voice Mirror session flag
-        'VOICE_MIRROR_SESSION',
-
-        // Program Files paths (needed for tool resolution on Windows)
-        'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432',
-    ];
-
-    // Prefix patterns to forward (case-insensitive match)
-    const ALLOWED_PREFIXES = [
-        'ANTHROPIC_',   // Anthropic API auth
-        'CLAUDE_',      // Claude CLI config
-        'OLLAMA_',      // Ollama config (host, models, origins)
-        'OPENAI_',      // OpenAI / LM Studio / Jan API config
-        'GEMINI_',      // Google Gemini API
-        'MISTRAL_',     // Mistral API
-        'GROQ_',        // Groq API
-        'XAI_',         // xAI / Grok API
-        'OPENROUTER_',  // OpenRouter API
-        'DEEPSEEK_',    // DeepSeek API
-        'MOONSHOT_',    // Moonshot / Kimi API
-        'XDG_',         // Linux XDG base directories
-    ];
 
     for (const key of ALLOWED_KEYS) {
         if (process.env[key] !== undefined) {
@@ -59,10 +59,9 @@ function buildFilteredEnv(overrides = {}) {
         }
     }
 
-    const upperPrefixes = ALLOWED_PREFIXES.map(p => p.toUpperCase());
     for (const key of Object.keys(process.env)) {
         const upper = key.toUpperCase();
-        if (upperPrefixes.some(prefix => upper.startsWith(prefix))) {
+        if (UPPER_PREFIXES.some(prefix => upper.startsWith(prefix))) {
             env[key] = process.env[key];
         }
     }

@@ -30,6 +30,7 @@ import base64
 import json
 import os
 import queue
+import re
 import sys
 import threading
 import uuid
@@ -37,6 +38,11 @@ from datetime import datetime
 from io import StringIO
 from pathlib import Path
 from shared.paths import get_data_dir, safe_path
+
+# Pre-compiled regexes for hot paths (used in emit_event and ElectronOutputCapture)
+_RE_PROVIDER_PREFIX = re.compile(r'^(\w+(?:\s+\(\w+\))?): (.+)', re.DOTALL)
+_RE_WAKE_WORD_SCORE = re.compile(r'\((\w+): ([\d.]+)\)')
+_RE_SENT_TO_INBOX = re.compile(r'Sent to inbox: (.+?)\.\.\.')
 
 
 def get_sender_name() -> str:
@@ -181,8 +187,7 @@ def emit_event(event: str, data: dict = None):
         chars = len(text)
         msg_id = data.get('msgId', '') if data else ''
         # Extract just the message, not the prefix (supports any provider)
-        import re
-        provider_match = re.match(r'^(\w+(?:\s+\(\w+\))?): (.+)', text, re.DOTALL)
+        provider_match = _RE_PROVIDER_PREFIX.match(text)
         if provider_match:
             provider, content = provider_match.groups()
             preview = content[:200] if len(content) > 200 else content
@@ -261,8 +266,7 @@ class ElectronOutputCapture:
         if "Wake word detected" in text:
             # Extract score if possible
             try:
-                import re
-                match = re.search(r'\((\w+): ([\d.]+)\)', text)
+                match = _RE_WAKE_WORD_SCORE.search(text)
                 if match:
                     emit_event("wake_word", {
                         "model": match.group(1),
@@ -311,8 +315,7 @@ class ElectronOutputCapture:
         # Sent to inbox
         elif "Sent to inbox" in text:
             # Extract the message preview if available
-            import re
-            match = re.search(r'Sent to inbox: (.+?)\.\.\.', text)
+            match = _RE_SENT_TO_INBOX.search(text)
             msg = match.group(1) if match else ""
             emit_event("sent_to_inbox", {"message": msg})
 

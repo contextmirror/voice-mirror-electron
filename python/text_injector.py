@@ -1,7 +1,9 @@
 """Cross-platform text injection via clipboard + simulated paste."""
 
+import ctypes
 import platform
 import subprocess
+import sys
 import time
 
 
@@ -25,16 +27,57 @@ def inject_text(text: str) -> bool:
         return False
 
 
+def _write_clipboard_win32(text: str):
+    """Write text to clipboard using Win32 ctypes (avoids spawning PowerShell)."""
+    CF_UNICODETEXT = 13
+    GMEM_MOVEABLE = 0x0002
+
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+
+    encoded = text.encode("utf-16-le")
+    # Allocate global memory: encoded bytes + 2 null bytes for UTF-16 terminator
+    buf_size = len(encoded) + 2
+    h_mem = kernel32.GlobalAlloc(GMEM_MOVEABLE, buf_size)
+    if not h_mem:
+        raise RuntimeError("GlobalAlloc failed")
+
+    try:
+        ptr = kernel32.GlobalLock(h_mem)
+        if not ptr:
+            raise RuntimeError("GlobalLock failed")
+        ctypes.memmove(ptr, encoded, len(encoded))
+        # Write null terminator
+        ctypes.memset(ptr + len(encoded), 0, 2)
+        kernel32.GlobalUnlock(h_mem)
+
+        if not user32.OpenClipboard(0):
+            raise RuntimeError("OpenClipboard failed")
+        try:
+            user32.EmptyClipboard()
+            if not user32.SetClipboardData(CF_UNICODETEXT, h_mem):
+                raise RuntimeError("SetClipboardData failed")
+            h_mem = None  # Clipboard owns the memory now
+        finally:
+            user32.CloseClipboard()
+    finally:
+        if h_mem:
+            kernel32.GlobalFree(h_mem)
+
+
 def _write_clipboard(text: str, system: str):
     """Write text to the system clipboard."""
     if system == "Windows":
-        # Pipe text via stdin to PowerShell Set-Clipboard (safe, Unicode-aware)
-        p = subprocess.Popen(
-            ["powershell", "-NoProfile", "-Command", "$input | Set-Clipboard"],
-            stdin=subprocess.PIPE,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-        p.communicate(input=text.encode("utf-8"))
+        try:
+            _write_clipboard_win32(text)
+        except Exception:
+            # Fall back to PowerShell if ctypes fails
+            p = subprocess.Popen(
+                ["powershell", "-NoProfile", "-Command", "$input | Set-Clipboard"],
+                stdin=subprocess.PIPE,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            p.communicate(input=text.encode("utf-8"))
     elif system == "Darwin":
         p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
         p.communicate(input=text.encode("utf-8"))

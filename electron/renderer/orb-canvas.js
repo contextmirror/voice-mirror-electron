@@ -25,6 +25,7 @@ let animFrame = null;
 let currentState = OrbState.Idle;
 let phaseStart = performance.now();
 let currentOrbColors = null;  // Set by theme-engine via setOrbColors()
+let orbPaused = false;
 
 // Animation durations per state (ms)
 const DURATIONS = {
@@ -366,6 +367,7 @@ function renderOrb(imageData, width, height, state, phase, colors = null) {
 // --- Animation loop ---
 function tick() {
     if (!ctx || !canvas) return;
+    if (orbPaused) { animFrame = null; return; }
 
     const now = performance.now();
     const duration = DURATIONS[currentState] || 1500;
@@ -401,6 +403,26 @@ export function setOrbState(state) {
     if (state === currentState) return;
     currentState = state;
     phaseStart = performance.now();
+}
+
+/**
+ * Pause the orb animation loop (when orb is hidden behind expanded panel).
+ */
+export function pauseOrb() {
+    if (orbPaused) return;
+    orbPaused = true;
+    if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
+}
+
+/**
+ * Resume the orb animation loop (when orb becomes visible again).
+ */
+export function resumeOrb() {
+    if (!orbPaused) return;
+    orbPaused = false;
+    if (!animFrame && ctx && canvas) {
+        animFrame = requestAnimationFrame(tick);
+    }
 }
 
 export { renderOrb, DURATIONS };

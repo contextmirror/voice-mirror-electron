@@ -19,9 +19,8 @@ function debugLog(label, msg) {
     const timestamp = new Date().toISOString();
     const line = `[${timestamp}] [${label}] ${msg}\n`;
     logger.debug(`[CLI Spawner:${label}]`, msg);
-    try {
-        fs.appendFileSync(DEBUG_LOG_PATH, line);
-    } catch (e) {}
+    // Async write to debug log file (non-blocking, fire-and-forget)
+    fs.promises.appendFile(DEBUG_LOG_PATH, line).catch(() => {});
 }
 
 /**
@@ -164,6 +163,7 @@ function createCLISpawner(cliType) {
                     if (hasPrompt) {
                         isReady = true;
                         debugLog(label, `TUI ready. Buffer length: ${outputBuffer.length}`);
+                        outputBuffer = ''; // Free the buffer immediately
                         readyCallbacks.forEach(cb => {
                             try { cb(); } catch (err) {
                                 debugLog(label, `Ready callback error: ${err}`);

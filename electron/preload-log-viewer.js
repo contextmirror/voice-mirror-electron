@@ -6,6 +6,14 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('logViewer', {
-    onInitialLogs: (callback) => ipcRenderer.on('initial-logs', (_e, content) => callback(content)),
-    onLogLine: (callback) => ipcRenderer.on('log-line', (_e, line) => callback(line)),
+    onInitialLogs: (callback) => {
+        const handler = (_e, content) => callback(content);
+        ipcRenderer.on('initial-logs', handler);
+        return () => ipcRenderer.removeListener('initial-logs', handler);
+    },
+    onLogLine: (callback) => {
+        const handler = (_e, line) => callback(line);
+        ipcRenderer.on('log-line', handler);
+        return () => ipcRenderer.removeListener('log-line', handler);
+    },
 });

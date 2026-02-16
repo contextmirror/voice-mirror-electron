@@ -11,6 +11,24 @@ const logger = createLogger();
 const DEFAULT_MAX_CONTENT_LENGTH = 8000;
 
 /**
+ * Wait for page load via CDP lifecycle event, with a fallback timeout.
+ * @param {number} [maxWaitMs=5000]
+ * @param {number} [settleMs=500]
+ */
+async function waitForPageLoad(maxWaitMs = 5000, settleMs = 500) {
+    await new Promise(resolve => {
+        let resolved = false;
+        const done = () => { if (!resolved) { resolved = true; resolve(); } };
+
+        const onLoad = () => done();
+        cdp.onEvent('Page.loadEventFired', onLoad);
+
+        setTimeout(done, maxWaitMs);
+    });
+    await new Promise(r => setTimeout(r, settleMs));
+}
+
+/**
  * Fetch and extract content from a URL.
  *
  * @param {Object} args
@@ -39,7 +57,7 @@ async function fetchUrl(args = {}) {
     try {
         logger.info('[Browser Fetch]', `Loading: ${url}`);
         await cdp.navigate(url);
-        await new Promise(r => setTimeout(r, 2000));
+        await waitForPageLoad(5000, 500);
 
         // Extract content via Runtime.evaluate
         const { result } = await cdp.evaluate(`
@@ -58,7 +76,11 @@ async function fetchUrl(args = {}) {
                 });
 
                 // Remove hidden elements commonly used for prompt injection
-                clone.querySelectorAll('*').forEach(function(el) {
+                // Cap at 500 elements to avoid costly getComputedStyle on large pages
+                var allEls = clone.querySelectorAll('*');
+                var limit = Math.min(allEls.length, 500);
+                for (var hi = 0; hi < limit; hi++) {
+                    var el = allEls[hi];
                     var cs = window.getComputedStyle(el);
                     if (cs.display === 'none' || cs.visibility === 'hidden' ||
                         cs.opacity === '0' || cs.fontSize === '0px' ||
@@ -67,7 +89,7 @@ async function fetchUrl(args = {}) {
                         (parseInt(cs.width) === 0 && cs.overflow === 'hidden')) {
                         el.remove();
                     }
-                });
+                }
                 // Remove HTML comments (can contain injected instructions)
                 var walker = document.createTreeWalker(clone, NodeFilter.SHOW_COMMENT, null);
                 var comments = [];

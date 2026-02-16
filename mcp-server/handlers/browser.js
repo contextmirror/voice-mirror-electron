@@ -38,25 +38,60 @@ async function fileBasedRequest(action, args, timeoutMs) {
         timestamp: new Date().toISOString()
     }, null, 2));
 
-    // Poll for response
-    const startTime = Date.now();
+    const dir = path.dirname(RESPONSE_PATH);
+    const expectedFilename = path.basename(RESPONSE_PATH);
 
-    while (Date.now() - startTime < timeoutMs) {
-        await new Promise(resolve => setTimeout(resolve, 200));
+    return new Promise((resolve) => {
+        let settled = false;
+        let watcher = null;
+        let fallbackInterval = null;
+        let fallbackTimeout = null;
 
-        if (fs.existsSync(RESPONSE_PATH)) {
-            try {
-                return {
-                    response: JSON.parse(fs.readFileSync(RESPONSE_PATH, 'utf-8')),
-                    timedOut: false
-                };
-            } catch {
-                // JSON parse error (partial write), continue waiting
+        function tryRead() {
+            if (settled) return;
+            if (fs.existsSync(RESPONSE_PATH)) {
+                try {
+                    const data = JSON.parse(fs.readFileSync(RESPONSE_PATH, 'utf-8'));
+                    settled = true;
+                    cleanup();
+                    resolve({ response: data, timedOut: false });
+                } catch {
+                    // Partial write, wait for next event
+                }
             }
         }
-    }
 
-    return { response: null, timedOut: true };
+        function cleanup() {
+            if (watcher) { try { watcher.close(); } catch {} watcher = null; }
+            if (fallbackInterval) { clearInterval(fallbackInterval); fallbackInterval = null; }
+            if (fallbackTimeout) { clearTimeout(fallbackTimeout); fallbackTimeout = null; }
+        }
+
+        // Use fs.watch for fast notification
+        try {
+            watcher = fs.watch(dir, (event, filename) => {
+                if (filename === expectedFilename) tryRead();
+            });
+            watcher.on('error', () => { /* ignore watch errors */ });
+        } catch {
+            // fs.watch may fail on some platforms
+        }
+
+        // Poll fallback every 500ms in case fs.watch misses events
+        fallbackInterval = setInterval(tryRead, 500);
+
+        // Overall timeout
+        fallbackTimeout = setTimeout(() => {
+            if (!settled) {
+                settled = true;
+                cleanup();
+                resolve({ response: null, timedOut: true });
+            }
+        }, timeoutMs);
+
+        // Check immediately in case response was already written
+        tryRead();
+    });
 }
 
 // ============================================

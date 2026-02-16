@@ -69,21 +69,40 @@ function searchVector(index, queryVector, model, limit = 10) {
     }
 
     // Fallback: CPU cosine similarity over all chunks
-    const chunks = index.getChunksByModel(model);
+    // Use in-memory embedding cache to avoid repeated BLOB deserialization
+    if (!index.embeddingCache) {
+        index.embeddingCache = new Map();
+        const chunks = index.getChunksByModel(model);
+        for (const chunk of chunks) {
+            if (chunk.embedding) {
+                index.embeddingCache.set(chunk.id, {
+                    path: chunk.path,
+                    startLine: chunk.startLine,
+                    endLine: chunk.endLine,
+                    text: chunk.text,
+                    tier: chunk.tier,
+                    embedding: chunk.embedding
+                });
+            }
+        }
+    }
 
-    if (chunks.length === 0) {
+    if (index.embeddingCache.size === 0) {
         return [];
     }
 
-    const scored = chunks.map(chunk => ({
-        id: chunk.id,
-        path: chunk.path,
-        startLine: chunk.startLine,
-        endLine: chunk.endLine,
-        text: chunk.text,
-        tier: chunk.tier,
-        score: cosineSimilarity(queryVector, chunk.embedding)
-    }));
+    const scored = [];
+    for (const [id, chunk] of index.embeddingCache) {
+        scored.push({
+            id,
+            path: chunk.path,
+            startLine: chunk.startLine,
+            endLine: chunk.endLine,
+            text: chunk.text,
+            tier: chunk.tier,
+            score: cosineSimilarity(queryVector, chunk.embedding)
+        });
+    }
 
     return scored
         .sort((a, b) => b.score - a.score)

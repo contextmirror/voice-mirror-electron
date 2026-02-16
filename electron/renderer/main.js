@@ -14,7 +14,7 @@ import { initNavigation, navigateTo, toggleSidebarCollapse } from './navigation.
 import { initBrowserPanel, navigateToBrowserPage } from './browser-panel.js';
 import { initChatInput, setSendImageWithPrompt } from './chat-input.js';
 import { initChatStore, autoSave } from './chat-store.js';
-import { initOrbCanvas } from './orb-canvas.js';
+import { initOrbCanvas, pauseOrb, resumeOrb } from './orb-canvas.js';
 import { showToast } from './notifications.js';
 import { resolveTheme, applyTheme as applyThemeEngine, applyMessageCardOverrides } from './theme-engine.js';
 
@@ -88,10 +88,12 @@ function updateUI() {
         orb.style.display = 'none';
         panel.classList.add('visible');
         if (resizeEdges) resizeEdges.classList.add('active');
+        pauseOrb();
     } else {
         orb.style.display = 'flex';
         panel.classList.remove('visible');
         if (resizeEdges) resizeEdges.classList.remove('active');
+        resumeOrb();
     }
 }
 
@@ -133,8 +135,9 @@ async function init() {
     }
 
     // Load provider display from config FIRST (before terminal init)
+    let config = {};
     try {
-        const config = await window.voiceMirror.config.get();
+        config = await window.voiceMirror.config.get();
         const provider = config.ai?.provider || 'claude';
         const model = config.ai?.model || config.ai?.localModel || null;
         // Get display name based on provider
@@ -196,8 +199,8 @@ async function init() {
     try {
         await initTerminal();
         // Re-apply theme to terminal now that it's mounted and listening
+        // Reuse the config already loaded above instead of fetching again
         try {
-            const config = await window.voiceMirror.config.get();
             const { colors: c, fonts: f } = resolveTheme(config.appearance);
             applyThemeEngine(c, f);
         } catch { /* theme already applied, terminal will use fallback */ }

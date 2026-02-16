@@ -24,6 +24,10 @@ function createPerfMonitor(options = {}) {
     let prevTime = null;
     let logPath = null;
     const MAX_LOG_LINES = 10000;
+    const FLUSH_INTERVAL = 10;   // Flush every 10 samples (30s at 3s interval)
+    const ROTATE_INTERVAL = 100; // Check rotation every 100 samples (~5min)
+    let csvBuffer = [];
+    let sampleCount = 0;
 
     function start() {
         if (interval) return;
@@ -40,6 +44,8 @@ function createPerfMonitor(options = {}) {
 
         prevCpuUsage = process.cpuUsage();
         prevTime = Date.now();
+        sampleCount = 0;
+        csvBuffer = [];
 
         interval = setInterval(() => sample(), 3000);
         sample(); // Immediate first sample so UI doesn't show "--"
@@ -70,13 +76,21 @@ function createPerfMonitor(options = {}) {
             safeSend('perf-stats', stats);
         }
 
-        // Append to CSV (fire and forget)
+        // Buffer CSV line instead of writing every sample
         const timestamp = new Date(now).toISOString();
-        const line = `${timestamp},${cpuRounded},${heapMb},${rssMb}\n`;
-        fsPromises.appendFile(logPath, line).catch(() => {});
+        csvBuffer.push(`${timestamp},${cpuRounded},${heapMb},${rssMb}\n`);
 
-        // Rotate if needed (check every 100 samples ~5min)
-        if (Math.random() < 0.033) {
+        sampleCount++;
+
+        // Flush buffer to disk periodically (~30s)
+        if (sampleCount % FLUSH_INTERVAL === 0 && csvBuffer.length > 0) {
+            const batch = csvBuffer.join('');
+            csvBuffer = [];
+            fsPromises.appendFile(logPath, batch).catch(() => {});
+        }
+
+        // Deterministic rotation check (~5min)
+        if (sampleCount % ROTATE_INTERVAL === 0) {
             rotateLog();
         }
     }
@@ -99,6 +113,12 @@ function createPerfMonitor(options = {}) {
         if (interval) {
             clearInterval(interval);
             interval = null;
+            // Flush remaining buffered samples
+            if (csvBuffer.length > 0 && logPath) {
+                const batch = csvBuffer.join('');
+                csvBuffer = [];
+                fsPromises.appendFile(logPath, batch).catch(() => {});
+            }
             logger.info('[PerfMonitor]', 'Stopped');
         }
     }

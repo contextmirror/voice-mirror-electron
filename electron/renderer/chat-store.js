@@ -3,8 +3,8 @@
  * Manages saving/loading conversations via IPC and rendering the chat list.
  */
 
-import { addMessage } from './messages.js';
-import { getAllMessages, clearChat } from './chat-input.js';
+import { addMessage, getMessagesArray, clearMessagesArray } from './messages.js';
+import { clearChat } from './chat-input.js';
 import { createLog } from './log.js';
 const log = createLog('[ChatStore]');
 
@@ -199,7 +199,7 @@ export async function deleteChat(id) {
 export async function autoSave() {
     if (!currentChatId) return;
 
-    const messages = getAllMessages();
+    const messages = getMessagesArray();
     if (messages.length === 0) return;
 
     // Auto-name from first user message if still "New Chat"

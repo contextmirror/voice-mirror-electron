@@ -10,6 +10,11 @@ import { formatTime } from './utils.js';
 import { createLog } from './log.js';
 const log = createLog('[Chat]');
 
+const MAX_MESSAGE_GROUPS = 200;
+
+// In-memory message array for persistence (avoids DOM scraping)
+const messagesArray = [];
+
 /**
  * Smart auto-scroll: only scrolls if user is near the bottom.
  * Uses smooth scrolling for a polished feel.
@@ -194,6 +199,20 @@ export function addMessage(role, text, imageBase64 = null) {
     group.appendChild(content);
 
     chatContainer.appendChild(group);
+
+    // Push to in-memory array for persistence
+    messagesArray.push({ role, text, time: formatTime() });
+
+    // Trim oldest message groups if over cap
+    const groups = chatContainer.querySelectorAll('.message-group:not(#welcome-message)');
+    if (groups.length > MAX_MESSAGE_GROUPS) {
+        const excess = groups.length - MAX_MESSAGE_GROUPS;
+        for (let i = 0; i < excess; i++) {
+            groups[i].remove();
+        }
+        messagesArray.splice(0, excess);
+    }
+
     autoScroll(chatContainer);
 
     // Dev log: card rendered
@@ -202,6 +221,20 @@ export function addMessage(role, text, imageBase64 = null) {
         text: text?.slice(0, 200),
         source: role === 'assistant' ? state.currentProviderName : 'voice',
     });
+}
+
+/**
+ * Get the in-memory messages array (for persistence, avoids DOM scraping).
+ */
+export function getMessagesArray() {
+    return messagesArray;
+}
+
+/**
+ * Clear the in-memory messages array (called when chat is cleared/switched).
+ */
+export function clearMessagesArray() {
+    messagesArray.length = 0;
 }
 
 /**
