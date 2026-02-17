@@ -1,9 +1,8 @@
 /**
  * IPC handlers for miscellaneous operations.
  * Handles: toggle-log-viewer, open-external, quit-app, hotkey-fallback, devlog,
- *          get-python-status, start-python, stop-python, python-restart,
- *          send-query, set-voice-mode, send-image, list-audio-devices,
- *          get-detected-keys, check-cli-available, install-cli,
+ *          check-cli-available, install-cli, check-dependency-versions,
+ *          update-dependency, run-uninstall,
  *          chat-list, chat-load, chat-save, chat-delete, chat-rename,
  *          apply-update, app-relaunch
  */
@@ -61,21 +60,6 @@ function registerMiscHandlers(ctx, validators) {
         app.isQuitting = true;
         app.quit();
         return { success: true };
-    });
-
-    // Audio device enumeration (asks voice backend)
-    ipcMain.handle('list-audio-devices', async () => {
-        const devices = ctx.listAudioDevices ? await ctx.listAudioDevices() : null;
-        return { success: true, data: devices };
-    });
-
-    // Detect API keys from environment (returns provider names only, not keys)
-    ipcMain.handle('get-detected-keys', () => {
-        const { detectApiKeys } = require('../services/provider-detector');
-        const detected = detectApiKeys();
-        // Return only provider names that have keys — never send actual keys to renderer
-        const keys = Object.keys(detected).filter(k => !k.startsWith('_'));
-        return { success: true, data: keys };
     });
 
     // CLI availability check
@@ -304,67 +288,6 @@ function registerMiscHandlers(ctx, validators) {
                 }
             });
         });
-    });
-
-    // Image handling - send to voice backend
-    ipcMain.handle('send-image', async (event, imageData) => {
-        const v = validators['send-image'](imageData);
-        if (!v.valid) return { success: false, error: v.error };
-        const result = await ctx.sendImageToVoiceBackend(v.value);
-        return { success: true, data: result };
-    });
-
-    // Voice backend communication
-    ipcMain.handle('send-query', (event, query) => {
-        const v = validators['send-query'](query);
-        if (!v.valid) return { success: false, error: v.error };
-        ctx.sendToVoiceBackend({ command: 'query', text: v.value.text, image: v.value.image });
-        return { success: true };
-    });
-
-    ipcMain.handle('set-voice-mode', (event, mode) => {
-        const v = validators['set-voice-mode'](mode);
-        if (!v.valid) return { success: false, error: v.error };
-        ctx.sendToVoiceBackend({ command: 'set_mode', mode: v.value });
-        return { success: true };
-    });
-
-    ipcMain.handle('get-python-status', () => {
-        const voiceBackend = ctx.getVoiceBackend();
-        return {
-            success: true,
-            data: {
-                running: voiceBackend?.isRunning() || false,
-                pid: voiceBackend?.getProcess()?.pid
-            }
-        };
-    });
-
-    ipcMain.handle('start-python', () => {
-        if (!ctx.getVoiceBackend()?.isRunning()) {
-            ctx.startVoiceBackendService();
-            return { success: true };
-        }
-        return { success: false, error: 'already running' };
-    });
-
-    ipcMain.handle('stop-python', () => {
-        const voiceBackend = ctx.getVoiceBackend();
-        if (voiceBackend?.isRunning()) {
-            voiceBackend.stop();
-            return { success: true };
-        }
-        return { success: false, error: 'not running' };
-    });
-
-    // Manual restart (resets retry counter for user-initiated recovery)
-    ipcMain.handle('python-restart', () => {
-        const voiceBackend = ctx.getVoiceBackend();
-        if (voiceBackend) {
-            voiceBackend.restart();
-            return { success: true };
-        }
-        return { success: false, error: 'backend not initialized' };
     });
 
     // ========== Chat History Persistence ==========

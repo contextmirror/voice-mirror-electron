@@ -13,7 +13,7 @@ import {
     readExistingConfig,
     getConfigPath,
 } from './checks.mjs';
-import { detectFfmpeg } from './python-setup.mjs';
+import { detectFfmpeg } from './dependency-setup.mjs';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { join } from 'path';

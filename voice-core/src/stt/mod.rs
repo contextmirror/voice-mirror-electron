@@ -1,7 +1,7 @@
 //! Speech-to-Text adapters.
 //!
 //! Provides a common `SttEngine` trait with implementations for:
-//! - Local whisper.cpp inference (behind `whisper` feature)
+//! - Local whisper.cpp inference (behind `whisper` feature) — default
 //! - OpenAI Whisper API (cloud)
 //! - Custom user-configured API endpoint (cloud)
 
@@ -22,7 +22,6 @@ pub trait SttEngine: Send + Sync {
 ///
 /// This avoids dyn-compatibility issues with async trait methods.
 pub enum SttAdapter {
-    Parakeet(parakeet::ParakeetStt),
     Whisper(whisper::WhisperStt),
     OpenAi(cloud::OpenAiStt),
     Custom(cloud::CustomApiStt),
@@ -32,7 +31,6 @@ impl SttAdapter {
     /// Transcribe audio using the underlying engine.
     pub async fn transcribe(&self, audio: &[f32]) -> anyhow::Result<String> {
         match self {
-            Self::Parakeet(e) => e.transcribe(audio).await,
             Self::Whisper(e) => e.transcribe(audio).await,
             Self::OpenAi(e) => e.transcribe(audio).await,
             Self::Custom(e) => e.transcribe(audio).await,
@@ -42,8 +40,10 @@ impl SttAdapter {
 
 /// Create an STT engine from config values.
 ///
-/// `adapter` is one of: "parakeet", "whisper-local", "openai-cloud", "custom-cloud".
-/// When no adapter is configured the caller should default to "parakeet".
+/// `adapter` is one of: "whisper-local", "openai-cloud", "custom-cloud".
+/// When no adapter is configured the caller should default to "whisper-local".
+///
+/// Legacy adapter name "parakeet" is accepted and redirected to whisper-local.
 pub async fn create_stt_engine(
     adapter: &str,
     data_dir: &Path,
@@ -55,32 +55,17 @@ pub async fn create_stt_engine(
     let adapter = match adapter {
         "whisper" | "faster-whisper" => "whisper-local",
         "openai" => "openai-cloud",
+        "parakeet" => {
+            tracing::warn!("Parakeet STT is deprecated — using whisper-local instead");
+            "whisper-local"
+        }
         other => other,
     };
 
     match adapter {
-        "parakeet" => {
-            match parakeet::ParakeetStt::new(data_dir).await {
-                Ok(engine) => Ok(SttAdapter::Parakeet(engine)),
-                Err(e) => {
-                    // If an API key is available, fall back to OpenAI cloud STT.
-                    if let Some(key) = api_key {
-                        tracing::warn!(
-                            "Parakeet STT unavailable ({}), falling back to OpenAI cloud",
-                            e
-                        );
-                        Ok(SttAdapter::OpenAi(cloud::OpenAiStt::new(key)))
-                    } else {
-                        Err(e)
-                    }
-                }
-            }
-        }
         "whisper-local" => {
             let size = model_size.unwrap_or("base");
-            let model_path = data_dir
-                .join("models")
-                .join(format!("ggml-{}.en.bin", size));
+            let model_path = whisper::ensure_model(data_dir, size).await?;
             let engine = whisper::WhisperStt::new(&model_path)?;
             Ok(SttAdapter::Whisper(engine))
         }

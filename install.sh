@@ -154,6 +154,88 @@ ensure_node() {
     fi
 }
 
+# ─── Ensure LLVM / libclang + CMake ─────────────────────────────────
+ensure_llvm() {
+    step "Checking LLVM / libclang and CMake..."
+
+    local need_llvm=false
+    local need_cmake=false
+
+    # Check for libclang
+    if [[ -n "${LIBCLANG_PATH:-}" ]] && [[ -d "$LIBCLANG_PATH" ]]; then
+        ok "LIBCLANG_PATH = $LIBCLANG_PATH"
+    elif command -v llvm-config &>/dev/null; then
+        ok "llvm-config found: $(llvm-config --version 2>/dev/null || echo 'unknown')"
+    elif ldconfig -p 2>/dev/null | grep -q libclang; then
+        ok "libclang found via ldconfig"
+    else
+        need_llvm=true
+    fi
+
+    # Check for CMake
+    if command -v cmake &>/dev/null; then
+        ok "cmake $(cmake --version 2>&1 | head -1 | sed 's/[^0-9.]//g')"
+    else
+        need_cmake=true
+    fi
+
+    if [[ "$need_llvm" == "false" ]] && [[ "$need_cmake" == "false" ]]; then
+        return 0
+    fi
+
+    if [[ "$PLATFORM" == "macos" ]]; then
+        # Xcode Command Line Tools include clang/libclang
+        if ! xcode-select -p &>/dev/null; then
+            info "Installing Xcode Command Line Tools (includes clang)..."
+            xcode-select --install 2>/dev/null || true
+        else
+            ok "Xcode Command Line Tools present (includes clang)"
+        fi
+        if [[ "$need_cmake" == "true" ]] && command -v brew &>/dev/null; then
+            info "Installing CMake via Homebrew..."
+            brew install cmake
+        elif [[ "$need_cmake" == "true" ]]; then
+            warn "CMake not found. Install with: brew install cmake"
+        fi
+    elif [[ "$PLATFORM" == "linux" ]]; then
+        if command -v apt-get &>/dev/null; then
+            info "Installing libclang-dev and cmake via apt..."
+            sudo apt-get install -y libclang-dev cmake
+        elif command -v dnf &>/dev/null; then
+            info "Installing clang-devel and cmake via dnf..."
+            sudo dnf install -y clang-devel cmake
+        elif command -v pacman &>/dev/null; then
+            info "Installing clang and cmake via pacman..."
+            sudo pacman -S --noconfirm clang cmake
+        else
+            warn "Could not auto-install libclang and cmake."
+            warn "Install libclang-dev (or clang-devel) and cmake for your distribution."
+        fi
+    elif [[ "$PLATFORM" == "windows" ]]; then
+        if [[ "$need_llvm" == "true" ]]; then
+            warn "LLVM / libclang not found."
+            info "Install with: winget install LLVM.LLVM"
+        fi
+        if [[ "$need_cmake" == "true" ]]; then
+            warn "CMake not found."
+            info "Install with: winget install Kitware.CMake"
+        fi
+    fi
+
+    # Verify after install
+    if command -v llvm-config &>/dev/null || ldconfig -p 2>/dev/null | grep -q libclang; then
+        ok "libclang available"
+    elif [[ "$need_llvm" == "true" ]]; then
+        warn "libclang still not found — voice-core build may fail"
+    fi
+
+    if command -v cmake &>/dev/null; then
+        ok "cmake available"
+    elif [[ "$need_cmake" == "true" ]]; then
+        warn "cmake still not found — voice-core build may fail"
+    fi
+}
+
 # ─── Check voice-core binary ─────────────────────────────────────────
 ensure_voice_core() {
     step "Checking voice-core binary..."
@@ -399,6 +481,7 @@ main() {
 
     ensure_git
     ensure_node
+    ensure_llvm
     ensure_ffmpeg
     ensure_audio_libs
     install_repo

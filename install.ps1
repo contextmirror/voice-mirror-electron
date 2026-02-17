@@ -210,6 +210,71 @@ function Ensure-Node {
     exit 1
 }
 
+# ─── Ensure LLVM / libclang ────────────────────────────────────────
+function Ensure-LLVM {
+    Write-Step "Checking LLVM / libclang..."
+
+    # 1. Already set and valid?
+    if ($env:LIBCLANG_PATH -and (Test-Path $env:LIBCLANG_PATH)) {
+        Write-Ok "LIBCLANG_PATH = $env:LIBCLANG_PATH"
+        return
+    }
+
+    # 2. Check VS Build Tools for Clang component via vswhere
+    $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (Test-Path $vsWhere) {
+        $vsPath = & $vsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath 2>&1
+        if ($vsPath) {
+            $vsClang = Join-Path $vsPath "VC\Tools\Llvm\x64\bin"
+            if (Test-Path $vsClang) {
+                $env:LIBCLANG_PATH = $vsClang
+                [System.Environment]::SetEnvironmentVariable("LIBCLANG_PATH", $vsClang, "User")
+                Write-Ok "LIBCLANG_PATH = $vsClang (VS Build Tools)"
+                return
+            }
+        }
+    }
+
+    # 3. Check standalone LLVM install
+    $standaloneLLVM = "C:\Program Files\LLVM\bin"
+    if (Test-Path $standaloneLLVM) {
+        $env:LIBCLANG_PATH = $standaloneLLVM
+        [System.Environment]::SetEnvironmentVariable("LIBCLANG_PATH", $standaloneLLVM, "User")
+        Write-Ok "LIBCLANG_PATH = $standaloneLLVM (standalone)"
+        return
+    }
+
+    Write-Warn "LLVM / libclang not found (needed to build voice-core)"
+    Write-Info "Install with: winget install LLVM.LLVM"
+    Write-Info "Or add the LLVM/Clang component in Visual Studio Build Tools"
+}
+
+# ─── Ensure CMake ─────────────────────────────────────────────────
+function Ensure-CMake {
+    Write-Step "Checking CMake..."
+
+    if (Test-Command "cmake") {
+        $v = (cmake --version 2>&1 | Select-Object -First 1) -replace '[^0-9.]', ''
+        Write-Ok "cmake $v"
+        return
+    }
+
+    # Check standard install location
+    $cmakeBin = "C:\Program Files\CMake\bin"
+    if (Test-Path (Join-Path $cmakeBin "cmake.exe")) {
+        $env:Path += ";$cmakeBin"
+        $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+        if ($userPath -notlike "*$cmakeBin*") {
+            [System.Environment]::SetEnvironmentVariable("Path", "$userPath;$cmakeBin", "User")
+        }
+        Write-Ok "cmake found at $cmakeBin"
+        return
+    }
+
+    Write-Warn "CMake not found (needed to build voice-core)"
+    Write-Info "Install with: winget install Kitware.CMake"
+}
+
 # ─── Ensure voice-core binary ──────────────────────────────────────
 function Ensure-VoiceCore {
     Write-Step "Checking voice-core binary..."
@@ -231,6 +296,10 @@ function Ensure-VoiceCore {
     # Check for Rust toolchain to build from source
     if (Test-Command "cargo") {
         Write-Info "Building voice-core from source..."
+        # Ensure LIBCLANG_PATH is available for the build
+        if (-not $env:LIBCLANG_PATH) {
+            Write-Warn "LIBCLANG_PATH not set — cargo build may fail (run Ensure-LLVM first)"
+        }
         Push-Location (Join-Path $InstallDir "voice-core")
         try {
             $out = cargo build --release 2>&1
@@ -565,6 +634,8 @@ Write-Info "Platform: Windows/$arch"
 Ensure-Git
 Ensure-Node
 Ensure-BuildTools
+Ensure-LLVM
+Ensure-CMake
 Ensure-FFmpeg
 Ask-InstallDir
 Install-Repo

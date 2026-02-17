@@ -41,8 +41,9 @@ const DEFAULT_CONFIG = {
         ttsApiKey: null,         // API key for cloud TTS
         ttsEndpoint: null,       // Custom endpoint URL
         ttsModelPath: null,      // Local model file path (Piper)
-        sttModel: 'parakeet',    // Legacy alias for sttAdapter
-        sttAdapter: 'parakeet',  // 'parakeet', 'whisper', 'faster-whisper', 'openai-whisper-api', 'custom-api-stt'
+        sttModel: 'whisper-local',    // Legacy alias for sttAdapter
+        sttAdapter: 'whisper-local',  // 'whisper-local', 'openai-whisper-api', 'custom-api-stt'
+        sttModelSize: 'base',    // Whisper model size: 'tiny', 'base' (recommended), 'small'
         sttApiKey: null,         // API key for cloud STT
         sttEndpoint: null,       // Custom STT endpoint URL
         sttModelName: null,      // Specific model name (e.g. "large-v3")

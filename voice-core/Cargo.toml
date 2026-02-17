@@ -14,7 +14,7 @@ rodio = "0.19"
 ringbuf = "0.4"
 rdev = "0.5"
 arboard = "3"
-reqwest = { version = "0.12", features = ["json", "multipart"] }
+reqwest = { version = "0.12", features = ["json", "multipart", "stream"] }
 dirs = "5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -33,7 +33,7 @@ hex = "0.4"
 futures-util = "0.3"
 
 [features]
-default = ["onnx"]
+default = ["native-ml"]
 # ONNX Runtime for Kokoro TTS, Silero VAD, OpenWakeWord (downloads pre-built binaries)
 onnx = ["ort", "zip", "byteorder"]
 # whisper.cpp for local STT (requires C compiler: MSVC on Windows, gcc/clang on Linux)

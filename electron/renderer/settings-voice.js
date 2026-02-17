@@ -143,30 +143,23 @@ const ADAPTER_REGISTRY = {
 // ── STT Adapter Registry ─────────────────────────────────────────────────────
 
 const STT_REGISTRY = {
-    parakeet: {
-        label: 'Parakeet (Fast, default)',
+    'whisper-local': {
+        label: 'Whisper (Local, default)',
         category: 'local',
+        showModelSize: true,
+        modelSizes: [
+            { value: 'tiny', label: 'tiny.en (~77MB, fastest)' },
+            { value: 'base', label: 'base.en (~148MB, recommended)' },
+            { value: 'small', label: 'small.en (~488MB, most accurate)' }
+        ],
         showModelName: false,
-        showApiKey: false,
-        showEndpoint: false
-    },
-    whisper: {
-        label: 'Whisper (Accurate)',
-        category: 'local',
-        showModelName: true,
-        showApiKey: false,
-        showEndpoint: false
-    },
-    'faster-whisper': {
-        label: 'Faster-Whisper (GPU accelerated)',
-        category: 'local',
-        showModelName: true,
         showApiKey: false,
         showEndpoint: false
     },
     'openai-whisper-api': {
         label: 'OpenAI Whisper API',
         category: 'cloud-paid',
+        showModelSize: false,
         showModelName: false,
         showApiKey: true,
         showEndpoint: false
@@ -174,6 +167,7 @@ const STT_REGISTRY = {
     'custom-api-stt': {
         label: 'Custom API (OpenAI-compatible)',
         category: 'cloud-custom',
+        showModelSize: false,
         showModelName: false,
         showApiKey: true,
         showEndpoint: true
@@ -276,11 +270,30 @@ export function updateTTSAdapterUI(adapter) {
  * Shows/hides conditional fields based on the registry entry.
  */
 export function updateSTTAdapterUI(adapter) {
-    const reg = STT_REGISTRY[adapter] || STT_REGISTRY.parakeet;
+    const reg = STT_REGISTRY[adapter] || STT_REGISTRY['whisper-local'];
 
+    reg.showModelSize ? showRow('stt-model-size-row') : hideRow('stt-model-size-row');
     reg.showModelName ? showRow('stt-model-name-row') : hideRow('stt-model-name-row');
     reg.showApiKey ? showRow('stt-api-key-row') : hideRow('stt-api-key-row');
     reg.showEndpoint ? showRow('stt-endpoint-row') : hideRow('stt-endpoint-row');
+
+    // Populate model size dropdown if registry provides sizes
+    if (reg.showModelSize && reg.modelSizes) {
+        const sizeSelect = document.getElementById('stt-model-size');
+        if (sizeSelect) {
+            const currentSize = sizeSelect.value;
+            sizeSelect.innerHTML = '';
+            for (const size of reg.modelSizes) {
+                const option = document.createElement('option');
+                option.value = size.value;
+                option.textContent = size.label;
+                sizeSelect.appendChild(option);
+            }
+            if (reg.modelSizes.some(s => s.value === currentSize)) {
+                sizeSelect.value = currentSize;
+            }
+        }
+    }
 }
 
 /**
@@ -292,7 +305,7 @@ async function loadAudioDevices() {
     if (!inputSelect || !outputSelect) return;
 
     try {
-        const devicesResult = await window.voiceMirror.python.listAudioDevices();
+        const devicesResult = await window.voiceMirror.voice.listAudioDevices();
         const devices = devicesResult.data;
         if (!devices) return;
 
@@ -379,9 +392,13 @@ export async function loadVoiceSettingsUI() {
     if (modelPathEl) modelPathEl.value = state.currentConfig.voice?.ttsModelPath || '';
 
     // STT settings
-    const sttAdapter = state.currentConfig.voice?.sttAdapter || state.currentConfig.voice?.sttModel || 'parakeet';
+    const sttAdapter = state.currentConfig.voice?.sttAdapter || state.currentConfig.voice?.sttModel || 'whisper-local';
     document.getElementById('stt-model').value = sttAdapter;
     updateSTTAdapterUI(sttAdapter);
+
+    // STT model size
+    const sttModelSizeEl = document.getElementById('stt-model-size');
+    if (sttModelSizeEl) sttModelSizeEl.value = state.currentConfig.voice?.sttModelSize || 'base';
 
     // STT extra fields
     const sttModelNameEl = document.getElementById('stt-model-name');
@@ -449,6 +466,7 @@ export function collectVoiceSaveData() {
             ttsModelPath: document.getElementById('tts-model-path')?.value || null,
             sttModel: document.getElementById('stt-model').value,
             sttAdapter: document.getElementById('stt-model').value,
+            sttModelSize: document.getElementById('stt-model-size')?.value || null,
             sttApiKey: document.getElementById('stt-api-key')?.value || null,
             sttEndpoint: document.getElementById('stt-endpoint')?.value || null,
             sttModelName: document.getElementById('stt-model-name')?.value || null,

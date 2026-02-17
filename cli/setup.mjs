@@ -34,7 +34,7 @@ import {
     installChromium,
     installMCPDeps,
     detectFfmpeg,
-} from './python-setup.mjs';
+} from './dependency-setup.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_DIR = join(__dirname, '..');

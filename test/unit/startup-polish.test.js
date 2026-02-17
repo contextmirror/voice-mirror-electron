@@ -32,53 +32,6 @@ describe('Startup polish - provider flash fix', () => {
     });
 });
 
-describe('Startup polish - TTS adapter_type fix', () => {
-    const baseSource = fs.readFileSync(
-        path.join(__dirname, '../../python/tts/base.py'), 'utf-8'
-    );
-    const kokoroSource = fs.readFileSync(
-        path.join(__dirname, '../../python/tts/kokoro.py'), 'utf-8'
-    );
-    const qwenSource = fs.readFileSync(
-        path.join(__dirname, '../../python/tts/qwen.py'), 'utf-8'
-    );
-    const voiceAgentSource = fs.readFileSync(
-        path.join(__dirname, '../../python/voice_agent.py'), 'utf-8'
-    );
-
-    it('base.py should define adapter_type class attribute', () => {
-        assert.ok(
-            baseSource.includes('adapter_type'),
-            'base.py should have adapter_type'
-        );
-    });
-
-    it('kokoro.py should set adapter_type = "kokoro"', () => {
-        assert.ok(
-            kokoroSource.includes('adapter_type = "kokoro"'),
-            'kokoro.py should set adapter_type'
-        );
-    });
-
-    it('qwen.py should set adapter_type = "qwen"', () => {
-        assert.ok(
-            qwenSource.includes('adapter_type = "qwen"'),
-            'qwen.py should set adapter_type'
-        );
-    });
-
-    it('voice_agent.py should compare adapter_type not name', () => {
-        assert.ok(
-            voiceAgentSource.includes('self.tts.adapter_type'),
-            'voice_agent.py should use adapter_type for comparison'
-        );
-        assert.ok(
-            !voiceAgentSource.includes('new_adapter != self.tts.name'),
-            'voice_agent.py should NOT compare against self.tts.name'
-        );
-    });
-});
-
 describe('Startup polish - perf bar immediate sample', () => {
     const perfSource = fs.readFileSync(
         path.join(__dirname, '../../electron/services/perf-monitor.js'), 'utf-8'

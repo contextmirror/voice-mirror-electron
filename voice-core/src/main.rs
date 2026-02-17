@@ -159,7 +159,7 @@ async fn main() {
     let stt_adapter_name = voice_settings
         .stt_adapter
         .as_deref()
-        .unwrap_or("parakeet");
+        .unwrap_or("whisper-local");
 
     let stt_api_key = voice_settings.stt_api_key.as_deref();
     let stt_endpoint = voice_settings.stt_endpoint.as_deref();

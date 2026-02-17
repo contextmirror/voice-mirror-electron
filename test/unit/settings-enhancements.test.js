@@ -134,7 +134,7 @@ describe('Settings enhancements - settings save includes new fields', () => {
             ttsModelSize: '0.6B',
             ttsSpeed: 1.0,
             ttsVolume: 0.7,
-            sttModel: 'parakeet',
+            sttModel: 'whisper-local',
             inputDevice: 'USB Headset',
             outputDevice: null
         };

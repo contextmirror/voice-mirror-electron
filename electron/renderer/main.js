@@ -388,7 +388,7 @@ async function init() {
     updateUI();
 
     // Check voice backend status
-    const voiceStatusResult = await window.voiceMirror.python.getStatus();
+    const voiceStatusResult = await window.voiceMirror.voice.getStatus();
     const voiceStatus = voiceStatusResult.data;
     if (!voiceStatus.running) {
         statusText.textContent = 'Voice backend not running';
@@ -400,7 +400,7 @@ async function init() {
         reconnectBtn.addEventListener('click', async () => {
             reconnectBtn.style.display = 'none';
             showToast('Reconnecting to voice backend...', 'info');
-            await window.voiceMirror.python.restart();
+            await window.voiceMirror.voice.restart();
         });
     }
 

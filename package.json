@@ -6,6 +6,9 @@
   "scripts": {
     "start": "node scripts/launch.js",
     "dev": "node scripts/launch.js --dev",
+    "build:voice-core": "cd voice-core && cargo build --release",
+    "build:voice-core:debug": "cd voice-core && cargo build",
+    "prebuild": "npm run build:voice-core",
     "build": "electron-builder",
     "setup": "node cli/index.mjs setup",
     "doctor": "node cli/index.mjs doctor",

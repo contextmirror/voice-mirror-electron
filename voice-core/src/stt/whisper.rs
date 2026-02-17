@@ -2,12 +2,99 @@
 //!
 //! The real implementation is gated behind `#[cfg(feature = "whisper")]`.
 //! When the feature is disabled, a stub is provided that always returns an error.
+//!
+//! Includes model auto-download from HuggingFace when models are missing.
+
+use std::path::{Path, PathBuf};
+
+use crate::ipc::bridge::emit_event;
+use crate::ipc::VoiceEvent;
+
+/// Download a whisper GGML model from HuggingFace if not already present.
+///
+/// Emits `VoiceEvent::Loading` progress events during download so the
+/// Electron UI can show a progress indicator.
+pub async fn ensure_model(data_dir: &Path, size: &str) -> anyhow::Result<PathBuf> {
+    let model_filename = format!("ggml-{}.en.bin", size);
+    let model_path = data_dir.join("models").join(&model_filename);
+
+    if model_path.exists() {
+        tracing::info!(path = %model_path.display(), "Whisper model already present");
+        return Ok(model_path);
+    }
+
+    // Create models directory
+    tokio::fs::create_dir_all(data_dir.join("models")).await?;
+
+    let url = format!(
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}",
+        model_filename
+    );
+
+    tracing::info!(url = %url, dest = %model_path.display(), "Downloading whisper model");
+    emit_event(&VoiceEvent::Loading {
+        step: format!("Downloading whisper {} model...", size),
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client.get(&url).send().await?;
+
+    if !resp.status().is_success() {
+        anyhow::bail!(
+            "Failed to download whisper model: HTTP {}",
+            resp.status()
+        );
+    }
+
+    let total_size = resp.content_length();
+
+    // Download to a temp file, then rename (prevents corrupt partial downloads)
+    let tmp_path = model_path.with_extension("bin.tmp");
+    let mut file = tokio::fs::File::create(&tmp_path).await?;
+
+    use futures_util::StreamExt;
+    use tokio::io::AsyncWriteExt;
+
+    let mut downloaded: u64 = 0;
+    let mut last_progress: u8 = 0;
+    let mut stream = resp.bytes_stream();
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        file.write_all(&chunk).await?;
+        downloaded += chunk.len() as u64;
+
+        // Emit progress every ~5%
+        if let Some(total) = total_size {
+            let pct = ((downloaded as f64 / total as f64) * 100.0) as u8;
+            if pct >= last_progress + 5 {
+                last_progress = pct;
+                emit_event(&VoiceEvent::Loading {
+                    step: format!("Downloading whisper {} model... {}%", size, pct),
+                });
+            }
+        }
+    }
+
+    file.flush().await?;
+    drop(file);
+
+    // Atomic-ish rename
+    tokio::fs::rename(&tmp_path, &model_path).await?;
+
+    tracing::info!(path = %model_path.display(), "Whisper model downloaded");
+    emit_event(&VoiceEvent::Loading {
+        step: format!("Whisper {} model ready", size),
+    });
+
+    Ok(model_path)
+}
 
 // ── whisper enabled ────────────────────────────────────────────────
 #[cfg(feature = "whisper")]
 mod inner {
     use std::path::Path;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
     use tracing::info;
     use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
@@ -17,14 +104,21 @@ mod inner {
     /// Minimum audio duration in samples at 16 kHz (0.4 s = 6400 samples).
     const MIN_SAMPLES: usize = 6_400;
 
-    pub struct WhisperStt {
-        ctx: Mutex<WhisperContext>,
-    }
+    /// Wrapper to make WhisperContext Send + Sync through Arc<Mutex<>>.
+    ///
+    /// WhisperContext is internally thread-safe when access is serialized
+    /// via our Mutex, but doesn't implement Send/Sync. This wrapper lets
+    /// us share it across threads via Arc.
+    struct SendableCtx(WhisperContext);
 
-    // SAFETY: WhisperContext is internally thread-safe for inference when
-    // access is serialized (we hold a Mutex).
-    unsafe impl Send for WhisperStt {}
-    unsafe impl Sync for WhisperStt {}
+    // SAFETY: WhisperContext is safe to send between threads when protected
+    // by a Mutex (no interior mutability without the lock).
+    unsafe impl Send for SendableCtx {}
+    unsafe impl Sync for SendableCtx {}
+
+    pub struct WhisperStt {
+        ctx: Arc<Mutex<SendableCtx>>,
+    }
 
     impl WhisperStt {
         /// Load a GGML whisper model from disk.
@@ -44,7 +138,7 @@ mod inner {
 
             info!(model = %model_path.display(), "Whisper model loaded");
             Ok(Self {
-                ctx: Mutex::new(ctx),
+                ctx: Arc::new(Mutex::new(SendableCtx(ctx))),
             })
         }
     }
@@ -55,51 +149,43 @@ mod inner {
                 return Ok(String::new());
             }
 
-            // Clone the audio so we can move it into the blocking closure.
             let audio = audio.to_vec();
+            let ctx = Arc::clone(&self.ctx);
 
             // Run whisper inference on a blocking thread to avoid stalling
             // the tokio runtime.
-            let ctx_guard = &self.ctx;
-            let result = tokio::task::spawn_blocking({
-                // We need to send the Mutex reference — this is safe because
-                // we hold &self for the duration.
-                let ctx_ptr = ctx_guard as *const Mutex<WhisperContext>;
-                move || {
-                    // SAFETY: the Mutex is alive for the duration of &self.
-                    let ctx_mutex = unsafe { &*ctx_ptr };
-                    let ctx = ctx_mutex.lock().unwrap();
+            let result = tokio::task::spawn_blocking(move || -> anyhow::Result<String> {
+                let guard = ctx.lock().unwrap();
 
-                    let mut state = ctx.create_state()
-                        .map_err(|e| anyhow::anyhow!("Failed to create whisper state: {}", e))?;
+                let mut state = guard.0.create_state()
+                    .map_err(|e| anyhow::anyhow!("Failed to create whisper state: {}", e))?;
 
-                    let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-                    params.set_language(Some("en"));
-                    params.set_print_special(false);
-                    params.set_print_progress(false);
-                    params.set_print_realtime(false);
-                    params.set_print_timestamps(false);
-                    params.set_single_segment(true);
-                    params.set_no_timestamps(true);
+                let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+                params.set_language(Some("en"));
+                params.set_print_special(false);
+                params.set_print_progress(false);
+                params.set_print_realtime(false);
+                params.set_print_timestamps(false);
+                params.set_single_segment(true);
+                params.set_no_timestamps(true);
 
-                    state
-                        .full(params, &audio)
-                        .map_err(|e| anyhow::anyhow!("Whisper inference failed: {}", e))?;
+                state
+                    .full(params, &audio)
+                    .map_err(|e| anyhow::anyhow!("Whisper inference failed: {}", e))?;
 
-                    let num_segments = state.full_n_segments()
-                        .map_err(|e| anyhow::anyhow!("Failed to get segment count: {}", e))?;
-                    let mut text = String::new();
-                    for i in 0..num_segments {
-                        if let Ok(seg) = state.full_get_segment_text(i) {
-                            text.push_str(seg.trim());
-                            if i + 1 < num_segments {
-                                text.push(' ');
-                            }
+                let num_segments = state.full_n_segments()
+                    .map_err(|e| anyhow::anyhow!("Failed to get segment count: {}", e))?;
+                let mut text = String::new();
+                for i in 0..num_segments {
+                    if let Ok(seg) = state.full_get_segment_text(i) {
+                        text.push_str(seg.trim());
+                        if i + 1 < num_segments {
+                            text.push(' ');
                         }
                     }
-
-                    Ok(text)
                 }
+
+                Ok(text)
             })
             .await
             .map_err(|e| anyhow::anyhow!("Whisper task panicked: {}", e))??;

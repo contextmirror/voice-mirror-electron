@@ -31,5 +31,5 @@ Delegates to `npm start` in the project root. Pass `--dev` for development mode.
 | `doctor.mjs` | System health checks with pass/fail output |
 | `checks.mjs` | Detection utilities (voice-core, Ollama, Claude CLI, etc.) |
 | `ollama-setup.mjs` | Ollama detection, installation, and model pulling |
-| `python-setup.mjs` | MCP deps, Chromium, and ffmpeg helpers |
+| `dependency-setup.mjs` | MCP deps, Chromium, and ffmpeg helpers |
 | `banner.mjs` | ASCII banner and version display |

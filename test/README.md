@@ -18,7 +18,7 @@ Source-inspection style tests (no Electron runtime required). 36 test files cove
 - Browser: `browser-tools`, `browser-cookies-storage`, `dialog-handling`
 - Config: `config-rw`, `config-safety`, `constants`, `settings-enhancements`
 - System: `platform-paths`, `safe-path`, `desktop-shortcut`, `perf-monitor`, `logger-levels`
-- Voice: `ptt-trigger`, `python-backend`, `python-backend-resilience`
+- Voice: `ptt-trigger`, `voice-core`
 - UI: `terminal-resize`, `window-bounds`, `screen-capture`, `theme-engine`, `notifications`, `startup-polish`
 - Security: `api-key-detection`, `ipc-validators`, `username-required`
 - Features: `memory-tools`, `search-utils`, `inbox`, `json-file-watcher`, `snapshot-efficiency`, `update-checker`

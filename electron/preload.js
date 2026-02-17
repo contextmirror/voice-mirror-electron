@@ -90,13 +90,13 @@ contextBridge.exposeInMainWorld('voiceMirror', {
     },
 
     // Voice backend control (Rust voice-core process)
-    python: {
+    voice: {
         sendQuery: (query) => ipcRenderer.invoke('send-query', query),
         setMode: (mode) => ipcRenderer.invoke('set-voice-mode', mode),
-        getStatus: () => ipcRenderer.invoke('get-python-status'),
-        start: () => ipcRenderer.invoke('start-python'),
-        stop: () => ipcRenderer.invoke('stop-python'),
-        restart: () => ipcRenderer.invoke('python-restart'),
+        getStatus: () => ipcRenderer.invoke('get-voice-status'),
+        start: () => ipcRenderer.invoke('start-voice'),
+        stop: () => ipcRenderer.invoke('stop-voice'),
+        restart: () => ipcRenderer.invoke('voice-restart'),
         listAudioDevices: () => ipcRenderer.invoke('list-audio-devices'),
         getDetectedKeys: () => ipcRenderer.invoke('get-detected-keys')
     },

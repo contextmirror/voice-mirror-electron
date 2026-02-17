@@ -1,10 +1,8 @@
 /**
  * Voice Mirror CLI — Dependency installation helpers
  *
- * Historical note: This file previously contained Python venv and pip
- * automation. Those functions were removed when voice-core moved to Rust.
- * The remaining helpers (MCP deps, Chromium, ffmpeg) are still used by
- * setup.mjs and doctor.mjs.
+ * Installs MCP server deps, Chromium (Playwright), and detects ffmpeg.
+ * Used by setup.mjs and doctor.mjs.
  */
 
 import { execFileSync, execSync } from 'child_process';

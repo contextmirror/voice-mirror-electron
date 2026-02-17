@@ -74,11 +74,9 @@ voice-core/target/
 # Bundled tools (downloaded, not committed)
 tools/espeak-ng/
 
-# Python
-python/.venv
+# Python (vendored tools only)
 **/__pycache__/
 *.pyc
-python/.context-mirror/
 *.onnx
 *.bin
 # Allow small wake word models (~4MB total)
