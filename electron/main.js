@@ -21,7 +21,6 @@ const { registerIpcHandlers } = require('./ipc');
 // Note: claude-spawner and providers are now used via ai-manager service
 const { createLogger } = require('./services/logger');
 const { createHotkeyManager } = require('./services/hotkey-manager');
-const uiohookShared = require('./services/uiohook-shared');
 const { createPythonBackend, startDockerServices } = require('./services/python-backend');
 const { createScreenCaptureWatcher } = require('./services/screen-capture-watcher');
 const { createBrowserWatcher } = require('./services/browser-watcher');
@@ -47,7 +46,7 @@ const { createWaylandOrb } = require('./services/wayland-orb');
  *  8. Window created + late requires: webview-cdp, browser-controller
  *  9. Tray created; watchers started (screen-capture, inbox, browser)
  * 10. Perf monitor + diagnostic watcher started
- * 11. Hotkey manager started (uiohook + globalShortcut)
+ * 11. Hotkey manager started (globalShortcut)
  * 12. Update checker started
  * 13. Docker services started (SearXNG, n8n)
  * 14. Python backend spawned (STT/TTS/VAD)
@@ -60,7 +59,7 @@ const { createWaylandOrb } = require('./services/wayland-orb');
 // File logging - uses logger service
 const logger = createLogger();
 
-// Hotkey manager (dual-layer: uiohook + globalShortcut)
+// Hotkey manager (globalShortcut + health-checked auto-recovery)
 let hotkeyManager = null;
 
 // Tray service
@@ -346,13 +345,22 @@ if (isLinux) {
     app.commandLine.appendSwitch('disable-gpu');  // Helps with transparency on some systems
 }
 
+
 // App lifecycle
 app.whenReady().then(() => {
+    const _t0 = performance.now();
+    const _ts = (label) => {
+        const ms = (performance.now() - _t0).toFixed(0);
+        logger.log('STARTUP', `+${ms}ms  ${label}`);
+    };
+
     // Initialize file logging
     logger.init();
+    _ts('logger.init');
 
     // Load configuration
     appConfig = config.loadConfig();
+    _ts('config.loadConfig');
     if (appConfig.advanced?.debugMode) {
         logger.log('CONFIG', `Debug mode enabled`);
     }
@@ -375,6 +383,7 @@ app.whenReady().then(() => {
             logger.info('[Config]', 'Auto-detected API keys:', realKeys.map(([k]) => k).join(', '));
         }
     }
+    _ts('detectApiKeys');
 
     // Initialize window manager
     windowManager = createWindowManager({
@@ -384,11 +393,9 @@ app.whenReady().then(() => {
         startHidden: () => waylandOrb?.isAvailable() || false,
         onWindowStateChanged: () => {
             if (hotkeyManager) hotkeyManager.reRegisterAll();
-            // uiohook recovery is handled by the hotkey manager's own health check
-            // and deferred startup timer. Force-starting here during the startup
-            // burst defeats the deferral and causes mouse lag.
         }
     });
+    _ts('createWindowManager');
 
     // Initialize Python backend service
     pythonBackend = createPythonBackend({
@@ -398,6 +405,7 @@ app.whenReady().then(() => {
         log: (level, msg) => logger.log(level, msg),
         getSenderName: () => (appConfig.user?.name || 'user').toLowerCase()
     });
+    _ts('createPythonBackend');
 
     // --- Jarvis-style startup greeting ---
     function getTimePeriod() {
@@ -499,6 +507,8 @@ app.whenReady().then(() => {
         addDisplayedMessageId(responseId);
     });
 
+    _ts('pythonBackend.onEvent + onResponseId');
+
     // Initialize screen capture watcher service
     screenCaptureWatcherService = createScreenCaptureWatcher({
         dataDir: config.getDataDir(),
@@ -556,6 +566,7 @@ app.whenReady().then(() => {
             logger.info('[Voice Mirror]', 'Cleared processed user message IDs for provider switch');
         }
     });
+    _ts('createAIManager');
 
     // Initialize inbox watcher service
     inboxWatcherService = createInboxWatcher({
@@ -607,6 +618,7 @@ app.whenReady().then(() => {
         getLogViewer: () => logViewer,
     };
     registerIpcHandlers(ipcCtx);
+    _ts('registerIpcHandlers');
 
     // Initialize log viewer service (creates window on demand, not at startup)
     logViewer = createLogViewer({
@@ -638,10 +650,13 @@ app.whenReady().then(() => {
     }
 
     createWindow();
+    _ts('createWindow');
 
     // Webview bridge: attach CDP debugger when <webview> connects
     const webviewCdp = require('./browser/webview-cdp');
+    _ts('require webview-cdp');
     const browserController = require('./browser/browser-controller');
+    _ts('require browser-controller');
 
     mainWindow.webContents.on('did-attach-webview', (event, guestWebContents) => {
         logger.info('[Voice Mirror]', 'Webview attached, setting up CDP debugger');
@@ -697,9 +712,11 @@ app.whenReady().then(() => {
     }
 
     createTray();
+    _ts('createTray');
     startScreenCaptureWatcher();
     startInboxWatcher();
     startBrowserRequestWatcher();
+    _ts('start watchers');
 
     // Initialize and start performance monitor
     perfMonitor = createPerfMonitor({
@@ -720,8 +737,9 @@ app.whenReady().then(() => {
     } catch (err) {
         logger.info('[Diagnostic]', 'Watcher not started:', err.message);
     }
+    _ts('perfMonitor + diagnosticWatcher');
 
-    // Initialize dual-layer hotkey manager (uiohook + globalShortcut)
+    // Initialize hotkey manager (globalShortcut with health-checked recovery)
     hotkeyManager = createHotkeyManager({ log: (cat, msg) => logger.log(cat, msg) });
     hotkeyManager.start();
 
@@ -747,8 +765,7 @@ app.whenReady().then(() => {
 
     // PTT capture is handled entirely by Python's GlobalHotkeyListener (evdev/pynput).
     // Python captures key press/release globally regardless of window state and writes
-    // ptt_trigger.json directly. Electron's uiohook PTT was unreliable when collapsed to orb.
-    // Electron's uiohook is still used for the toggle hotkey (Ctrl+Shift+V) via hotkey-manager.
+    // ptt_trigger.json directly.
 
     // Update checker (git-based)
     updateChecker = createUpdateChecker({
@@ -790,12 +807,15 @@ app.whenReady().then(() => {
         pythonBackend.syncVoiceSettings(appConfig);
 
         startPythonVoiceMirror();
+        _ts('startPythonVoiceMirror');
 
         // Fallback: start AI after 5 seconds if Python ready event hasn't fired
         aiStartupTimeout = setTimeout(doStartAI, 5000);
     } catch (err) {
         logger.error('[Voice Mirror]', 'Auto-start failed:', err.message);
     }
+
+    _ts('=== STARTUP COMPLETE (event loop unblocked) ===');
 });
 
 app.on('window-all-closed', () => {
@@ -830,9 +850,6 @@ app.on('before-quit', async () => {
     if (waylandOrb) {
         waylandOrb.stop();
     }
-
-    // Stop shared uiohook (after hotkey manager is done)
-    uiohookShared.stop();
 
     // Stop update checker
     if (updateChecker) updateChecker.stop();

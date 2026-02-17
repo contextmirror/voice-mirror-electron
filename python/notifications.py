@@ -35,6 +35,9 @@ class NotificationWatcher:
         # TTS callbacks for state management
         on_speech_start: Callable[[], None] | None = None,
         on_speech_end: Callable[[bool], None] | None = None,  # arg: enter_conversation_mode
+        # Hook pause/resume for pynput GIL contention avoidance
+        pause_hooks: Callable[[], None] | None = None,
+        resume_hooks: Callable[[], None] | None = None,
     ):
         """
         Initialize notification watcher.
@@ -51,6 +54,8 @@ class NotificationWatcher:
             get_ai_provider_name: Callback to get AI provider display name
             on_speech_start: Callback when TTS starts
             on_speech_end: Callback when TTS ends (with enter_conversation_mode flag)
+            pause_hooks: Callback to pause pynput hooks before TTS
+            resume_hooks: Callback to resume pynput hooks after TTS
         """
         self.inbox = inbox
         # Support both direct instance and getter callback so adapter
@@ -70,6 +75,8 @@ class NotificationWatcher:
         self._get_ai_provider_name = get_ai_provider_name
         self._on_speech_start = on_speech_start
         self._on_speech_end = on_speech_end
+        self._pause_hooks = pause_hooks
+        self._resume_hooks = resume_hooks
 
         # Internal compaction tracking
         self._awaiting_compact_resume = False
@@ -180,12 +187,21 @@ class NotificationWatcher:
         """
         Speak text via TTS with proper callbacks.
 
+        Pauses pynput hooks during synthesis to prevent mouse lag from
+        GIL contention between ONNX inference and hook callbacks.
+
         Args:
             text: Text to speak
             enter_conversation_mode: Whether to enter conversation mode after
         """
-        await self.tts.speak(
-            text,
-            on_start=self._on_speech_start,
-            on_end=lambda: self._on_speech_end(enter_conversation_mode) if self._on_speech_end else None
-        )
+        if self._pause_hooks:
+            self._pause_hooks()
+        try:
+            await self.tts.speak(
+                text,
+                on_start=self._on_speech_start,
+                on_end=lambda: self._on_speech_end(enter_conversation_mode) if self._on_speech_end else None
+            )
+        finally:
+            if self._resume_hooks:
+                self._resume_hooks()

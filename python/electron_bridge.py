@@ -25,13 +25,24 @@ Commands from Electron (stdin):
     {"command": "stop"}
 """
 
+import sys
+
+# Lower process priority during startup so heavy module imports and model
+# loading don't starve the Windows DWM compositor (causes mouse cursor lag).
+# Restored to normal after startup completes in voice_agent.py.
+if sys.platform == 'win32':
+    import ctypes as _ctypes
+    _BELOW_NORMAL = 0x00004000
+    _ctypes.windll.kernel32.SetPriorityClass(
+        _ctypes.windll.kernel32.GetCurrentProcess(), _BELOW_NORMAL
+    )
+
 import asyncio
 import base64
 import json
 import os
 import queue
 import re
-import sys
 import threading
 import uuid
 from datetime import datetime

@@ -610,9 +610,9 @@ window.toggleSidebarCollapse = toggleSidebarCollapse;
 // Browser panel (from browser-panel.js)
 window.navigateToBrowserPage = navigateToBrowserPage;
 
-// Tertiary hotkey fallback: detect Ctrl+Shift+V (or Cmd+Shift+V on Mac) via DOM keydown.
+// Hotkey fallback: detect Ctrl+Shift+V (or Cmd+Shift+V on Mac) via DOM keydown.
 // This only works when the Electron window has focus, but provides a safety net
-// when both uiohook and globalShortcut layers have failed.
+// when globalShortcut registration has failed.
 // Fallback keydown listener for when window has focus but global hotkeys fail
 // Note: Stats bar toggle is now handled by global hotkey manager (configurable)
 document.addEventListener('keydown', (e) => {

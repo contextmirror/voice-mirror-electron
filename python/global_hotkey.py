@@ -161,6 +161,40 @@ class GlobalHotkeyListener:
         # Fallback: pynput (works on X11, macOS, Windows)
         return self._start_pynput()
 
+    def pause(self):
+        """Temporarily unhook OS listeners, preserving bindings for resume().
+
+        Removes low-level mouse/keyboard hooks so GIL-heavy work (ONNX
+        inference) won't block hook callbacks and cause mouse cursor lag.
+        """
+        if not self._running:
+            return
+        self._running = False
+        if self._kb_listener:
+            self._kb_listener.stop()
+            self._kb_listener = None
+        if self._mouse_listener:
+            self._mouse_listener.stop()
+            self._mouse_listener = None
+        for b in self._bindings:
+            b["active"] = False
+        print("[GlobalHotkey] Paused (hooks removed)")
+
+    def resume(self):
+        """Re-install OS hooks after pause()."""
+        if self._running:
+            return
+        if not self._bindings:
+            return
+        self._running = True
+        for b in self._bindings:
+            b["active"] = False
+        if self._backend == "evdev":
+            self._start_evdev()
+        else:
+            self._start_pynput()
+        print("[GlobalHotkey] Resumed")
+
     def stop(self):
         """Stop all listeners."""
         self._running = False

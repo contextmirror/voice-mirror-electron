@@ -299,6 +299,6 @@ contextBridge.exposeInMainWorld('voiceMirror', {
     relaunch: () => ipcRenderer.invoke('app-relaunch'),
 
     // Hotkey fallback — renderer sends this when it detects the hotkey via DOM keydown
-    // (only honored if primary uiohook + globalShortcut layers both failed)
+    // (only honored if globalShortcut registration failed)
     hotkeyFallback: (id) => ipcRenderer.send('hotkey-fallback', id)
 });
