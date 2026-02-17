@@ -4,6 +4,7 @@
  *          check-cli-available, install-cli, check-dependency-versions,
  *          update-dependency, run-uninstall,
  *          chat-list, chat-load, chat-save, chat-delete, chat-rename,
+ *          get-app-version, get-changelog, mark-version-seen,
  *          apply-update, install-update, app-relaunch
  */
 
@@ -473,6 +474,54 @@ function registerMiscHandlers(ctx, validators) {
             errors,
             installDir,
         };
+    });
+
+    // Get app version (for renderer "What's New" checks)
+    ipcMain.handle('get-app-version', () => app.getVersion());
+
+    // Get changelog section for a specific version
+    ipcMain.handle('get-changelog', async (_event, version) => {
+        if (typeof version !== 'string' || version.length > 20) {
+            return { success: false, error: 'Invalid version' };
+        }
+
+        // Find CHANGELOG.md — packaged app uses resources/, dev uses project root
+        const candidates = [
+            path.join(process.resourcesPath || '', 'CHANGELOG.md'),
+            path.join(__dirname, '..', '..', 'CHANGELOG.md'),
+        ];
+
+        let content = null;
+        for (const p of candidates) {
+            try {
+                content = await fsPromises.readFile(p, 'utf-8');
+                break;
+            } catch { /* try next */ }
+        }
+
+        if (!content) {
+            return { success: false, error: 'CHANGELOG.md not found' };
+        }
+
+        // Extract section between ## vX.X.X and next ## v heading
+        const escaped = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`(## v${escaped}[^\\n]*\\n)([\\s\\S]*?)(?=\\n## v|$)`);
+        const match = content.match(regex);
+        if (!match) {
+            return { success: false, error: `No changelog entry for v${version}` };
+        }
+
+        return { success: true, data: match[1] + match[2].trimEnd() };
+    });
+
+    // Mark a version as seen (for "What's New" notification)
+    ipcMain.handle('mark-version-seen', async (_event, version) => {
+        if (typeof version !== 'string' || version.length > 20) {
+            return { success: false, error: 'Invalid version' };
+        }
+        const { updateConfigAsync } = require('../config');
+        await updateConfigAsync({ system: { lastSeenVersion: version } });
+        return { success: true };
     });
 
     // Update checker — triggers download of available update

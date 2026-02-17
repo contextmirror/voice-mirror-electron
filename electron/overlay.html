@@ -34,6 +34,7 @@
     <link rel="stylesheet" href="renderer/styles/browser.css">
     <link rel="stylesheet" href="renderer/styles/settings.css">
     <link rel="stylesheet" href="renderer/styles/notifications.css">
+    <link rel="stylesheet" href="renderer/styles/whats-new.css">
 </head>
 <body>
     <!-- Orb View (collapsed) -->
@@ -419,6 +420,17 @@
             <p>What should I call you?</p>
             <input type="text" id="name-required-input" placeholder="Your name or nickname" maxlength="50" autofocus>
             <button id="name-required-submit" class="btn-primary" disabled>Continue</button>
+        </div>
+    </div>
+
+    <!-- What's New Modal (shown after app update) -->
+    <div id="whats-new-overlay" class="whats-new-overlay" style="display:none">
+        <div class="whats-new-modal">
+            <div class="whats-new-header">
+                <h2>What's New</h2>
+                <button id="whats-new-close" class="whats-new-close-btn">&times;</button>
+            </div>
+            <div id="whats-new-body" class="whats-new-body"></div>
         </div>
     </div>
 

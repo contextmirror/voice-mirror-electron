@@ -263,6 +263,11 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         return () => ipcRenderer.removeListener('toggle-stats-bar', handler);
     },
 
+    // App version + changelog (for "What's New" feature)
+    getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+    getChangelog: (version) => ipcRenderer.invoke('get-changelog', version),
+    markVersionSeen: (version) => ipcRenderer.invoke('mark-version-seen', version),
+
     // Update checker
     onUpdateAvailable: (callback) => {
         const handler = (_event, data) => callback(data);

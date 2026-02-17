@@ -104,7 +104,8 @@ const DEFAULT_CONFIG = {
     system: {
         acceptedDisclaimer: false,    // Set true after user accepts first-launch disclaimer
         firstLaunchDone: false,       // Set true after first-ever launch greeting
-        lastGreetingPeriod: null      // e.g. "morning-2026-01-29" to avoid repeat greetings
+        lastGreetingPeriod: null,     // e.g. "morning-2026-01-29" to avoid repeat greetings
+        lastSeenVersion: null         // tracks app version for "What's New" after updates
     },
 
     // AI Provider settings
