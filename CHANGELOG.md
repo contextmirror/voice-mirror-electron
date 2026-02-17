@@ -5,6 +5,77 @@ Format inspired by game dev patch notes — grouped by release, categorized by i
 
 ---
 
+## v0.10.0 — "Rust Rising" (2026-02-17)
+
+Complete replacement of the Python voice backend with a native Rust binary (`voice-core`). Eliminates the Python runtime dependency entirely — no more venv, pip, or 600MB+ interpreter overhead. The result: faster startup, lower memory, sub-second STT latency, and interruptible TTS during conversation.
+
+This is the largest architectural change since the project's creation — 14 commits across the `feat/voice-core-rust` branch touching every layer from audio capture to the Electron IPC bridge.
+
+### New — Rust Voice Core
+
+- **Native Rust binary** — New `voice-core/` Rust project replaces the entire `python/` directory. Same JSON stdin/stdout IPC protocol, drop-in replacement for the Electron host
+- **Full module structure**:
+  - **Audio capture** — cpal-based 16kHz mono f32 with ring buffer
+  - **VAD** — Silero ONNX neural voice activity detection with energy fallback
+  - **Wake word** — OpenWakeWord 3-stage ONNX pipeline
+  - **STT** — whisper.cpp via whisper-rs (local), OpenAI Whisper API (cloud)
+  - **TTS** — Kokoro ONNX (local, espeak-ng phonemizer), Edge TTS WebSocket (free cloud)
+  - **Hotkeys** — rdev cross-platform global hotkey listener
+  - **Text injection** — arboard clipboard + paste simulation for dictation
+  - **Inbox manager** — file-based JSON IPC for MCP voice loop
+  - **Audio playback** — rodio with shared `Arc<Sink>` for external stop control
+- **Legacy adapter fallbacks** — Python-era config values (`parakeet`, `whisper`, `faster-whisper`) auto-map to `whisper-local`; Kokoro gracefully falls back to Edge TTS when native-ml feature is unavailable
+- **Feature flags** — `onnx` (default, pre-built binaries) and `whisper` (needs C compiler) split so Kokoro TTS/VAD/wake word work without MSVC toolchain
+
+### New — TTS Interruption
+
+- **Interruptible conversation TTS** — While the AI is speaking a response, press PTT or trigger the wake word to immediately stop playback and start recording. Single action — no need to interrupt then press again
+- **Startup greeting protected** — The initial system speak (startup greeting) plays to completion and cannot be interrupted, preventing accidental cuts during app initialization
+- **Architecture**: Shared `Arc<AtomicBool>` cancellation token + `Arc<Sink>` handle enable the main event loop to stop both synthesis and playback from any handler. Non-blocking `sink.append()` + 50ms poll loop replaces the old `spawn_blocking(move player)` pattern that blocked all interrupt events
+
+### New — Whisper.cpp STT
+
+- **In-process transcription** — whisper.cpp runs directly in the Rust binary via whisper-rs, replacing the Python Parakeet ONNX subprocess. STT latency drops from ~3-5s to ~0.5-1.5s
+- **WhisperState caching** — Reuses the ~200MB whisper state between transcription calls instead of calling `whisper_init_state` on every `transcribe()`. First call creates the state lazily; subsequent calls reuse it
+- **Adaptive threading** — Uses half available CPU cores (clamped 1-8) for inference, leaving headroom for audio capture, TTS playback, and the Electron UI
+- **Non-speech suppression** — `set_suppress_non_speech_tokens(true)` reduces hallucination on silence
+- **Model auto-download** — Downloads whisper models from HuggingFace with progress events to the UI. Settings UI offers tiny/base/small model sizes
+
+### Removed
+
+- **Entire Python backend deleted** — `python/` directory (STT, TTS, wake word, VAD, voice agent, providers, hotkey listener, electron bridge — all gone)
+- **Python runtime dependency** — No more venv creation, pip installs, `requirements.txt`, or Python version checks
+- **Parakeet STT** — Replaced by whisper.cpp (smaller, faster, no Python subprocess)
+- **pynput hotkey listener** — Replaced by Rust rdev (no more GIL contention causing system-wide mouse lag)
+- **Python-specific CI/CD** — Removed from dependabot, CodeQL, installer-test workflows
+- **stt-worker.py** — Persistent Python STT worker process no longer needed
+- **`python-backend.js`** — Replaced by `voice-backend.js` in Electron
+
+### Improved
+
+- **Kokoro TTS prosody** — Phonemizes full text in a single espeak-ng call instead of per-sentence, preserving natural inter-sentence prosody. Only chunks at word boundaries if tokens exceed the 510 limit
+- **Kokoro vocab mapping** — Replaced the entire `build_vocab()` with exact mapping from kokoro-onnx's config.json (88 entries). Previous mapping had dozens of wrong token IDs causing German-sounding synthesis
+- **Kokoro token limit** — `style_for_len()` now clamps to the last entry instead of erroring when token count equals the entry count (off-by-one fix)
+- **TTS speed passthrough** — `tts_speed` from voice settings now flows through to Kokoro's speed tensor (was hardcoded to 1.0)
+- **Auto-speak after PTT** — AI responses from inbox are now automatically spoken after push-to-talk transcription (previously only the Query command auto-spoke)
+- **PTT recording reliability** — Skip silence timeout for PTT/dictation recordings (only applies to wake-word mode); 150ms minimum hold time debounces Windows key repeat artifacts
+- **Main loop stays responsive** — PttUp handler spawns the STT+speak pipeline via `tokio::spawn` instead of awaiting inline, keeping the main `select!` loop free for interrupt events
+- **Waveform visualization during interrupt** — Fixed race condition where `SpeakingEnd` arriving after `RecordingStart` would kill the waveform. Idle handler now guards against downgrading from recording/dictating state
+
+### Technical
+
+- **14 commits** on `feat/voice-core-rust` branch
+- **Rust binary**: `voice-core/` with Cargo workspace, `onnx` + `whisper` feature flags, `ort` 2.x API (tuple tensors, mutable sessions)
+- **IPC refactor**: All `python-*` IPC channels renamed to `voice-*` across Electron main, preload, and renderer. Extracted voice IPC handlers into dedicated `electron/ipc/voice.js`
+- **Installer updates**: `install.sh` replaces `ensure_python` with `ensure_voice_core`; `install.ps1` replaces `Ensure-Python` with `Ensure-VoiceCore`; `cli/python-setup.mjs` renamed to `cli/dependency-setup.mjs`
+- **Build**: `npm run build:voice-core` script with LLVM detection in installers; `LIBCLANG_PATH` required for whisper-rs
+- **espeak-ng discovery**: Checks PATH, then `tools/espeak-ng/` relative to binary, then packaged `resources/bin/`
+- **Voice settings sync**: `voice_settings.json` now awaited before spawning voice-core (fixes race condition); synced on config changes (not just startup)
+- **AppState fields for TTS interruption**: `tts_cancel: Arc<AtomicBool>`, `tts_sink: Option<Arc<Sink>>`, `system_speaking: bool`
+- **AudioPlayer**: New `sink_handle()` method exposes `Arc<Sink>` for external stop; `stop()` and `is_playing()` no longer dead code
+
+---
+
 ## v0.9.8 — "Polished Chrome" (2026-02-17)
 
 New custom titlebar with full window controls, a complete theme overhaul making all UI areas respond to theme presets, and several persistence fixes.
