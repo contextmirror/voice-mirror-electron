@@ -6,7 +6,7 @@
     display: flex;
     height: 350px;
     min-height: 100px;
-    background: #0a0a12;
+    background: var(--bg);
     border-top: 1px solid rgba(255, 255, 255, 0.15);
     flex-direction: column;
 }
@@ -58,13 +58,13 @@
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 10px;
-    background: rgba(74, 222, 128, 0.2);
-    color: #4ade80;
+    background: var(--ok-subtle);
+    color: var(--ok);
 }
 
 #terminal-header .terminal-status.stopped {
-    background: rgba(239, 68, 68, 0.2);
-    color: #ef4444;
+    background: var(--danger-subtle);
+    color: var(--danger);
 }
 
 #terminal-header .terminal-title {
@@ -104,7 +104,7 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    background: #0a0a12;
+    background: var(--bg);
     overflow: hidden;
     -webkit-app-region: drag;  /* Allow dragging from terminal background */
 }
@@ -130,13 +130,13 @@
     padding: 2px 8px;
     border-radius: 4px;
     font-size: 11px;
-    background: rgba(74, 222, 128, 0.2);
-    color: #4ade80;
+    background: var(--ok-subtle);
+    color: var(--ok);
 }
 
 #terminal-fullscreen-header .terminal-status.stopped {
-    background: rgba(239, 68, 68, 0.2);
-    color: #ef4444;
+    background: var(--danger-subtle);
+    color: var(--danger);
 }
 
 #terminal-fullscreen-header .control-btn {

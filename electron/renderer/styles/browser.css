@@ -13,8 +13,8 @@
     align-items: center;
     gap: 4px;
     padding: 6px 8px;
-    background: var(--color-surface-elevated, #1e1e2e);
-    border-bottom: 1px solid var(--color-border, #333);
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
     flex-shrink: 0;
 }
 
@@ -27,15 +27,15 @@
     border: none;
     border-radius: 4px;
     background: transparent;
-    color: var(--color-text-secondary, #aaa);
+    color: var(--muted);
     cursor: pointer;
     padding: 0;
     flex-shrink: 0;
 }
 
 .browser-nav-btn:hover {
-    background: var(--color-surface-hover, #2a2a3e);
-    color: var(--color-text-primary, #eee);
+    background: var(--bg-hover);
+    color: var(--text-strong);
 }
 
 .browser-nav-btn svg {
@@ -57,8 +57,8 @@
     flex: 1;
     min-width: 0;
     padding: 4px 10px;
-    background: var(--color-surface, #181825);
-    border: 1px solid var(--color-border, #333);
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-radius: 6px;
     overflow: hidden;
 }
@@ -66,7 +66,7 @@
 #browser-url {
     display: block;
     font-size: 12px;
-    color: var(--color-text-secondary, #aaa);
+    color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -79,7 +79,7 @@
     flex: 1;
     position: relative;
     overflow: hidden;
-    background: #000;
+    background: var(--bg);
 }
 
 #browser-webview {
@@ -95,7 +95,7 @@
     justify-content: center;
     height: 100%;
     gap: 12px;
-    color: var(--color-text-secondary, #888);
+    color: var(--muted);
     user-select: none;
 }
 

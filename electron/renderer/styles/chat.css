@@ -5,7 +5,7 @@
     right: 8px;
     z-index: 9999;
     background: rgba(0, 0, 0, 0.7);
-    color: #8f8;
+    color: var(--ok);
     font-family: var(--font-mono, 'Cascadia Code', 'Fira Code', monospace);
     font-size: 11px;
     padding: 2px 8px;
@@ -15,7 +15,7 @@
     white-space: nowrap;
 }
 .perf-stats-bar.hidden { display: none; }
-.perf-sep { color: #666; margin: 0 4px; }
+.perf-sep { color: var(--muted); margin: 0 4px; }
 
 /* ========== Chat Styles ========== */
 /* Messages, avatars, bubbles, markdown */
@@ -67,7 +67,7 @@
 }
 
 .message-group.assistant .message-avatar {
-    background: linear-gradient(135deg, var(--accent) 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
     color: white;
 }
 
@@ -311,8 +311,8 @@
 }
 
 .tool-card.tool-call {
-    background: rgba(30, 32, 40, 0.8);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--card);
+    border: 1px solid var(--border);
 }
 
 .tool-card.tool-result {
@@ -324,7 +324,7 @@
     align-items: center;
     gap: 10px;
     padding: 10px 14px;
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--card-highlight);
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
@@ -355,19 +355,19 @@
 }
 
 .tool-status.running {
-    background: rgba(102, 126, 234, 0.15);
-    color: #8b9cff;
+    background: var(--accent-subtle);
+    color: var(--accent-hover);
     animation: pulse-subtle 2s ease-in-out infinite;
 }
 
 .tool-status.success {
-    background: rgba(46, 204, 113, 0.15);
-    color: #5ed18f;
+    background: var(--ok-subtle);
+    color: var(--ok);
 }
 
 .tool-status.error {
-    background: rgba(231, 76, 60, 0.15);
-    color: #e74c3c;
+    background: var(--danger-subtle);
+    color: var(--danger);
 }
 
 @keyframes pulse-subtle {
@@ -609,13 +609,13 @@
 }
 
 .chat-action-btn.interrupt {
-    color: #fbbf24;
+    color: var(--warn);
     opacity: 0.85;
 }
 
 .chat-action-btn.interrupt:hover {
-    background: rgba(251, 191, 36, 0.2);
-    color: #fde047;
+    background: var(--warn-subtle);
+    color: var(--warn);
     opacity: 1;
 }
 
@@ -665,7 +665,7 @@
 .waveform-bar {
     width: 2.5px;
     flex-shrink: 0;
-    background: #ffffff;
+    background: var(--text-strong);
     border-radius: 1px;
     height: 100%;
     transform: scaleY(0.06);
@@ -688,7 +688,7 @@
 }
 
 .screen-picker-title {
-    color: #ccc;
+    color: var(--text);
     font-size: 14px;
     margin-bottom: 16px;
 }
@@ -714,7 +714,7 @@
 }
 
 .screen-picker-item:hover {
-    border-color: #667eea;
+    border-color: var(--accent);
 }
 
 .screen-picker-item img {
@@ -722,10 +722,10 @@
     height: 135px;
     object-fit: cover;
     border-radius: 4px;
-    background: #1a1a2e;
+    background: var(--bg);
 }
 
 .screen-picker-label {
-    color: #aaa;
+    color: var(--muted);
     font-size: 12px;
 }

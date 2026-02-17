@@ -5,7 +5,7 @@
 #sidebar {
     width: 275px;
     min-width: 275px;
-    background: var(--bg-accent);
+    background: var(--chrome);
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
@@ -33,7 +33,7 @@
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
-    color: var(--muted);
+    color: var(--text);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -182,7 +182,7 @@
 }
 
 .sidebar-chat-list .chat-delete-btn:hover {
-    background: rgba(239, 68, 68, 0.15);
+    background: var(--danger-subtle);
     color: var(--danger);
 }
 
@@ -441,7 +441,7 @@
 /* Banner success state */
 #sidebar-update-banner.success {
     border-color: var(--ok, #4ade80);
-    background: rgba(74, 222, 128, 0.1);
+    background: var(--ok-subtle);
 }
 
 #sidebar-update-banner.success .update-icon {
@@ -450,17 +450,18 @@
 
 #sidebar-update-banner.success #update-banner-btn {
     background: var(--ok, #4ade80);
-    color: #0a0a12;
+    color: var(--bg);
 }
 
 #sidebar-update-banner.success #update-banner-btn:hover {
-    background: #22c55e;
+    background: var(--ok);
+    filter: brightness(0.9);
 }
 
 /* Banner error state */
 #sidebar-update-banner.error {
     border-color: var(--danger, #ef4444);
-    background: rgba(239, 68, 68, 0.1);
+    background: var(--danger-subtle);
 }
 
 #sidebar-update-banner.error .update-icon {
@@ -540,13 +541,13 @@
     border-radius: 50%;
     background: var(--ok);
     flex-shrink: 0;
-    box-shadow: 0 0 8px rgba(74, 222, 128, 0.5);
+    box-shadow: 0 0 8px var(--ok-glow);
     animation: status-glow 2s ease-in-out infinite;
 }
 
 #sidebar-status #status-indicator.recording {
     background: var(--danger);
-    box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+    box-shadow: 0 0 8px var(--danger-glow);
     animation: status-glow 0.5s ease-in-out infinite;
 }
 
@@ -571,7 +572,7 @@
 /* Error status indicator */
 #sidebar-status #status-indicator.error {
     background: var(--danger);
-    box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+    box-shadow: 0 0 8px var(--danger-glow);
     animation: none;
 }
 
@@ -698,7 +699,7 @@
 
 #page-terminal #terminal-fullscreen {
     flex: 1;
-    background: #0a0a12;
+    background: var(--bg);
     overflow: hidden;
     clip-path: inset(0);
 }

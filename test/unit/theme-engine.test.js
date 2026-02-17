@@ -93,7 +93,10 @@ describe('theme-engine', () => {
                 '--text', '--text-strong', '--muted',
                 '--border', '--border-strong',
                 '--accent', '--accent-hover', '--accent-subtle', '--accent-glow',
-                '--ok', '--warn', '--danger',
+                '--ok', '--ok-subtle', '--ok-glow',
+                '--warn', '--warn-subtle',
+                '--danger', '--danger-subtle', '--danger-glow',
+                '--chrome',
                 '--shadow-sm', '--shadow-md', '--shadow-lg',
                 '--font-family', '--font-mono',
             ];

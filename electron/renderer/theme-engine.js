@@ -160,7 +160,7 @@ export const PRESETS = {
             bg: '#000000', bgElevated: '#181818',
             text: '#d4d4d4', textStrong: '#ffffff', muted: '#707070',
             accent: '#e0e0e0',
-            ok: '#c0c0c0', warn: '#a0a0a0', danger: '#ffffff',
+            ok: '#8fbf8f', warn: '#bfa86f', danger: '#bf6f6f',
             orbCore: '#0a0a0a'
         },
         fonts: {
@@ -201,6 +201,7 @@ export function deriveTheme(colors, fonts = {}) {
         '--bg-accent': blend(c.bg, c.bgElevated, 0.4),
         '--bg-elevated': c.bgElevated,
         '--bg-hover': lighten(c.bgElevated, 0.06),
+        '--chrome': blend(c.bg, c.bgElevated, 0.65),
         '--card': blend(c.bg, c.bgElevated, 0.3),
         '--card-highlight': hexToRgba(c.textStrong, 0.03),
         '--text': c.text,
@@ -217,8 +218,13 @@ export function deriveTheme(colors, fonts = {}) {
             return (r * 0.299 + g * 0.587 + b * 0.114) > 160 ? '#000000' : '#ffffff';
         })(),
         '--ok': c.ok,
+        '--ok-subtle': hexToRgba(c.ok, 0.15),
+        '--ok-glow': hexToRgba(c.ok, 0.5),
         '--warn': c.warn,
+        '--warn-subtle': hexToRgba(c.warn, 0.15),
         '--danger': c.danger,
+        '--danger-subtle': hexToRgba(c.danger, 0.15),
+        '--danger-glow': hexToRgba(c.danger, 0.5),
         '--shadow-sm': `0 1px 3px ${hexToRgba(darken(c.bg, 0.05), 0.4)}`,
         '--shadow-md': `0 4px 12px ${hexToRgba(darken(c.bg, 0.05), 0.5)}`,
         '--shadow-lg': `0 12px 28px ${hexToRgba(darken(c.bg, 0.05), 0.6)}`,

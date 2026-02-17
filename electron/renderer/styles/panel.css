@@ -28,7 +28,7 @@
     min-height: 40px;
     padding: 0 12px;
     border-bottom: 1px solid var(--border);
-    background: var(--bg-elevated);
+    background: var(--chrome);
     -webkit-app-region: drag;
 }
 
@@ -68,21 +68,23 @@
 }
 
 .control-btn.start {
-    background: #4ade80;
-    color: #0d0d1a;
+    background: var(--ok);
+    color: var(--bg);
 }
 
 .control-btn.start:hover {
-    background: #22c55e;
+    background: var(--ok);
+    filter: brightness(0.85);
 }
 
 .control-btn.stop {
-    background: #ef4444;
-    color: white;
+    background: var(--danger);
+    color: var(--text-strong);
 }
 
 .control-btn.stop:hover {
-    background: #dc2626;
+    background: var(--danger);
+    filter: brightness(0.85);
 }
 
 .control-btn.clear {
@@ -138,12 +140,12 @@
 }
 
 #image-preview .send-btn {
-    background: #667eea;
-    color: white;
+    background: var(--accent);
+    color: var(--accent-contrast, #fff);
 }
 
 #image-preview .send-btn:hover {
-    background: #5a6fd6;
+    background: var(--accent-hover);
 }
 
 #image-preview .cancel-btn {

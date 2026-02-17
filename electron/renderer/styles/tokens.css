@@ -7,6 +7,7 @@
     --bg-accent: #0f1014;
     --bg-elevated: #14161c;
     --bg-hover: #1e2028;
+    --chrome: #111217;
 
     /* Cards - deeper blacks */
     --card: #111318;
@@ -29,8 +30,13 @@
 
     /* Semantic */
     --ok: #4ade80;
+    --ok-subtle: rgba(74, 222, 128, 0.15);
+    --ok-glow: rgba(74, 222, 128, 0.5);
     --warn: #fbbf24;
+    --warn-subtle: rgba(251, 191, 36, 0.15);
     --danger: #ef4444;
+    --danger-subtle: rgba(239, 68, 68, 0.15);
+    --danger-glow: rgba(239, 68, 68, 0.5);
 
     /* Radius */
     --radius-sm: 6px;
