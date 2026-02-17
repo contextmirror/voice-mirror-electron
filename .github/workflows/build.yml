@@ -1,0 +1,161 @@
+name: Build & Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build without publishing (dry run)'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rust-target: x86_64-pc-windows-msvc
+            voice-core-bin: voice-core.exe
+          - os: macos-latest
+            rust-target: x86_64-apple-darwin
+            voice-core-bin: voice-core
+          - os: ubuntu-latest
+            rust-target: x86_64-unknown-linux-gnu
+            voice-core-bin: voice-core
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            voice-core/target
+          key: cargo-${{ matrix.os }}-${{ hashFiles('voice-core/Cargo.lock') }}
+          restore-keys: cargo-${{ matrix.os }}-
+
+      # Linux: install audio/media dev libraries
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libclang-dev cmake pkg-config
+
+      # Windows: install LLVM for whisper-rs (libclang)
+      - name: Install LLVM (Windows)
+        if: runner.os == 'Windows'
+        run: choco install llvm --yes --no-progress
+        shell: pwsh
+
+      # macOS: install dependencies
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: brew install cmake llvm
+
+      - name: Set LIBCLANG_PATH (Windows)
+        if: runner.os == 'Windows'
+        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+        shell: pwsh
+
+      - name: Set LIBCLANG_PATH (macOS)
+        if: runner.os == 'macOS'
+        run: echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
+
+      - name: Build voice-core (release)
+        run: cargo build --release
+        working-directory: voice-core
+
+      - name: Verify voice-core binary
+        run: |
+          ls -la voice-core/target/release/${{ matrix.voice-core-bin }}
+        shell: bash
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Install MCP server dependencies
+        run: npm ci
+        working-directory: mcp-server
+
+      - name: Run tests
+        run: npm test
+
+      # Build Electron distributables (skip prebuild — voice-core already built)
+      - name: Build Electron app
+        run: npx electron-builder --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List build output
+        run: ls -la dist/
+        shell: bash
+
+      # Upload artifacts for inspection (always, even on dry run)
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: voice-mirror-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.AppImage
+            dist/*.yml
+          if-no-files-found: warn
+
+  # Publish to GitHub Releases (only on tag push, not dry run)
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: List release files
+        run: ls -la dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
