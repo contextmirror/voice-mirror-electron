@@ -5,6 +5,42 @@ Format inspired by game dev patch notes — grouped by release, categorized by i
 
 ---
 
+## v0.9.7 — "Smooth Startup" (2026-02-17)
+
+Eliminates system-wide mouse cursor lag on startup, removes the uiohook-napi dependency entirely, and fixes several startup-related bugs (Claude Code flash, Parakeet ONNX crash, first-recording freeze).
+
+### Fixed
+
+- **System-wide mouse lag on startup eliminated** — The mouse cursor would stutter/freeze for 1–2 seconds twice during startup. Root cause: pynput's `WH_MOUSE_LL` hook callbacks were blocked by Python GIL contention while Kokoro TTS ran ONNX inference (`model.create`) in `run_in_executor` threads. Fixed by pausing pynput's OS-level hooks during the startup greeting TTS, then resuming after. Hooks stay active during regular responses so PTT can interrupt
+- **STT model preload also pauses hooks** — Parakeet ONNX model loading (deferred 5 seconds after startup) now temporarily unhooks pynput during the load to prevent the same GIL contention lag
+- **Claude Code terminal flash on startup** — Non-CLI providers (Ollama, LM Studio, Jan) briefly flashed the Claude Code terminal on launch because auto-start spawned the last-used CLI provider before switching. Now checks the configured provider and skips the Claude Code spawn entirely for non-CLI providers
+- **Parakeet ONNX crash on Windows** — `onnxruntime` failed to load the Parakeet model due to a path encoding issue on Windows. The adapter now catches the load error gracefully and falls back to lazy-loading on first use instead of crashing the Python backend
+- **First recording freeze** — The first voice recording after startup would freeze for 2–5 seconds while the STT model loaded synchronously. STT now preloads in the background 5 seconds after startup (after the greeting finishes), so the model is warm before the user's first recording
+
+### Removed
+
+- **uiohook-napi dependency removed** — The native keyboard/mouse hook module (used as a backup hotkey layer) has been completely removed. Electron's `globalShortcut` (Windows `RegisterHotKey` API) handles all hotkeys with zero mouse impact. PTT and dictation are handled by Python's pynput. This removes a native binary dependency and eliminates a source of input hook overhead
+  - Deleted `electron/services/uiohook-shared.js` (153 lines)
+  - Rewrote `electron/services/hotkey-manager.js` (411 → 237 lines) — globalShortcut-only with health checks and power monitor recovery
+  - Cleaned up references in `main.js`, `ipc/misc.js`, `preload.js`, `renderer/main.js`
+
+### Improved
+
+- **GlobalHotkeyListener pause/resume** — New `pause()` and `resume()` methods on Python's `GlobalHotkeyListener` class. `pause()` removes OS-level hooks while preserving bindings; `resume()` re-creates listeners and re-installs hooks. Used to temporarily unhook during GIL-heavy work (TTS synthesis, ONNX model loading) to prevent mouse lag
+- **Process priority management** — Python backend starts at `BELOW_NORMAL_PRIORITY_CLASS` during heavy import/model loading, then restores to `NORMAL_PRIORITY_CLASS` after startup completes
+- **Startup timing instrumentation** — 16 timing points added to Electron's `app.whenReady()` for diagnosing future startup performance issues (logged to `vmr.log`)
+
+### Technical
+- `global_hotkey.py`: Added `pause()`/`resume()` methods that stop/restart pynput listeners without losing binding state
+- `voice_agent.py`: `_startup_phase` flag controls hook pausing — only the first `speak()` call pauses hooks, subsequent calls leave them active for PTT interruption
+- `notifications.py`: Notification watcher TTS does not pause hooks (notifications are regular responses that should be interruptible)
+- `electron_bridge.py`: Sets `BELOW_NORMAL_PRIORITY_CLASS` via `kernel32.SetPriorityClass` at import time
+- `hotkey-manager.js`: Pure `globalShortcut` implementation with 10-second health checks and power monitor recovery (resume/unlock)
+- 12 files changed, 189 insertions, 398 deletions (net -209 lines)
+- 568 tests passing (566 pass, 2 skipped, 0 failures)
+
+---
+
 ## v0.9.6 — "Performance Sweep" (2026-02-16)
 
 Full-stack performance and memory optimization across all 5 subsystems: Electron main process, renderer/UI, MCP server, Python voice backend, and AI providers/browser automation. 49 files changed, 81 issues addressed.

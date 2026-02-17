@@ -129,6 +129,11 @@ class VoiceMirror:
         self._ptt_action: str | None = None  # Set by main loop from check_ptt_trigger()
         self._dictation_action: str | None = None  # Set by main loop from check_dictation_trigger()
 
+        # Startup phase flag — hooks are paused during startup TTS to prevent
+        # mouse lag from GIL contention. Cleared after first speak() so PTT
+        # can interrupt regular responses.
+        self._startup_phase = True
+
         # Deferred model loading state
         self._stt_settings: dict = {}  # STT kwargs saved from load_models
         self._tts_settings: dict = {}  # TTS kwargs saved from load_models
@@ -175,10 +180,12 @@ class VoiceMirror:
         if settings.get("tts_model_path"):
             adapter_kwargs["model_path"] = settings["tts_model_path"]
 
-        # Rebuild the TTS adapter if: type changed, adapter is None, or model
-        # failed to load previously (e.g. pip package was just installed)
-        adapter_broken = self.tts is not None and getattr(self.tts, 'model', None) is None
-        need_rebuild = self.tts is None or new_adapter != self.tts.adapter_type or adapter_broken
+        # Rebuild the TTS adapter if: type changed or adapter is None.
+        # Don't treat a deferred-load adapter as "broken" — model is None
+        # simply because load() hasn't been called yet. The lazy-load in
+        # speak() will handle it, and force-loading during config_update
+        # causes a CPU spike that freezes the mouse cursor at startup.
+        need_rebuild = self.tts is None or new_adapter != self.tts.adapter_type
         if need_rebuild:
             old_type = self.tts.adapter_type if self.tts else "none"
             print(f"[RELOAD] TTS adapter changed: {old_type} -> {new_adapter}")
@@ -541,7 +548,23 @@ class VoiceMirror:
                 self.audio_state.conversation_end_time = time.time() + CONVERSATION_WINDOW
                 print(f"[CHAT] Conversation mode active ({CONVERSATION_WINDOW}s window - speak without wake word)")
 
-        await self.tts.speak(text, on_start=on_speech_start, on_end=on_speech_end)
+        # During startup, pause pynput hooks during TTS to prevent mouse lag.
+        # Kokoro's ONNX inference (model.create) in run_in_executor holds
+        # the GIL intermittently, blocking pynput's WH_MOUSE_LL hook
+        # callbacks and causing system-wide cursor stutter.
+        # After startup, keep hooks active so PTT can interrupt TTS.
+        hooks_paused = False
+        if self._startup_phase:
+            hotkey = getattr(self, '_hotkey_listener', None)
+            if hotkey and getattr(hotkey, '_running', False):
+                hotkey.pause()
+                hooks_paused = True
+            self._startup_phase = False
+        try:
+            await self.tts.speak(text, on_start=on_speech_start, on_end=on_speech_end)
+        finally:
+            if hooks_paused:
+                hotkey.resume()
 
     async def transcribe(self, audio_data: np.ndarray) -> str:
         """Transcribe audio using configured STT adapter."""
@@ -875,10 +898,35 @@ class VoiceMirror:
         )
 
         with stream:
-            # Start GlobalHotkey listener NOW that the audio stream is active
-            # (must be after stream start so PTT triggers aren't lost during model loading)
-            # Uses a SINGLE listener with multiple bindings so Windows only installs
-            # one low-level mouse hook — required for reliable event suppression.
+            # Restore normal process priority now that heavy startup is done.
+            # Priority was lowered in electron_bridge.py to prevent mouse lag.
+            if sys.platform == 'win32':
+                import ctypes as _ctypes
+                _NORMAL = 0x00000020
+                _ctypes.windll.kernel32.SetPriorityClass(
+                    _ctypes.windll.kernel32.GetCurrentProcess(), _NORMAL
+                )
+                print("[OK] Process priority restored to normal")
+
+            # --- Model preloading (BEFORE pynput hooks) ---
+            # pynput installs low-level mouse hooks (SetWindowsHookEx WH_MOUSE_LL)
+            # for PTT mouse button capture. While those hooks are active, any GIL
+            # contention (from ONNX model loading in threads) delays hook callbacks,
+            # causing system-wide mouse cursor lag. So we load models FIRST, then
+            # start pynput after the heavy work is done.
+            if self.tts and not self.tts.is_loaded:
+                print("[TTS] Preloading model...")
+                loop = asyncio.get_event_loop()
+                try:
+                    loaded = await loop.run_in_executor(None, self.tts.load)
+                    if loaded:
+                        print(f"[OK] TTS model preloaded")
+                except Exception as e:
+                    print(f"[WARN] TTS preload failed: {e}")
+
+            # --- Start pynput hooks (AFTER TTS loaded) ---
+            # Now that ONNX models are loaded and no heavy GIL work remains,
+            # it's safe to install pynput's low-level mouse/keyboard hooks.
             try:
                 from global_hotkey import GlobalHotkeyListener
                 from providers.config import ELECTRON_CONFIG_PATH
@@ -936,6 +984,30 @@ class VoiceMirror:
                     on_speech_end=on_notification_speech_end,
                 )
                 notification_task = asyncio.create_task(notification_watcher.run())
+
+            # Preload STT in background AFTER pynput hooks are running.
+            # Uses a delay so the startup greeting can play first, and
+            # pynput hooks have settled before GIL-heavy ONNX loading.
+            if self.stt_adapter and not self.stt_adapter.is_loaded:
+                async def _preload_stt():
+                    await asyncio.sleep(5)  # after greeting finishes
+                    if self.stt_adapter and not self.stt_adapter.is_loaded:
+                        # Pause pynput hooks during ONNX model loading
+                        h = getattr(self, '_hotkey_listener', None)
+                        was_running = h and getattr(h, '_running', False)
+                        if was_running:
+                            h.pause()
+                        print("[STT] Preloading model...")
+                        try:
+                            loaded = await self.stt_adapter.load()
+                            if loaded:
+                                print(f"[OK] STT model preloaded")
+                        except Exception as e:
+                            print(f"[WARN] STT preload failed: {e}")
+                        finally:
+                            if was_running and h:
+                                h.resume()
+                asyncio.create_task(_preload_stt())
 
             try:
                 while True:

@@ -25,12 +25,12 @@ function registerMiscHandlers(ctx, validators) {
         ctx.logger.devlog(category, action, data || {});
     });
 
-    // Hotkey fallback from renderer — only honored when primary layers both failed
+    // Hotkey fallback from renderer — only honored when globalShortcut failed
     ipcMain.on('hotkey-fallback', (event, id) => {
         const hotkeyManager = ctx.getHotkeyManager();
         if (!hotkeyManager) return;
         const binding = hotkeyManager.getBinding(id);
-        if (binding && !binding.uiohookActive && !binding.globalShortcutActive) {
+        if (binding && !binding.globalShortcutActive) {
             ctx.logger.log('HOTKEY', `Fallback triggered for "${id}" from renderer`);
             binding.callback();
         }
