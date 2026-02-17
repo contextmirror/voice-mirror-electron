@@ -21,7 +21,7 @@ const { registerIpcHandlers } = require('./ipc');
 // Note: claude-spawner and providers are now used via ai-manager service
 const { createLogger } = require('./services/logger');
 const { createHotkeyManager } = require('./services/hotkey-manager');
-const { createPythonBackend, startDockerServices } = require('./services/python-backend');
+const { createVoiceBackend, startDockerServices } = require('./services/voice-backend');
 const { createScreenCaptureWatcher } = require('./services/screen-capture-watcher');
 const { createBrowserWatcher } = require('./services/browser-watcher');
 const { createAIManager } = require('./services/ai-manager');
@@ -39,7 +39,7 @@ const { createWaylandOrb } = require('./services/wayland-orb');
  *  1. Logger initialized (file logging)
  *  2. Config loaded + API keys auto-detected from env
  *  3. Window manager created (not yet showing)
- *  4. Python backend created (not yet spawned)
+ *  4. Voice backend created (not yet spawned)
  *  5. Screen-capture, browser, AI-manager, inbox watchers created
  *  6. IPC handlers registered
  *  7. Wayland orb initialized (Linux only)
@@ -49,8 +49,8 @@ const { createWaylandOrb } = require('./services/wayland-orb');
  * 11. Hotkey manager started (globalShortcut)
  * 12. Update checker started
  * 13. Docker services started (SearXNG, n8n)
- * 14. Python backend spawned (STT/TTS/VAD)
- * 15. AI provider started (after Python ready or 5 s fallback)
+ * 14. Voice backend spawned (STT/TTS/VAD)
+ * 15. AI provider started (after voice-core ready or 5 s fallback)
  *
  * Late requires (webview-cdp, browser-controller) exist because
  * they need the main BrowserWindow to exist before loading.
@@ -71,8 +71,8 @@ let windowManager = null;
 // Wayland overlay orb (native layer-shell, Linux/Wayland only)
 let waylandOrb = null;
 
-// Python backend service (initialized after config is loaded)
-let pythonBackend = null;
+// Voice backend service (initialized after config is loaded)
+let voiceBackend = null;
 
 // Screen capture watcher service (initialized after app.whenReady)
 let screenCaptureWatcherService = null;
@@ -108,7 +108,7 @@ const { isWindows, isMac, isLinux } = config;
 
 let mainWindow = null;  // Reference to windowManager's window (for backward compatibility)
 let appConfig = null;
-let pythonReadyTimeout = null;
+let voiceReadyTimeout = null;
 let startupPinger = null;
 let aiStartupTimeout = null;
 let aiReadyCheckInterval = null;
@@ -221,47 +221,45 @@ function createTray() {
     });
 }
 
-// Python backend helper functions that delegate to pythonBackend service
-function sendToPython(command) {
-    if (pythonBackend) {
-        pythonBackend.send(command);
+// Voice backend helper functions that delegate to voiceBackend service
+function sendToVoiceBackend(command) {
+    if (voiceBackend) {
+        voiceBackend.send(command);
     }
 }
 
-function startPythonVoiceMirror() {
-    if (pythonBackend) {
-        pythonBackend.start();
+function startVoiceBackendService() {
+    if (voiceBackend) {
+        voiceBackend.start();
         // Send periodic pings during startup to keep stdin pipe active
-        // (Windows pipe buffering can block Python's stdout during imports)
         startupPinger = setInterval(() => {
-            if (pythonBackend?.isRunning()) {
-                sendToPython({ command: 'ping' });
+            if (voiceBackend?.isRunning()) {
+                sendToVoiceBackend({ command: 'ping' });
             }
         }, 2000);
-        // Set a 30-second timeout for Python ready event
-        if (pythonReadyTimeout) clearTimeout(pythonReadyTimeout);
-        pythonReadyTimeout = setTimeout(() => {
+        // Set a 30-second timeout for voice-core ready event
+        if (voiceReadyTimeout) clearTimeout(voiceReadyTimeout);
+        voiceReadyTimeout = setTimeout(() => {
             clearInterval(startupPinger);
             startupPinger = null;
-            logger.error('[Python]', 'Backend failed to start within 30 seconds, killing process');
-            // Kill the stuck Python process
-            if (pythonBackend?.isRunning()) {
-                pythonBackend.kill();
+            logger.error('[Voice]', 'Backend failed to start within 30 seconds, killing process');
+            if (voiceBackend?.isRunning()) {
+                voiceBackend.kill();
             }
             safeSend('voice-event', {
                 type: 'error',
-                message: 'Python backend failed to start. Run "node cli/index.mjs setup" to fix.'
+                message: 'Voice backend failed to start. Build with: cd voice-core && cargo build --release'
             });
-            pythonReadyTimeout = null;
+            voiceReadyTimeout = null;
         }, 30000);
     }
 }
 
-async function sendImageToPython(imageData) {
-    if (pythonBackend) {
-        return pythonBackend.sendImage(imageData);
+async function sendImageToVoiceBackend(imageData) {
+    if (voiceBackend) {
+        return voiceBackend.sendImage(imageData);
     }
-    return { text: 'Python backend not initialized', error: 'not_initialized' };
+    return { text: 'Voice backend not initialized', error: 'not_initialized' };
 }
 
 // AI manager helper functions that delegate to aiManager service
@@ -301,7 +299,7 @@ function stopInboxWatcher() {
     }
 }
 
-// Helper to add displayed message ID (for deduplication from Python backend)
+// Helper to add displayed message ID (for deduplication from voice backend)
 function addDisplayedMessageId(id) {
     if (inboxWatcherService) {
         inboxWatcherService.addDisplayedMessageId(id);
@@ -388,9 +386,9 @@ app.whenReady().then(() => {
         }
     });
 
-    // Initialize Python backend service
-    pythonBackend = createPythonBackend({
-        pythonDir: path.join(__dirname, '..', 'python'),
+    // Initialize voice backend service
+    voiceBackend = createVoiceBackend({
+        projectRoot: path.join(__dirname, '..'),
         dataDir: config.getDataDir(),
         isWindows,
         log: (level, msg) => logger.log(level, msg),
@@ -423,12 +421,12 @@ app.whenReady().then(() => {
     }
 
     function doStartupGreeting() {
-        if (!pythonBackend?.isRunning()) return;
+        if (!voiceBackend?.isRunning()) return;
         const hint = getActivationHint();
 
         // First-ever launch
         if (!appConfig.system?.firstLaunchDone) {
-            pythonBackend.systemSpeak(`Welcome to Voice Mirror. ${hint}`);
+            voiceBackend.systemSpeak(`Welcome to Voice Mirror. ${hint}`);
             appConfig = config.updateConfig({ system: { ...appConfig.system, firstLaunchDone: true } });
             return; // Don't also do time greeting on first launch
         }
@@ -439,38 +437,38 @@ app.whenReady().then(() => {
         const provider = appConfig.ai?.provider || 'claude';
         const displayName = model ? model.split(':')[0] : provider;
         const greeting = `Good ${period}. Voice Mirror online. ${displayName} standing by. ${hint}`;
-        pythonBackend.systemSpeak(greeting);
+        voiceBackend.systemSpeak(greeting);
     }
 
-    // Set up Python backend event handler
-    pythonBackend.onEvent((event) => {
+    // Set up voice backend event handler
+    voiceBackend.onEvent((event) => {
         // Send voice events to renderer
         safeSend('voice-event', event);
         forwardVoiceEventToOrb(event);
 
-        // Reset timeout on any loading progress (Python is alive, just loading)
-        if (event.type === 'loading' && pythonReadyTimeout) {
-            clearTimeout(pythonReadyTimeout);
-            pythonReadyTimeout = setTimeout(() => {
-                logger.error('[Python]', 'Backend failed to start within 30 seconds, killing process');
-                if (pythonBackend?.isRunning()) {
-                    pythonBackend.kill();
+        // Reset timeout on any loading progress (backend is alive, just loading)
+        if (event.type === 'loading' && voiceReadyTimeout) {
+            clearTimeout(voiceReadyTimeout);
+            voiceReadyTimeout = setTimeout(() => {
+                logger.error('[Voice]', 'Backend failed to start within 30 seconds, killing process');
+                if (voiceBackend?.isRunning()) {
+                    voiceBackend.kill();
                 }
                 safeSend('voice-event', {
                     type: 'error',
-                    message: 'Python backend failed to start. Run "node cli/index.mjs setup" to fix.'
+                    message: 'Voice backend failed to start. Build with: cd voice-core && cargo build --release'
                 });
-                pythonReadyTimeout = null;
+                voiceReadyTimeout = null;
             }, 30000);
         }
 
-        // Startup greeting when Python backend is ready
+        // Startup greeting when voice backend is ready
         if (event.type === 'ready') {
             if (startupPinger) { clearInterval(startupPinger); startupPinger = null; }
-            if (pythonReadyTimeout) { clearTimeout(pythonReadyTimeout); pythonReadyTimeout = null; }
+            if (voiceReadyTimeout) { clearTimeout(voiceReadyTimeout); voiceReadyTimeout = null; }
             // Sync voice settings (TTS adapter/voice) but NOT activation mode
             // to avoid restarting the hotkey listener that's already running
-            sendToPython({
+            sendToVoiceBackend({
                 command: 'config_update',
                 config: {
                     wakeWord: appConfig.wakeWord,
@@ -480,7 +478,7 @@ app.whenReady().then(() => {
             });
             setTimeout(() => doStartupGreeting(), 2000);
 
-            // Start AI provider directly now that Python is ready
+            // Start AI provider directly now that voice backend is ready
             // (event-driven — replaces the old 300ms polling interval)
             if (aiStartupTimeout) { clearTimeout(aiStartupTimeout); aiStartupTimeout = null; }
             doStartAI();
@@ -493,7 +491,7 @@ app.whenReady().then(() => {
     });
 
     // Track response IDs for deduplication
-    pythonBackend.onResponseId((responseId) => {
+    voiceBackend.onResponseId((responseId) => {
         addDisplayedMessageId(responseId);
     });
 
@@ -544,7 +542,7 @@ app.whenReady().then(() => {
             safeSend('tool-result', data);
         },
         onSystemSpeak: (text) => {
-            pythonBackend?.systemSpeak(text);
+            voiceBackend?.systemSpeak(text);
         },
         getActivationHint,
         onProviderSwitch: () => {
@@ -589,16 +587,16 @@ app.whenReady().then(() => {
         toggleMaximize: () => windowManager?.toggleMaximize(),
         getIsExpanded: () => isExpanded,
         getOrbSize,
-        sendToPython,
-        sendImageToPython,
-        startPythonVoiceMirror,
+        sendToVoiceBackend,
+        sendImageToVoiceBackend,
+        startVoiceBackendService,
         startAIProvider,
         stopAIProvider,
         interruptAIProvider,
         isAIProviderRunning,
         getAIManager: () => aiManager,
-        getPythonBackend: () => pythonBackend,
-        listAudioDevices: () => pythonBackend?.listAudioDevices() ?? Promise.resolve(null),
+        getVoiceBackend: () => voiceBackend,
+        listAudioDevices: () => voiceBackend?.listAudioDevices() ?? Promise.resolve(null),
         getWaylandOrb: () => waylandOrb,
         getHotkeyManager: () => hotkeyManager,
         getInboxWatcherService: () => inboxWatcherService,
@@ -741,12 +739,12 @@ app.whenReady().then(() => {
         safeSend('toggle-stats-bar');
     });
 
-    // Dictation key is handled by Python's GlobalHotkeyListener (same as PTT).
+    // Dictation key is handled by voice-core's global hotkey listener (same as PTT).
     // Hold-to-speak: press and hold to record, release to transcribe + paste.
-    // Python captures key press/release globally and writes dictation_trigger.json.
+    // Voice-core captures key press/release globally and writes dictation_trigger.json.
 
-    // PTT capture is handled entirely by Python's GlobalHotkeyListener (evdev/pynput).
-    // Python captures key press/release globally regardless of window state and writes
+    // PTT capture is handled entirely by voice-core's global hotkey listener.
+    // Voice-core captures key press/release globally regardless of window state and writes
     // ptt_trigger.json directly.
 
     // Update checker (git-based)
@@ -761,8 +759,8 @@ app.whenReady().then(() => {
     // Start Docker services (SearXNG, n8n) if available
     startDockerServices();
 
-    // Auto-start Voice Mirror (Python + AI provider) on app launch
-    // doStartAI is hoisted so the Python 'ready' event handler can call it directly
+    // Auto-start Voice Mirror (voice-core + AI provider) on app launch
+    // doStartAI is hoisted so the voice backend 'ready' event handler can call it directly
     let aiStarted = false;
     const doStartAI = () => {
         if (aiStarted) return;
@@ -778,19 +776,19 @@ app.whenReady().then(() => {
 
     try {
         const providerName = appConfig?.ai?.provider || 'claude';
-        logger.info('[Voice Mirror]', `Auto-starting Python and AI provider (${providerName})...`);
+        logger.info('[Voice Mirror]', `Auto-starting voice backend and AI provider (${providerName})...`);
 
         // Ensure Ollama is running if it's the selected provider
         if (['ollama', 'lmstudio', 'jan'].includes(providerName)) {
             aiManager.ensureLocalLLMRunning();
         }
 
-        // Write voice_settings.json BEFORE spawning Python so it loads correct TTS/STT config
-        pythonBackend.syncVoiceSettings(appConfig);
+        // Write voice_settings.json BEFORE spawning voice-core so it loads correct TTS/STT config
+        voiceBackend.syncVoiceSettings(appConfig);
 
-        startPythonVoiceMirror();
+        startVoiceBackendService();
 
-        // Fallback: start AI after 5 seconds if Python ready event hasn't fired
+        // Fallback: start AI after 5 seconds if voice-core ready event hasn't fired
         aiStartupTimeout = setTimeout(doStartAI, 5000);
     } catch (err) {
         logger.error('[Voice Mirror]', 'Auto-start failed:', err.message);
@@ -817,7 +815,7 @@ app.on('before-quit', async () => {
     if (aiStartupTimeout) { clearTimeout(aiStartupTimeout); aiStartupTimeout = null; }
     if (aiReadyCheckInterval) { clearInterval(aiReadyCheckInterval); aiReadyCheckInterval = null; }
     if (startupPinger) { clearInterval(startupPinger); startupPinger = null; }
-    if (pythonReadyTimeout) { clearTimeout(pythonReadyTimeout); pythonReadyTimeout = null; }
+    if (voiceReadyTimeout) { clearTimeout(voiceReadyTimeout); voiceReadyTimeout = null; }
 
     // Destroy hotkey manager (unregisters all shortcuts)
     if (hotkeyManager) {
@@ -844,12 +842,12 @@ app.on('before-quit', async () => {
     // Stop AI provider
     stopAIProvider();
 
-    // Stop Python gracefully (stop() sends command + waits 3s before kill)
-    if (pythonBackend) {
-        if (pythonBackend.isRunning()) {
-            pythonBackend.stop();
+    // Stop voice backend gracefully (stop() sends command + waits 3s before kill)
+    if (voiceBackend) {
+        if (voiceBackend.isRunning()) {
+            voiceBackend.stop();
         } else {
-            pythonBackend.kill();
+            voiceBackend.kill();
         }
     }
 

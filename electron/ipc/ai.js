@@ -181,7 +181,7 @@ function registerAIHandlers(ctx, validators) {
 
     // Start both Voice + AI provider together
     ipcMain.handle('start-all', () => {
-        if (!ctx.getPythonBackend()?.isRunning()) ctx.startPythonVoiceMirror();
+        if (!ctx.getVoiceBackend()?.isRunning()) ctx.startVoiceBackendService();
         if (!ctx.isAIProviderRunning()) {
             // Use last known terminal dimensions so TUI renders at correct size
             const dims = ctx._getLastTermDims ? ctx._getLastTermDims() : {};
@@ -191,9 +191,9 @@ function registerAIHandlers(ctx, validators) {
     });
 
     ipcMain.handle('stop-all', () => {
-        const pythonBackend = ctx.getPythonBackend();
-        if (pythonBackend?.isRunning()) {
-            pythonBackend.stop();
+        const voiceBackend = ctx.getVoiceBackend();
+        if (voiceBackend?.isRunning()) {
+            voiceBackend.stop();
         }
         ctx.stopAIProvider();
         return { success: true };

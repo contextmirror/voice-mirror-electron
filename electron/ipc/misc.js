@@ -370,12 +370,12 @@ function registerMiscHandlers(ctx, validators) {
             return { success: false, error: 'Python venv not found' };
         }
 
-        // Stop Python backend to release DLL locks (onnxruntime, psutil, etc.)
-        const pythonBackend = ctx.getPythonBackend();
-        const wasRunning = pythonBackend?.isRunning();
+        // Stop voice backend to release DLL locks
+        const voiceBackend = ctx.getVoiceBackend();
+        const wasRunning = voiceBackend?.isRunning();
         if (wasRunning) {
-            ctx.logger.info('[Dep Update]', 'Stopping Python backend for pip upgrade...');
-            pythonBackend.stop();
+            ctx.logger.info('[Dep Update]', 'Stopping voice backend for upgrade...');
+            voiceBackend.stop();
             // Wait for process to fully exit before pip install
             await new Promise(r => setTimeout(r, 2000));
         }
@@ -393,7 +393,7 @@ function registerMiscHandlers(ctx, validators) {
         });
 
         if (outdated.length === 0) {
-            if (wasRunning) ctx.startPythonVoiceMirror();
+            if (wasRunning) ctx.startVoiceBackendService();
             return { success: true };
         }
 
@@ -416,61 +416,61 @@ function registerMiscHandlers(ctx, validators) {
             });
         });
 
-        // Restart Python backend if it was running before
+        // Restart voice backend if it was running before
         if (wasRunning) {
-            ctx.logger.info('[Dep Update]', 'Restarting Python backend...');
-            ctx.startPythonVoiceMirror();
+            ctx.logger.info('[Dep Update]', 'Restarting voice backend...');
+            ctx.startVoiceBackendService();
         }
 
         return result;
     });
 
-    // Image handling - send to Python backend
+    // Image handling - send to voice backend
     ipcMain.handle('send-image', async (event, imageData) => {
         const v = validators['send-image'](imageData);
         if (!v.valid) return { success: false, error: v.error };
-        const result = await ctx.sendImageToPython(v.value);
+        const result = await ctx.sendImageToVoiceBackend(v.value);
         return { success: true, data: result };
     });
 
-    // Python backend communication
+    // Voice backend communication
     ipcMain.handle('send-query', (event, query) => {
         const v = validators['send-query'](query);
         if (!v.valid) return { success: false, error: v.error };
-        ctx.sendToPython({ command: 'query', text: v.value.text, image: v.value.image });
+        ctx.sendToVoiceBackend({ command: 'query', text: v.value.text, image: v.value.image });
         return { success: true };
     });
 
     ipcMain.handle('set-voice-mode', (event, mode) => {
         const v = validators['set-voice-mode'](mode);
         if (!v.valid) return { success: false, error: v.error };
-        ctx.sendToPython({ command: 'set_mode', mode: v.value });
+        ctx.sendToVoiceBackend({ command: 'set_mode', mode: v.value });
         return { success: true };
     });
 
     ipcMain.handle('get-python-status', () => {
-        const pythonBackend = ctx.getPythonBackend();
+        const voiceBackend = ctx.getVoiceBackend();
         return {
             success: true,
             data: {
-                running: pythonBackend?.isRunning() || false,
-                pid: pythonBackend?.getProcess()?.pid
+                running: voiceBackend?.isRunning() || false,
+                pid: voiceBackend?.getProcess()?.pid
             }
         };
     });
 
     ipcMain.handle('start-python', () => {
-        if (!ctx.getPythonBackend()?.isRunning()) {
-            ctx.startPythonVoiceMirror();
+        if (!ctx.getVoiceBackend()?.isRunning()) {
+            ctx.startVoiceBackendService();
             return { success: true };
         }
         return { success: false, error: 'already running' };
     });
 
     ipcMain.handle('stop-python', () => {
-        const pythonBackend = ctx.getPythonBackend();
-        if (pythonBackend?.isRunning()) {
-            pythonBackend.stop();
+        const voiceBackend = ctx.getVoiceBackend();
+        if (voiceBackend?.isRunning()) {
+            voiceBackend.stop();
             return { success: true };
         }
         return { success: false, error: 'not running' };
@@ -478,9 +478,9 @@ function registerMiscHandlers(ctx, validators) {
 
     // Manual restart (resets retry counter for user-initiated recovery)
     ipcMain.handle('python-restart', () => {
-        const pythonBackend = ctx.getPythonBackend();
-        if (pythonBackend) {
-            pythonBackend.restart();
+        const voiceBackend = ctx.getVoiceBackend();
+        if (voiceBackend) {
+            voiceBackend.restart();
             return { success: true };
         }
         return { success: false, error: 'backend not initialized' };

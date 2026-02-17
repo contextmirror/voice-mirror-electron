@@ -1,0 +1,39 @@
+[package]
+name = "voice-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+cpal = "0.15"
+ort = { version = "2.0.0-rc.11", optional = true }
+whisper-rs = { version = "0.13", optional = true }
+rodio = "0.19"
+ringbuf = "0.4"
+rdev = "0.5"
+arboard = "3"
+reqwest = { version = "0.12", features = ["json", "multipart"] }
+dirs = "5"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+anyhow = "1"
+
+[features]
+default = []
+# Enable native ML inference (requires LLVM/clang for build, ONNX Runtime + whisper.cpp models at runtime)
+native-ml = ["ort", "whisper-rs"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+evdev = "0.12"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.58", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+strip = true

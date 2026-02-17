@@ -221,9 +221,9 @@ function registerConfigHandlers(ctx, validators) {
         const voiceSettingsChanged = activationModeChanged || pttKeyChanged || dictationKeyChanged || userNameChanged ||
             (updates.wakeWord && JSON.stringify(updates.wakeWord) !== JSON.stringify(oldWakeWord)) ||
             (updates.voice && JSON.stringify(updates.voice) !== JSON.stringify(oldVoice));
-        if (voiceSettingsChanged && ctx.getPythonBackend()?.isRunning()) {
+        if (voiceSettingsChanged && ctx.getVoiceBackend()?.isRunning()) {
             const currentConfig = ctx.getAppConfig();
-            ctx.sendToPython({
+            ctx.sendToVoiceBackend({
                 command: 'config_update',
                 config: {
                     activationMode: currentConfig.behavior?.activationMode,
