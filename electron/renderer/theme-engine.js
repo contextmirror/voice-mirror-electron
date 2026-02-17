@@ -154,6 +154,20 @@ export const PRESETS = {
             fontMono: "'Cascadia Code', 'Fira Code', monospace"
         }
     },
+    black: {
+        name: 'Black',
+        colors: {
+            bg: '#000000', bgElevated: '#181818',
+            text: '#d4d4d4', textStrong: '#ffffff', muted: '#707070',
+            accent: '#e0e0e0',
+            ok: '#c0c0c0', warn: '#a0a0a0', danger: '#ffffff',
+            orbCore: '#0a0a0a'
+        },
+        fonts: {
+            fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
+            fontMono: "'Cascadia Code', 'Fira Code', monospace"
+        }
+    },
     gray: {
         name: 'Claude Gray',
         colors: {
@@ -198,6 +212,10 @@ export function deriveTheme(colors, fonts = {}) {
         '--accent-hover': lighten(c.accent, 0.12),
         '--accent-subtle': hexToRgba(c.accent, 0.15),
         '--accent-glow': hexToRgba(c.accent, 0.25),
+        '--accent-contrast': (() => {
+            const { r, g, b } = hexToRgb(c.accent);
+            return (r * 0.299 + g * 0.587 + b * 0.114) > 160 ? '#000000' : '#ffffff';
+        })(),
         '--ok': c.ok,
         '--warn': c.warn,
         '--danger': c.danger,
@@ -213,8 +231,8 @@ export function deriveTheme(colors, fonts = {}) {
         '--msg-user-bg': `linear-gradient(135deg, ${hexToRgba(c.accent, 0.4)} 0%, ${hexToRgba(darken(c.accent, 0.15), 0.35)} 100%)`,
         '--msg-user-border': hexToRgba(c.accent, 0.3),
         '--msg-user-radius': '16px 16px 4px 16px',
-        '--msg-ai-bg': `linear-gradient(135deg, ${blend(c.bg, c.bgElevated, 0.3)} 0%, ${c.bg} 100%)`,
-        '--msg-ai-border': hexToRgba(c.textStrong, 0.06),
+        '--msg-ai-bg': `linear-gradient(135deg, ${blend(c.bg, c.bgElevated, 0.5)} 0%, ${blend(c.bg, c.bgElevated, 0.2)} 100%)`,
+        '--msg-ai-border': hexToRgba(c.textStrong, 0.10),
         '--msg-ai-radius': '4px 16px 16px 16px',
     };
 }

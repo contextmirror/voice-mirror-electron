@@ -471,8 +471,8 @@
 /* ========== Chat Input Bar ========== */
 #chat-input-bar {
     padding: 10px 16px 8px;
-    background: rgba(20, 20, 30, 1);
-    border-top: 1px solid var(--border);
+    background: var(--bg);
+    border-top: 1px solid var(--border-strong);
     flex-shrink: 0;
     -webkit-app-region: no-drag;
 }
@@ -543,7 +543,7 @@
     border-radius: 50%;
     border: none;
     background: var(--accent);
-    color: white;
+    color: var(--accent-contrast, white);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -605,7 +605,7 @@
 .chat-action-btn.confirming {
     opacity: 1;
     background: var(--accent);
-    color: #fff;
+    color: var(--accent-contrast, #fff);
 }
 
 .chat-action-btn.interrupt {

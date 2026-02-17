@@ -153,7 +153,7 @@ const validators = {
         }
       }
       if (s.appearance.theme !== undefined) {
-        const VALID_THEMES = ['dark', 'midnight', 'emerald', 'rose', 'slate', 'gray', 'custom'];
+        const VALID_THEMES = ['dark', 'midnight', 'emerald', 'rose', 'slate', 'black', 'gray', 'custom'];
         if (typeof s.appearance.theme !== 'string' || !VALID_THEMES.includes(s.appearance.theme)) {
           errors.push(`appearance.theme must be one of: ${VALID_THEMES.join(', ')}`);
         }
