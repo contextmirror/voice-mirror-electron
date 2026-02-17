@@ -157,10 +157,10 @@ export const PRESETS = {
     black: {
         name: 'Black',
         colors: {
-            bg: '#000000', bgElevated: '#181818',
+            bg: '#000000', bgElevated: '#0e0e0e',
             text: '#d4d4d4', textStrong: '#ffffff', muted: '#707070',
             accent: '#e0e0e0',
-            ok: '#8fbf8f', warn: '#bfa86f', danger: '#bf6f6f',
+            ok: '#4ade80', warn: '#bfa86f', danger: '#bf6f6f',
             orbCore: '#0a0a0a'
         },
         fonts: {
