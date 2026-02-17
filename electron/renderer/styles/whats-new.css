@@ -1,0 +1,131 @@
+/* ========== What's New Modal ========== */
+
+.whats-new-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10001;
+    -webkit-app-region: no-drag;
+}
+
+.whats-new-modal {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    max-width: 560px;
+    width: 90%;
+    max-height: 75vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.whats-new-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.whats-new-header h2 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--text-strong);
+}
+
+.whats-new-close-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0 0.25rem;
+    line-height: 1;
+}
+
+.whats-new-close-btn:hover {
+    color: var(--text-strong);
+}
+
+.whats-new-body {
+    padding: 1.25rem;
+    overflow-y: auto;
+    color: var(--text);
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+.whats-new-body h2 {
+    font-size: 1rem;
+    color: var(--text-strong);
+    margin: 0 0 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.whats-new-body h3 {
+    font-size: 0.95rem;
+    color: var(--accent);
+    margin: 1.25rem 0 0.5rem;
+}
+
+.whats-new-body h4 {
+    font-size: 0.9rem;
+    color: var(--text-strong);
+    margin: 1rem 0 0.4rem;
+}
+
+.whats-new-body p {
+    margin: 0 0 0.75rem;
+    color: var(--text);
+}
+
+.whats-new-body ul,
+.whats-new-body ol {
+    margin: 0 0 0.75rem;
+    padding-left: 1.25rem;
+}
+
+.whats-new-body li {
+    margin-bottom: 0.35rem;
+}
+
+.whats-new-body code {
+    background: var(--bg);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+    font-size: 0.85em;
+    font-family: var(--font-mono);
+}
+
+.whats-new-body pre {
+    background: var(--bg);
+    padding: 0.75rem;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 0 0 0.75rem;
+}
+
+.whats-new-body strong {
+    color: var(--text-strong);
+}
+
+.whats-new-body a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.whats-new-body a:hover {
+    text-decoration: underline;
+}
+
+.whats-new-body hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 1rem 0;
+}

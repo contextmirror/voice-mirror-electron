@@ -1,6 +1,6 @@
 {
   "name": "voice-mirror-electron",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Voice-controlled AI agent overlay for your entire computer",
   "main": "electron/main.js",
   "scripts": {
@@ -31,6 +31,12 @@
         "provider": "github",
         "owner": "contextmirror",
         "repo": "voice-mirror-electron"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "CHANGELOG.md",
+        "to": "CHANGELOG.md"
       }
     ],
     "extraFiles": [

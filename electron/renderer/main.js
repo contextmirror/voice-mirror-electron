@@ -23,6 +23,7 @@ import { handleImageBlob, handleVoiceForImage, sendImageWithPrompt, captureScree
 import { setAIStatus, TOOL_DISPLAY_NAMES, parsePtyActivity } from './ai-status.js';
 import { handleVoiceEvent } from './voice-handler.js';
 import { initResize } from './resize.js';
+import { initWhatsNew } from './whats-new.js';
 
 // DOM elements
 const orb = document.getElementById('orb');
@@ -246,6 +247,9 @@ async function init() {
 
     // Initialize settings (loads tab templates, then wires event handlers)
     await initSettings();
+
+    // Check for app updates and show "What's New" toast if version changed
+    initWhatsNew();
 
     // Initialize custom resize edges (transparent frameless windows lack native resize handles)
     initResize();

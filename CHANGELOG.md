@@ -5,6 +5,17 @@ Format inspired by game dev patch notes — grouped by release, categorized by i
 
 ---
 
+## v0.10.1 (2026-02-17)
+
+### New — "What's New" Post-Update Notification
+
+- **Version change detection** — On startup, compares `lastSeenVersion` in config with the current app version. If they differ (and it's not a fresh install), shows a notification
+- **Sidebar banner** — Reuses the existing update banner slot in the sidebar footer with a green "Updated to vX.X.X" message and a "What's New" button
+- **Changelog modal** — Clicking "What's New" opens a scrollable modal overlay that renders the relevant CHANGELOG.md section as formatted markdown (using the existing marked.js + DOMPurify stack)
+- **CHANGELOG.md bundled** — Added to `extraResources` in electron-builder config so changelog is available in packaged builds
+
+---
+
 ## v0.10.0 — "Rust Rising" (2026-02-17)
 
 Complete replacement of the Python voice backend with a native Rust binary (`voice-core`). Eliminates the Python runtime dependency entirely — no more venv, pip, or 600MB+ interpreter overhead. The result: faster startup, lower memory, sub-second STT latency, and interruptible TTS during conversation.
