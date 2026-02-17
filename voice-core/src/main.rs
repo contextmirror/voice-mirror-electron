@@ -504,6 +504,71 @@ async fn run_stt_and_emit(app_state: &Arc<Mutex<AppState>>, audio: Vec<f32>) {
     app.stt_engine = Some(engine);
 }
 
+/// Speak text via TTS (used for both system_speak and auto-speaking responses).
+async fn speak_text(app_state: &Arc<Mutex<AppState>>, text: &str) {
+    let tts_engine = {
+        let mut app = app_state.lock().unwrap();
+        app.tts_engine.take()
+    };
+    let tts_player = {
+        let mut app = app_state.lock().unwrap();
+        app.tts_player.take()
+    };
+
+    match (tts_engine, tts_player) {
+        (Some(engine), Some(player)) => {
+            emit_event(&VoiceEvent::SpeakingStart {
+                text: text.to_string(),
+            });
+
+            match engine.speak(text).await {
+                Ok(samples) => {
+                    if !samples.is_empty() {
+                        let play_result = tokio::task::spawn_blocking(move || {
+                            player.play(&samples, TTS_SAMPLE_RATE)
+                        })
+                        .await;
+
+                        match play_result {
+                            Ok(Ok(())) => info!("TTS playback complete"),
+                            Ok(Err(e)) => {
+                                warn!("TTS playback error: {}", e);
+                                emit_error(&format!("TTS playback failed: {}", e));
+                            }
+                            Err(e) => warn!("TTS playback task panicked: {}", e),
+                        }
+
+                        // Player was moved into spawn_blocking; recreate it.
+                        let new_player = tts::playback::AudioPlayer::new().ok();
+                        let mut app = app_state.lock().unwrap();
+                        app.tts_engine = Some(engine);
+                        app.tts_player = new_player;
+                    } else {
+                        let mut app = app_state.lock().unwrap();
+                        app.tts_engine = Some(engine);
+                        app.tts_player = Some(player);
+                    }
+                }
+                Err(e) => {
+                    warn!("TTS synthesis error: {}", e);
+                    emit_error(&format!("TTS synthesis failed: {}", e));
+                    let mut app = app_state.lock().unwrap();
+                    app.tts_engine = Some(engine);
+                    app.tts_player = Some(player);
+                }
+            }
+
+            emit_event(&VoiceEvent::SpeakingEnd {});
+        }
+        (engine, player) => {
+            let mut app = app_state.lock().unwrap();
+            app.tts_engine = engine;
+            app.tts_player = player;
+            emit_error("TTS not available");
+        }
+    }
+}
+
 /// Handle hotkey events (PTT down/up, dictation down/up).
 async fn handle_hotkey_event(
     event: HotkeyEvent,
@@ -728,10 +793,18 @@ async fn handle_command(cmd: VoiceCommand, app_state: &Arc<Mutex<AppState>>) -> 
                             match inbox.wait_for_response(&id, None).await {
                                 Ok(Some(response)) => {
                                     emit_event(&VoiceEvent::Response {
-                                        text: response,
+                                        text: response.clone(),
                                         source: "inbox".to_string(),
                                         msg_id: Some(id),
                                     });
+                                    // Put inbox back before speaking
+                                    {
+                                        let mut app = app_clone.lock().unwrap();
+                                        app.inbox = Some(inbox);
+                                    }
+                                    // Auto-speak the AI response
+                                    speak_text(&app_clone, &response).await;
+                                    return;
                                 }
                                 Ok(None) => {
                                     warn!("Inbox poll timed out for {}", id);
@@ -784,69 +857,7 @@ async fn handle_command(cmd: VoiceCommand, app_state: &Arc<Mutex<AppState>>) -> 
 
         VoiceCommand::SystemSpeak { text } => {
             info!(text = %text, "System speak requested");
-
-            let tts_engine = {
-                let mut app = app_state.lock().unwrap();
-                app.tts_engine.take()
-            };
-            let tts_player = {
-                let mut app = app_state.lock().unwrap();
-                app.tts_player.take()
-            };
-
-            match (tts_engine, tts_player) {
-                (Some(engine), Some(player)) => {
-                    emit_event(&VoiceEvent::SpeakingStart {
-                        text: text.clone(),
-                    });
-
-                    match engine.speak(&text).await {
-                        Ok(samples) => {
-                            if !samples.is_empty() {
-                                let play_result = tokio::task::spawn_blocking(move || {
-                                    player.play(&samples, TTS_SAMPLE_RATE)
-                                })
-                                .await;
-
-                                match play_result {
-                                    Ok(Ok(())) => info!("TTS playback complete"),
-                                    Ok(Err(e)) => {
-                                        warn!("TTS playback error: {}", e);
-                                        emit_error(&format!("TTS playback failed: {}", e));
-                                    }
-                                    Err(e) => warn!("TTS playback task panicked: {}", e),
-                                }
-
-                                // Player was moved into spawn_blocking; recreate it.
-                                let new_player = tts::playback::AudioPlayer::new().ok();
-                                let mut app = app_state.lock().unwrap();
-                                app.tts_engine = Some(engine);
-                                app.tts_player = new_player;
-                            } else {
-                                let mut app = app_state.lock().unwrap();
-                                app.tts_engine = Some(engine);
-                                app.tts_player = Some(player);
-                            }
-                        }
-                        Err(e) => {
-                            warn!("TTS synthesis error: {}", e);
-                            emit_error(&format!("TTS synthesis failed: {}", e));
-                            let mut app = app_state.lock().unwrap();
-                            app.tts_engine = Some(engine);
-                            app.tts_player = Some(player);
-                        }
-                    }
-
-                    emit_event(&VoiceEvent::SpeakingEnd {});
-                }
-                (engine, player) => {
-                    // Put back whatever we had
-                    let mut app = app_state.lock().unwrap();
-                    app.tts_engine = engine;
-                    app.tts_player = player;
-                    emit_error("TTS not available");
-                }
-            }
+            speak_text(app_state, &text).await;
         }
 
         VoiceCommand::Image {
