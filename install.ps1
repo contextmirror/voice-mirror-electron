@@ -210,78 +210,45 @@ function Ensure-Node {
     exit 1
 }
 
-# ─── Ensure Python ──────────────────────────────────────────────────
-function Ensure-Python {
-    Write-Step "Checking Python..."
+# ─── Ensure voice-core binary ──────────────────────────────────────
+function Ensure-VoiceCore {
+    Write-Step "Checking voice-core binary..."
 
-    foreach ($cmd in @("python3", "python")) {
-        if (Test-Command $cmd) {
-            $v = & $cmd --version 2>&1 | Select-String -Pattern '\d+\.\d+\.\d+' | ForEach-Object { $_.Matches.Value }
-            if ($v) {
-                $parts = $v.Split('.')
-                if ([int]$parts[0] -ge 3 -and [int]$parts[1] -ge 9) {
-                    Write-Ok "Python $v ($cmd)"
-                    return
-                }
+    $binaryName = "voice-core.exe"
+    $releaseBin = Join-Path $InstallDir "voice-core\target\release\$binaryName"
+    $resourcesBin = Join-Path $InstallDir "resources\bin\$binaryName"
+
+    if (Test-Path $resourcesBin) {
+        Write-Ok "voice-core binary found (packaged)"
+        return
+    }
+
+    if (Test-Path $releaseBin) {
+        Write-Ok "voice-core binary found (release build)"
+        return
+    }
+
+    # Check for Rust toolchain to build from source
+    if (Test-Command "cargo") {
+        Write-Info "Building voice-core from source..."
+        Push-Location (Join-Path $InstallDir "voice-core")
+        try {
+            $out = cargo build --release 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-Ok "voice-core built successfully"
+            } else {
+                Write-Warn "voice-core build failed"
             }
+        } catch {
+            Write-Warn "voice-core build failed: $_"
         }
+        Pop-Location
+        return
     }
 
-    Write-Info "Python 3.9+ not found, installing..."
-
-    $winget = Find-Winget
-    if ($winget) {
-        Write-Info "Using winget..."
-        $out = & $winget install --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements 2>&1
-        Refresh-Path
-        if (Test-Command "python") {
-            $v = (python --version 2>&1) -replace '[^0-9.]', ''
-            Write-Ok "Python $v installed"
-            return
-        }
-    }
-
-    if (Test-Command "choco") {
-        Write-Info "Using Chocolatey..."
-        $out = choco install python3 -y 2>&1
-        Refresh-Path
-        if (Test-Command "python") {
-            $v = (python --version 2>&1) -replace '[^0-9.]', ''
-            Write-Ok "Python $v installed via Chocolatey"
-            return
-        }
-    }
-
-    if (Test-Command "scoop") {
-        Write-Info "Using Scoop..."
-        $out = scoop install python 2>&1
-        Refresh-Path
-        if (Test-Command "python") {
-            $v = (python --version 2>&1) -replace '[^0-9.]', ''
-            Write-Ok "Python $v installed via Scoop"
-            return
-        }
-    }
-
-    # Direct download fallback
-    Write-Info "No package manager worked, downloading Python installer..."
-    $pyInstaller = Join-Path $env:TEMP "python-installer.exe"
-    $pyUrl = "https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe"
-    if (Download-File $pyUrl $pyInstaller) {
-        if (Run-Installer $pyInstaller "/quiet InstallAllUsers=0 PrependPath=1 Include_test=0" "Python") {
-            Remove-Item $pyInstaller -ErrorAction SilentlyContinue
-            Refresh-Path
-            if (Test-Command "python") {
-                $v = (python --version 2>&1) -replace '[^0-9.]', ''
-                Write-Ok "Python $v installed"
-                return
-            }
-        }
-        Remove-Item $pyInstaller -ErrorAction SilentlyContinue
-    }
-
-    Write-Fail "Could not install Python. Install manually from https://python.org"
-    exit 1
+    Write-Warn "voice-core binary not found"
+    Write-Info "Install Rust toolchain to build from source: https://rustup.rs"
+    Write-Info "Then run: cd voice-core; cargo build --release"
 }
 
 # ─── Ensure Build Tools ─────────────────────────────────────────────
@@ -597,11 +564,11 @@ Write-Info "Platform: Windows/$arch"
 
 Ensure-Git
 Ensure-Node
-Ensure-Python
 Ensure-BuildTools
 Ensure-FFmpeg
 Ask-InstallDir
 Install-Repo
+Ensure-VoiceCore
 Install-Deps
 Link-CLI
 Run-Setup

@@ -30,6 +30,7 @@ export function getNodeVersion() {
 /**
  * Detect Python 3 binary and version.
  * Returns { binary, version } or null.
+ * @deprecated Python is no longer required — kept for backward compatibility.
  */
 export function detectPython() {
     for (const bin of ['python3', 'python']) {
@@ -42,6 +43,30 @@ export function detectPython() {
         } catch { /* skip */ }
     }
     return null;
+}
+
+/**
+ * Detect if the voice-core binary exists.
+ * Checks packaged location and dev build locations.
+ * Returns true if found, false otherwise.
+ */
+export function detectVoiceCore(projectDir) {
+    const ext = platform() === 'win32' ? '.exe' : '';
+    const binaryName = `voice-core${ext}`;
+
+    // Packaged app: resources/bin/voice-core(.exe)
+    const resourcesBin = join(projectDir, 'resources', 'bin', binaryName);
+    if (existsSync(resourcesBin)) return true;
+
+    // Dev: voice-core/target/release/voice-core(.exe)
+    const releaseBin = join(projectDir, 'voice-core', 'target', 'release', binaryName);
+    if (existsSync(releaseBin)) return true;
+
+    // Dev: voice-core/target/debug/voice-core(.exe)
+    const debugBin = join(projectDir, 'voice-core', 'target', 'debug', binaryName);
+    if (existsSync(debugBin)) return true;
+
+    return false;
 }
 
 /**
@@ -105,6 +130,7 @@ export function detectClaudeCli() {
 
 /**
  * Check Python venv status.
+ * @deprecated Python venv is no longer used — voice-core is a Rust binary.
  */
 export function detectPythonVenv(projectDir) {
     const venvDir = join(projectDir, 'python', '.venv');
@@ -120,37 +146,28 @@ export function detectPythonVenv(projectDir) {
 
 /**
  * Check if pip requirements are installed.
+ * @deprecated Python is no longer used — voice-core is a Rust binary.
  */
 export function checkPipRequirements(venvPython, projectDir) {
-    const reqFile = join(projectDir, 'python', 'requirements.txt');
-    if (!existsSync(reqFile)) return { ok: false, reason: 'requirements.txt not found' };
-
-    try {
-        execFileSync(venvPython, ['-c', 'import openwakeword; import sounddevice'], {
-            stdio: 'ignore',
-            timeout: 10000,
-        });
-        return { ok: true };
-    } catch {
-        return { ok: false, reason: 'missing packages' };
-    }
+    return { ok: false, reason: 'Python backend replaced by voice-core (Rust)' };
 }
 
 /**
  * Check if wake word model exists.
+ * Models are now bundled with or downloaded by voice-core.
  */
 export function detectWakeWordModel(projectDir) {
-    const modelPath = join(projectDir, 'python', 'models', 'hey_claude_v2.onnx');
-    return existsSync(modelPath);
+    // voice-core bundles wake word detection natively
+    return detectVoiceCore(projectDir);
 }
 
 /**
- * Check if TTS models exist (both ONNX model and voices file).
+ * Check if TTS models exist.
+ * TTS is now handled by voice-core (Rust).
  */
 export function detectTTSModel(projectDir) {
-    const modelPath = join(projectDir, 'python', 'kokoro-v1.0.onnx');
-    const voicesPath = join(projectDir, 'python', 'voices-v1.0.bin');
-    return existsSync(modelPath) && existsSync(voicesPath);
+    // voice-core bundles TTS natively
+    return detectVoiceCore(projectDir);
 }
 
 /**

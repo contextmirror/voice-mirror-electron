@@ -154,67 +154,43 @@ ensure_node() {
     fi
 }
 
-# ─── Check/install Python ─────────────────────────────────────────────
-ensure_python() {
-    step "Checking Python..."
+# ─── Check voice-core binary ─────────────────────────────────────────
+ensure_voice_core() {
+    step "Checking voice-core binary..."
 
-    for cmd in python3 python; do
-        if command -v "$cmd" &>/dev/null; then
-            PY_VERSION=$("$cmd" --version 2>&1 | sed 's/[^0-9.]//g' | head -1)
-            PY_MAJOR=$(echo "$PY_VERSION" | cut -d. -f1)
-            PY_MINOR=$(echo "$PY_VERSION" | cut -d. -f2)
+    local binary_name="voice-core"
+    if [[ "$PLATFORM" == "windows" ]]; then
+        binary_name="voice-core.exe"
+    fi
 
-            if [[ "$PY_MAJOR" -ge 3 ]] && [[ "$PY_MINOR" -ge 9 ]]; then
-                PYTHON_BIN="$cmd"
-                ok "Python $PY_VERSION ($cmd)"
-                return 0
-            fi
-        fi
-    done
+    # Check for pre-built binary in expected locations
+    local release_bin="$INSTALL_DIR/voice-core/target/release/$binary_name"
+    local resources_bin="$INSTALL_DIR/resources/bin/$binary_name"
 
-    info "Python 3.9+ not found, installing..."
+    if [[ -f "$resources_bin" ]]; then
+        ok "voice-core binary found (packaged)"
+        return 0
+    fi
 
-    if [[ "$PLATFORM" == "macos" ]] && command -v brew &>/dev/null; then
-        brew install python@3.12
-    elif [[ "$PLATFORM" == "windows" ]]; then
-        if command -v winget &>/dev/null; then
-            info "Using winget..."
-            winget install --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements
-        elif command -v choco &>/dev/null; then
-            info "Using Chocolatey..."
-            # Pin to specific version for reproducibility; the installed version
-            # is verified below.
-            choco install python3 --version=3.12.9 -y
-        elif command -v scoop &>/dev/null; then
-            info "Using Scoop..."
-            scoop install python
+    if [[ -f "$release_bin" ]]; then
+        ok "voice-core binary found (release build)"
+        return 0
+    fi
+
+    # Check for Rust toolchain to build from source
+    if command -v cargo &>/dev/null; then
+        info "Building voice-core from source..."
+        if (cd "$INSTALL_DIR/voice-core" && cargo build --release 2>&1 | tail -1); then
+            ok "voice-core built successfully"
+            return 0
         else
-            fail "Install Python from https://python.org"
-            exit 1
-        fi
-        export PATH="$PATH:/c/Python312:/c/Python312/Scripts:$LOCALAPPDATA/Programs/Python/Python312:$LOCALAPPDATA/Programs/Python/Python312/Scripts"
-    elif [[ "$PLATFORM" == "linux" ]]; then
-        if command -v apt-get &>/dev/null; then
-            sudo apt-get update && sudo apt-get install -y python3 python3-venv python3-pip
-        elif command -v dnf &>/dev/null; then
-            sudo dnf install -y python3 python3-pip
-        elif command -v pacman &>/dev/null; then
-            sudo pacman -S --noconfirm python python-pip
+            warn "voice-core build failed"
         fi
     fi
 
-    # Verify
-    for cmd in python3 python; do
-        if command -v "$cmd" &>/dev/null; then
-            PY_VERSION=$("$cmd" --version 2>&1 | sed 's/[^0-9.]//g' | head -1)
-            PYTHON_BIN="$cmd"
-            ok "Python $PY_VERSION installed"
-            return 0
-        fi
-    done
-
-    fail "Could not install Python 3.9+. Install manually."
-    exit 1
+    warn "voice-core binary not found"
+    info "Install Rust toolchain to build from source: https://rustup.rs"
+    info "Then run: cd voice-core && cargo build --release"
 }
 
 # ─── Check git ─────────────────────────────────────────────────────────
@@ -284,25 +260,32 @@ ensure_ffmpeg() {
     fi
 }
 
-# ─── Ensure audio system libs (needed for sounddevice/PortAudio) ──────
+# ─── Ensure audio system libs (needed for voice-core/ALSA) ───────────
 ensure_audio_libs() {
     if [[ "$PLATFORM" != "linux" ]]; then
-        return  # macOS/Windows bundle PortAudio in the Python wheel
+        return  # macOS/Windows handle audio natively
     fi
 
-    # Check if libportaudio is already available
-    if ldconfig -p 2>/dev/null | grep -q libportaudio; then
-        return
+    step "Checking audio libraries..."
+
+    local missing=false
+
+    # Check for ALSA dev headers (needed to build voice-core from source)
+    if ! ldconfig -p 2>/dev/null | grep -q libasound; then
+        missing=true
     fi
 
-    step "Installing audio libraries..."
-
-    if command -v apt-get &>/dev/null; then
-        sudo apt-get install -y libportaudio2 >/dev/null 2>&1 && ok "PortAudio installed" || warn "Could not install libportaudio2"
-    elif command -v dnf &>/dev/null; then
-        sudo dnf install -y portaudio >/dev/null 2>&1 && ok "PortAudio installed" || warn "Could not install portaudio"
-    elif command -v pacman &>/dev/null; then
-        sudo pacman -S --noconfirm portaudio >/dev/null 2>&1 && ok "PortAudio installed" || warn "Could not install portaudio"
+    if [[ "$missing" == "true" ]]; then
+        info "Installing audio libraries..."
+        if command -v apt-get &>/dev/null; then
+            sudo apt-get install -y libasound2-dev >/dev/null 2>&1 && ok "ALSA dev installed" || warn "Could not install libasound2-dev"
+        elif command -v dnf &>/dev/null; then
+            sudo dnf install -y alsa-lib-devel >/dev/null 2>&1 && ok "ALSA dev installed" || warn "Could not install alsa-lib-devel"
+        elif command -v pacman &>/dev/null; then
+            sudo pacman -S --noconfirm alsa-lib >/dev/null 2>&1 && ok "ALSA dev installed" || warn "Could not install alsa-lib"
+        fi
+    else
+        ok "Audio libraries available"
     fi
 }
 
@@ -416,10 +399,10 @@ main() {
 
     ensure_git
     ensure_node
-    ensure_python
     ensure_ffmpeg
     ensure_audio_libs
     install_repo
+    ensure_voice_core
     install_deps
     link_cli
     run_setup

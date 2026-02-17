@@ -5,14 +5,10 @@
 import chalk from 'chalk';
 import {
     getNodeVersion,
-    detectPython,
     detectPlatform,
     detectOllama,
     detectClaudeCli,
-    detectPythonVenv,
-    checkPipRequirements,
-    detectWakeWordModel,
-    detectTTSModel,
+    detectVoiceCore,
     detectMCPServerDeps,
     readExistingConfig,
     getConfigPath,
@@ -53,30 +49,11 @@ export async function runDoctor() {
     const plat = detectPlatform();
     pass(`Platform: ${plat.os}/${plat.arch} (${plat.display})`);
 
-    // Python
-    const python = detectPython();
-    if (python) {
-        pass(`Python ${python.version}`);
+    // voice-core binary
+    if (detectVoiceCore(PROJECT_DIR)) {
+        pass('voice-core binary found');
     } else {
-        fail('Python 3 not found', 'Install Python 3.9+ and ensure it\'s on PATH');
-        issues++;
-    }
-
-    // Python venv
-    const venv = detectPythonVenv(PROJECT_DIR);
-    if (venv.exists && venv.binExists) {
-        pass('Python venv exists');
-
-        // Pip requirements
-        const pip = checkPipRequirements(venv.binary, PROJECT_DIR);
-        if (pip.ok) {
-            pass('pip requirements installed');
-        } else {
-            fail('pip requirements missing', `Run: ${venv.binary} -m pip install -r python/requirements.txt`);
-            issues++;
-        }
-    } else {
-        fail('Python venv not found', 'Run: voice-mirror setup');
+        fail('voice-core binary not found', 'Build with: cd voice-core && cargo build --release');
         issues++;
     }
 
@@ -106,22 +83,6 @@ export async function runDoctor() {
         }
     } else {
         warn('Ollama not installed (optional — needed for local LLM)');
-    }
-
-    // Wake word model
-    if (detectWakeWordModel(PROJECT_DIR)) {
-        pass('Wake word model found');
-    } else {
-        fail('Wake word model missing', 'Expected at python/models/hey_claude_v2.onnx');
-        issues++;
-    }
-
-    // TTS model
-    if (detectTTSModel(PROJECT_DIR)) {
-        pass('TTS model found (Kokoro)');
-    } else {
-        fail('TTS model missing', 'Expected at python/kokoro-v1.0.onnx');
-        issues++;
     }
 
     // MCP server deps

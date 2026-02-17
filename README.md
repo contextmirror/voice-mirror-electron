@@ -161,12 +161,9 @@ git clone https://github.com/contextmirror/voice-mirror-electron.git
 cd voice-mirror-electron
 npm install
 
-# Python backend
-cd python
-python -m venv .venv
-source .venv/bin/activate   # Linux/macOS
-# .venv\Scripts\activate    # Windows
-pip install -r requirements.txt
+# Build voice-core (Rust backend for STT, TTS, wake word)
+cd voice-core
+cargo build --release
 cd ..
 
 # Launch
@@ -176,7 +173,7 @@ npm start
 ### Requirements
 
 - **Node.js** 18+
-- **Python** 3.9+
+- **Rust toolchain** (for building voice-core from source) or pre-built binary from releases
 - **Claude Code CLI** (for Claude provider) or **OpenCode** (for 75+ models — auto-install available from settings)
 - **ffmpeg** (for voice cloning)
 - **CUDA** (optional — GPU acceleration for Qwen3-TTS)
@@ -198,7 +195,7 @@ Or from within the app:
 voice-mirror uninstall
 ```
 
-Removes shortcuts, npm link, and optionally config/data. Does not remove Node.js, Python, or Git.
+Removes shortcuts, npm link, and optionally config/data. Does not remove Node.js, Rust, or Git.
 
 ---
 
@@ -240,7 +237,7 @@ voice-mirror-electron/
 │   ├── browser/           # CDP browser automation (9 modules)
 │   ├── tools/             # Tool system for local LLMs (4 tools)
 │   └── renderer/          # Renderer JS (15 files) + CSS (10 files)
-├── python/                # Voice backend (STT, TTS, wake word)
+├── voice-core/            # Rust voice backend (STT, TTS, wake word, VAD)
 ├── mcp-server/            # MCP server (58 tools, 10 groups)
 ├── wayland-orb/           # Rust native overlay (Linux/Wayland)
 ├── chrome-extension/      # Browser relay extension (MV3)
@@ -321,5 +318,5 @@ npm test
 ---
 
 <p align="center">
-  <sub>Built with Electron, Python, and a lot of voice commands.</sub>
+  <sub>Built with Electron, Rust, and a lot of voice commands.</sub>
 </p>
