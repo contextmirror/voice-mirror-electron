@@ -129,6 +129,11 @@ class VoiceMirror:
         self._ptt_action: str | None = None  # Set by main loop from check_ptt_trigger()
         self._dictation_action: str | None = None  # Set by main loop from check_dictation_trigger()
 
+        # Startup phase flag — hooks are paused during startup TTS to prevent
+        # mouse lag from GIL contention. Cleared after first speak() so PTT
+        # can interrupt regular responses.
+        self._startup_phase = True
+
         # Deferred model loading state
         self._stt_settings: dict = {}  # STT kwargs saved from load_models
         self._tts_settings: dict = {}  # TTS kwargs saved from load_models
@@ -543,18 +548,22 @@ class VoiceMirror:
                 self.audio_state.conversation_end_time = time.time() + CONVERSATION_WINDOW
                 print(f"[CHAT] Conversation mode active ({CONVERSATION_WINDOW}s window - speak without wake word)")
 
-        # Pause pynput hooks during TTS synthesis to prevent mouse lag.
+        # During startup, pause pynput hooks during TTS to prevent mouse lag.
         # Kokoro's ONNX inference (model.create) in run_in_executor holds
         # the GIL intermittently, blocking pynput's WH_MOUSE_LL hook
         # callbacks and causing system-wide cursor stutter.
-        hotkey = getattr(self, '_hotkey_listener', None)
-        hooks_paused = hotkey is not None and getattr(hotkey, '_running', False)
-        if hooks_paused:
-            hotkey.pause()
+        # After startup, keep hooks active so PTT can interrupt TTS.
+        hooks_paused = False
+        if self._startup_phase:
+            hotkey = getattr(self, '_hotkey_listener', None)
+            if hotkey and getattr(hotkey, '_running', False):
+                hotkey.pause()
+                hooks_paused = True
+            self._startup_phase = False
         try:
             await self.tts.speak(text, on_start=on_speech_start, on_end=on_speech_end)
         finally:
-            if hooks_paused and hotkey:
+            if hooks_paused:
                 hotkey.resume()
 
     async def transcribe(self, audio_data: np.ndarray) -> str:
@@ -961,17 +970,6 @@ class VoiceMirror:
                         self.audio_state.enter_conversation_mode(CONVERSATION_WINDOW)
                         print(f"[CHAT] Conversation mode active ({CONVERSATION_WINDOW}s window)")
 
-                # Hook pause/resume closures for notification watcher TTS
-                def _pause_hooks():
-                    h = getattr(self, '_hotkey_listener', None)
-                    if h and getattr(h, '_running', False):
-                        h.pause()
-
-                def _resume_hooks():
-                    h = getattr(self, '_hotkey_listener', None)
-                    if h and not getattr(h, '_running', True):
-                        h.resume()
-
                 notification_watcher = NotificationWatcher(
                     inbox=self.inbox,
                     tts=lambda: self.tts,
@@ -984,8 +982,6 @@ class VoiceMirror:
                     get_ai_provider_name=lambda: self._ai_provider['name'],
                     on_speech_start=on_notification_speech_start,
                     on_speech_end=on_notification_speech_end,
-                    pause_hooks=_pause_hooks,
-                    resume_hooks=_resume_hooks,
                 )
                 notification_task = asyncio.create_task(notification_watcher.run())
 
