@@ -106,12 +106,67 @@ mod inner {
             *self.voice.lock().unwrap() = voice.to_string();
         }
 
+        /// Find espeak-ng executable.
+        /// Checks: PATH first, then bundled tools/espeak-ng/ relative to the binary.
+        fn find_espeak_ng() -> Option<(PathBuf, Option<PathBuf>)> {
+            // 1. Check if espeak-ng is on PATH
+            if let Ok(output) = Command::new("espeak-ng").arg("--version").output() {
+                if output.status.success() {
+                    return Some((PathBuf::from("espeak-ng"), None));
+                }
+            }
+
+            // 2. Check bundled location: relative to current exe
+            //    Binary is at <project>/voice-core/target/release/voice-core.exe
+            //    Tools are at <project>/tools/espeak-ng/espeak-ng.exe
+            //    ESPEAK_DATA_PATH should point to the dir *containing* espeak-ng-data/
+            if let Ok(exe_path) = std::env::current_exe() {
+                // Walk up from binary to find project root
+                let mut dir = exe_path.parent();
+                for _ in 0..5 {
+                    if let Some(d) = dir {
+                        let tools_dir = d.join("tools").join("espeak-ng");
+                        let tools_exe = tools_dir.join("espeak-ng.exe");
+                        if tools_exe.exists() {
+                            // ESPEAK_DATA_PATH = parent of espeak-ng-data (i.e. tools/espeak-ng/)
+                            return Some((tools_exe, Some(tools_dir)));
+                        }
+                        dir = d.parent();
+                    }
+                }
+            }
+
+            // 3. Check packaged location: resources/bin/espeak-ng/
+            if let Ok(exe_path) = std::env::current_exe() {
+                if let Some(exe_dir) = exe_path.parent() {
+                    let pkg_dir = exe_dir.join("espeak-ng");
+                    let packaged = pkg_dir.join("espeak-ng.exe");
+                    if packaged.exists() {
+                        return Some((packaged, Some(pkg_dir)));
+                    }
+                }
+            }
+
+            None
+        }
+
         /// Convert text to IPA phonemes using espeak-ng CLI.
         fn phonemize(text: &str, lang: &str) -> anyhow::Result<String> {
-            let output = Command::new("espeak-ng")
-                .args(["--ipa", "-q", "-v", lang])
-                .arg(text)
-                .output();
+            let (espeak_bin, data_path) = Self::find_espeak_ng().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "espeak-ng not found. Install espeak-ng or place it in tools/espeak-ng/"
+                )
+            })?;
+
+            let mut cmd = Command::new(&espeak_bin);
+            cmd.args(["--ipa", "-q", "-v", lang]).arg(text);
+
+            // Set ESPEAK_DATA_PATH if we found bundled data
+            if let Some(ref data) = data_path {
+                cmd.env("ESPEAK_DATA_PATH", data);
+            }
+
+            let output = cmd.output();
 
             match output {
                 Ok(out) if out.status.success() => {
@@ -127,7 +182,8 @@ mod inner {
                 }
                 Err(e) => {
                     anyhow::bail!(
-                        "espeak-ng not found. Install espeak-ng for local Kokoro TTS. Error: {}",
+                        "espeak-ng at {} failed to execute: {}",
+                        espeak_bin.display(),
                         e
                     );
                 }

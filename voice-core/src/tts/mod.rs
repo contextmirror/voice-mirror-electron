@@ -48,11 +48,11 @@ pub fn create_tts_engine(
                     }
                     Ok(Box::new(engine))
                 }
-                Err(_) => {
+                Err(e) => {
                     // Kokoro unavailable (no onnx feature or missing models), fall back to Edge TTS
-                    tracing::warn!("Kokoro TTS unavailable, falling back to Edge TTS");
-                    let v = voice.unwrap_or("en-US-AriaNeural");
-                    Ok(Box::new(cloud::EdgeTts::new(v)))
+                    tracing::warn!("Kokoro TTS unavailable: {} — falling back to Edge TTS", e);
+                    // Always use an Edge-compatible voice name (Kokoro voice names like af_bella are invalid for Edge)
+                    Ok(Box::new(cloud::EdgeTts::new("en-US-AriaNeural")))
                 }
             }
         }

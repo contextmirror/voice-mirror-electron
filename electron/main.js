@@ -345,7 +345,7 @@ if (isLinux) {
 
 
 // App lifecycle
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
     // Initialize file logging
     logger.init();
 
@@ -784,7 +784,7 @@ app.whenReady().then(() => {
         }
 
         // Write voice_settings.json BEFORE spawning voice-core so it loads correct TTS/STT config
-        voiceBackend.syncVoiceSettings(appConfig);
+        await voiceBackend.syncVoiceSettings(appConfig);
 
         startVoiceBackendService();
 

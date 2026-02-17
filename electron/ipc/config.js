@@ -222,6 +222,8 @@ function registerConfigHandlers(ctx, validators) {
             (updates.voice && JSON.stringify(updates.voice) !== JSON.stringify(oldVoice));
         if (voiceSettingsChanged && ctx.getVoiceBackend()?.isRunning()) {
             const currentConfig = ctx.getAppConfig();
+            // Sync settings file so voice-core reads correct config on restart
+            ctx.getVoiceBackend().syncVoiceSettings(currentConfig);
             ctx.sendToVoiceBackend({
                 command: 'config_update',
                 config: {

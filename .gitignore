@@ -69,6 +69,10 @@ coverage/
 
 # Rust
 wayland-orb/target/
+voice-core/target/
+
+# Bundled tools (downloaded, not committed)
+tools/espeak-ng/
 
 # Python
 python/.venv
