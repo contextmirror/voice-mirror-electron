@@ -530,9 +530,6 @@ export function buildAppearanceSaveData() {
     const colorsCustomized = state._themeCustomized ||
         Object.keys(preset.colors).some(k => currentColors[k] !== preset.colors[k]);
 
-    const fontsCustomized = currentFonts.fontFamily !== preset.fonts.fontFamily ||
-        currentFonts.fontMono !== preset.fonts.fontMono;
-
     // Message card -- only save if customized from defaults
     let messageCard = null;
     const msgFontSize = document.getElementById('msg-font-size');
@@ -575,7 +572,7 @@ export function buildAppearanceSaveData() {
         orbSize: parseInt(document.getElementById('orb-size').value),
         theme: themeName,
         colors: colorsCustomized ? currentColors : null,
-        fonts: fontsCustomized ? currentFonts : null,
+        fonts: currentFonts,
         messageCard,
     };
 }
