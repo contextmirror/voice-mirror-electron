@@ -56,13 +56,7 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         getPlatformInfo: () => ipcRenderer.invoke('get-platform-info'),
 
         // Browse for a model file (returns { success, data: filePath })
-        browseModelFile: (fileType) => ipcRenderer.invoke('browse-model-file', fileType),
-
-        // Check if a pip package is installed in the Python venv
-        checkPipPackage: (packageName) => ipcRenderer.invoke('check-pip-package', packageName),
-
-        // Install a pip package into the Python venv
-        installPipPackage: (packageName) => ipcRenderer.invoke('install-pip-package', packageName)
+        browseModelFile: (fileType) => ipcRenderer.invoke('browse-model-file', fileType)
     },
 
     // Overlay (Wayland orb) controls
@@ -85,7 +79,7 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         getDataUrl: (fontId) => ipcRenderer.invoke('font-get-data-url', fontId),
     },
 
-    // Send image to Python backend for Claude vision
+    // Send image to voice backend for Claude vision
     sendImageToBackend: (imageData) => ipcRenderer.invoke('send-image', imageData),
 
     // Listen for chat messages (transcriptions and responses)
@@ -95,31 +89,17 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         return () => ipcRenderer.removeListener('chat-message', handler);
     },
 
-    // Python backend control
-    python: {
-        // Send a text/image query to Python
+    // Voice backend control (Rust voice-core process)
+    voice: {
         sendQuery: (query) => ipcRenderer.invoke('send-query', query),
-
-        // Set voice mode (auto, local, claude)
         setMode: (mode) => ipcRenderer.invoke('set-voice-mode', mode),
-
-        // Get Python process status
-        getStatus: () => ipcRenderer.invoke('get-python-status'),
-
-        // Start Python backend
-        start: () => ipcRenderer.invoke('start-python'),
-
-        // Stop Python backend
-        stop: () => ipcRenderer.invoke('stop-python'),
-
-        // Restart Python backend (manual retry after failures)
-        restart: () => ipcRenderer.invoke('python-restart'),
-
-        // List available audio input/output devices
+        getStatus: () => ipcRenderer.invoke('get-voice-status'),
+        start: () => ipcRenderer.invoke('start-voice'),
+        stop: () => ipcRenderer.invoke('stop-voice'),
+        restart: () => ipcRenderer.invoke('voice-restart'),
         listAudioDevices: () => ipcRenderer.invoke('list-audio-devices'),
-
-        // Get provider names with auto-detected API keys (names only, not values)
-        getDetectedKeys: () => ipcRenderer.invoke('get-detected-keys')
+        getDetectedKeys: () => ipcRenderer.invoke('get-detected-keys'),
+        stopSpeaking: () => ipcRenderer.invoke('stop-speaking')
     },
 
     // Claude Code backend control
@@ -191,8 +171,6 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         // Update a specific dependency
         updateDependency: (depId) => ipcRenderer.invoke('update-dependency', depId),
 
-        // Update all pip packages in Python venv
-        updatePipPackages: () => ipcRenderer.invoke('update-pip-packages')
     },
 
     // Tool events (for local LLM tool system)
@@ -297,6 +275,7 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         return () => ipcRenderer.removeListener('update-status', handler);
     },
     applyUpdate: () => ipcRenderer.invoke('apply-update'),
+    installUpdate: () => ipcRenderer.invoke('install-update'),
     relaunch: () => ipcRenderer.invoke('app-relaunch'),
 
     // Hotkey fallback — renderer sends this when it detects the hotkey via DOM keydown

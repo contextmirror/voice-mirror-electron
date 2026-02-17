@@ -62,7 +62,6 @@ const ADAPTER_REGISTRY = {
     piper: {
         label: 'Piper (Local, lightweight, ~50MB)',
         category: 'local',
-        pipPackage: 'piper-tts',
         voices: [
             { value: 'en_US-amy-medium', label: 'Amy (US Female)' },
             { value: 'en_US-lessac-medium', label: 'Lessac (US Male)' },
@@ -79,7 +78,6 @@ const ADAPTER_REGISTRY = {
     edge: {
         label: 'Edge TTS (Free cloud, Microsoft)',
         category: 'cloud-free',
-        pipPackage: 'edge-tts',
         voices: [
             { value: 'en-US-AriaNeural', label: 'Aria (US Female)' },
             { value: 'en-US-GuyNeural', label: 'Guy (US Male)' },
@@ -96,7 +94,6 @@ const ADAPTER_REGISTRY = {
     'openai-tts': {
         label: 'OpenAI TTS (Cloud, API key required)',
         category: 'cloud-paid',
-        pipPackage: 'openai',
         voices: [
             { value: 'alloy', label: 'Alloy' },
             { value: 'echo', label: 'Echo' },
@@ -114,7 +111,6 @@ const ADAPTER_REGISTRY = {
     elevenlabs: {
         label: 'ElevenLabs (Cloud, premium)',
         category: 'cloud-paid',
-        pipPackage: 'elevenlabs',
         voices: [
             { value: 'Rachel', label: 'Rachel' },
             { value: 'Domi', label: 'Domi' },
@@ -147,32 +143,23 @@ const ADAPTER_REGISTRY = {
 // ── STT Adapter Registry ─────────────────────────────────────────────────────
 
 const STT_REGISTRY = {
-    parakeet: {
-        label: 'Parakeet (Fast, default)',
+    'whisper-local': {
+        label: 'Whisper (Local, default)',
         category: 'local',
+        showModelSize: true,
+        modelSizes: [
+            { value: 'tiny', label: 'tiny.en (~77MB, fastest)' },
+            { value: 'base', label: 'base.en (~148MB, recommended)' },
+            { value: 'small', label: 'small.en (~488MB, most accurate)' }
+        ],
         showModelName: false,
-        showApiKey: false,
-        showEndpoint: false
-    },
-    whisper: {
-        label: 'Whisper (Accurate)',
-        category: 'local',
-        showModelName: true,
-        showApiKey: false,
-        showEndpoint: false
-    },
-    'faster-whisper': {
-        label: 'Faster-Whisper (GPU accelerated)',
-        category: 'local',
-        pipPackage: 'faster-whisper',
-        showModelName: true,
         showApiKey: false,
         showEndpoint: false
     },
     'openai-whisper-api': {
         label: 'OpenAI Whisper API',
         category: 'cloud-paid',
-        pipPackage: 'openai',
+        showModelSize: false,
         showModelName: false,
         showApiKey: true,
         showEndpoint: false
@@ -180,6 +167,7 @@ const STT_REGISTRY = {
     'custom-api-stt': {
         label: 'Custom API (OpenAI-compatible)',
         category: 'cloud-custom',
+        showModelSize: false,
         showModelName: false,
         showApiKey: true,
         showEndpoint: true
@@ -282,15 +270,34 @@ export function updateTTSAdapterUI(adapter) {
  * Shows/hides conditional fields based on the registry entry.
  */
 export function updateSTTAdapterUI(adapter) {
-    const reg = STT_REGISTRY[adapter] || STT_REGISTRY.parakeet;
+    const reg = STT_REGISTRY[adapter] || STT_REGISTRY['whisper-local'];
 
+    reg.showModelSize ? showRow('stt-model-size-row') : hideRow('stt-model-size-row');
     reg.showModelName ? showRow('stt-model-name-row') : hideRow('stt-model-name-row');
     reg.showApiKey ? showRow('stt-api-key-row') : hideRow('stt-api-key-row');
     reg.showEndpoint ? showRow('stt-endpoint-row') : hideRow('stt-endpoint-row');
+
+    // Populate model size dropdown if registry provides sizes
+    if (reg.showModelSize && reg.modelSizes) {
+        const sizeSelect = document.getElementById('stt-model-size');
+        if (sizeSelect) {
+            const currentSize = sizeSelect.value;
+            sizeSelect.innerHTML = '';
+            for (const size of reg.modelSizes) {
+                const option = document.createElement('option');
+                option.value = size.value;
+                option.textContent = size.label;
+                sizeSelect.appendChild(option);
+            }
+            if (reg.modelSizes.some(s => s.value === currentSize)) {
+                sizeSelect.value = currentSize;
+            }
+        }
+    }
 }
 
 /**
- * Load available audio devices from Python backend
+ * Load available audio devices from voice backend
  */
 async function loadAudioDevices() {
     const inputSelect = document.getElementById('audio-input-device');
@@ -298,7 +305,7 @@ async function loadAudioDevices() {
     if (!inputSelect || !outputSelect) return;
 
     try {
-        const devicesResult = await window.voiceMirror.python.listAudioDevices();
+        const devicesResult = await window.voiceMirror.voice.listAudioDevices();
         const devices = devicesResult.data;
         if (!devices) return;
 
@@ -385,9 +392,13 @@ export async function loadVoiceSettingsUI() {
     if (modelPathEl) modelPathEl.value = state.currentConfig.voice?.ttsModelPath || '';
 
     // STT settings
-    const sttAdapter = state.currentConfig.voice?.sttAdapter || state.currentConfig.voice?.sttModel || 'parakeet';
+    const sttAdapter = state.currentConfig.voice?.sttAdapter || state.currentConfig.voice?.sttModel || 'whisper-local';
     document.getElementById('stt-model').value = sttAdapter;
     updateSTTAdapterUI(sttAdapter);
+
+    // STT model size
+    const sttModelSizeEl = document.getElementById('stt-model-size');
+    if (sttModelSizeEl) sttModelSizeEl.value = state.currentConfig.voice?.sttModelSize || 'base';
 
     // STT extra fields
     const sttModelNameEl = document.getElementById('stt-model-name');
@@ -404,71 +415,6 @@ export async function loadVoiceSettingsUI() {
 
     // Audio devices
     await loadAudioDevices();
-}
-
-/**
- * Ensure required pip packages are installed for the selected TTS/STT adapters.
- * Prompts the user for confirmation before installing.
- * Returns true if all deps are satisfied, false if the user cancelled.
- */
-export async function ensureAdapterDeps() {
-    const ttsAdapter = document.getElementById('tts-adapter').value;
-    const sttAdapter = document.getElementById('stt-model').value;
-
-    const ttsReg = ADAPTER_REGISTRY[ttsAdapter];
-    const sttReg = STT_REGISTRY[sttAdapter];
-
-    // Collect packages that need checking
-    const toCheck = [];
-    if (ttsReg?.pipPackage) toCheck.push({ name: ttsReg.pipPackage, adapter: ttsReg.label, type: 'TTS' });
-    if (sttReg?.pipPackage) toCheck.push({ name: sttReg.pipPackage, adapter: sttReg.label, type: 'STT' });
-
-    // Deduplicate (e.g. openai used by both TTS and STT)
-    const seen = new Set();
-    const unique = toCheck.filter(p => {
-        if (seen.has(p.name)) return false;
-        seen.add(p.name);
-        return true;
-    });
-
-    for (const pkg of unique) {
-        try {
-            const result = await window.voiceMirror.config.checkPipPackage(pkg.name);
-            if (result.success && result.installed) continue;
-
-            // Package not installed — ask user
-            const install = confirm(
-                `${pkg.type} engine "${pkg.adapter}" requires the "${pkg.name}" Python package.\n\n` +
-                `Install it now? This may take a moment.`
-            );
-            if (!install) return false;
-
-            // Show installing state
-            const saveBtn = document.querySelector('.settings-btn.primary');
-            const originalText = saveBtn?.textContent;
-            if (saveBtn) {
-                saveBtn.textContent = `Installing ${pkg.name}...`;
-                saveBtn.disabled = true;
-            }
-
-            try {
-                const installResult = await window.voiceMirror.config.installPipPackage(pkg.name);
-                if (!installResult.success) {
-                    alert(`Failed to install "${pkg.name}":\n${installResult.error}\n\nYou can install it manually: pip install ${pkg.name}`);
-                    return false;
-                }
-            } finally {
-                if (saveBtn) {
-                    saveBtn.textContent = originalText;
-                    saveBtn.disabled = false;
-                }
-            }
-        } catch (err) {
-            log.info(`Pip package check failed for ${pkg.name}:`, err);
-        }
-    }
-
-    return true;
 }
 
 /**
@@ -512,6 +458,7 @@ export function collectVoiceSaveData() {
             ttsModelPath: document.getElementById('tts-model-path')?.value || null,
             sttModel: document.getElementById('stt-model').value,
             sttAdapter: document.getElementById('stt-model').value,
+            sttModelSize: document.getElementById('stt-model-size')?.value || null,
             sttApiKey: document.getElementById('stt-api-key')?.value || null,
             sttEndpoint: document.getElementById('stt-endpoint')?.value || null,
             sttModelName: document.getElementById('stt-model-name')?.value || null,

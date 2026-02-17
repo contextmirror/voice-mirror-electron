@@ -9,7 +9,6 @@ git clone https://github.com/contextmirror/voice-mirror-electron.git
 cd voice-mirror-electron
 npm install
 cd mcp-server && npm install && cd ..
-cd python && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && cd ..
 npm start
 ```
 
@@ -28,12 +27,6 @@ npm start
 - **IPC handlers** return `{ success: boolean, data?: any, error?: string }`
 - **Logging** via `createLogger()` — no raw `console.log` in Electron code
 - **MCP tool responses** return `{ ok: boolean, action: string, result?: any, error?: string }`
-
-### Python (Voice Backend)
-
-- Python 3.9+ required
-- Code lives in `python/` with its own virtual environment
-- Changes to the Python backend should consider the `inbox.json` bridge shared with Electron
 
 ### General
 

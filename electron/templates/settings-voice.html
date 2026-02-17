@@ -117,9 +117,7 @@
             <label>STT Model</label>
             <select id="stt-model">
                 <optgroup label="Local (runs on your machine)">
-                    <option value="parakeet">Parakeet (Fast, default)</option>
-                    <option value="whisper">Whisper (Accurate)</option>
-                    <option value="faster-whisper">Faster-Whisper (GPU accelerated)</option>
+                    <option value="whisper-local">Whisper (Local, default)</option>
                 </optgroup>
                 <optgroup label="Cloud (API key required)">
                     <option value="openai-whisper-api">OpenAI Whisper API</option>
@@ -127,15 +125,18 @@
                 </optgroup>
             </select>
         </div>
-        <div class="setting-row" id="stt-model-name-row" style="display: none;">
+        <div class="setting-row" id="stt-model-size-row">
             <label>Model Size</label>
+            <select id="stt-model-size">
+                <option value="tiny">tiny.en (~77MB, fastest)</option>
+                <option value="base" selected>base.en (~148MB, recommended)</option>
+                <option value="small">small.en (~488MB, most accurate)</option>
+            </select>
+        </div>
+        <div class="setting-row" id="stt-model-name-row" style="display: none;">
+            <label>Model Name</label>
             <select id="stt-model-name">
                 <option value="">Default</option>
-                <option value="tiny">Tiny (~75MB)</option>
-                <option value="base">Base (~150MB)</option>
-                <option value="small">Small (~500MB)</option>
-                <option value="medium">Medium (~1.5GB)</option>
-                <option value="large-v3">Large-v3 (~3GB)</option>
             </select>
         </div>
         <div class="setting-row" id="stt-api-key-row" style="display: none;">

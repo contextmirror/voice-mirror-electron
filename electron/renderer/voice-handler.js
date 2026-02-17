@@ -1,6 +1,6 @@
 /**
  * voice-handler.js - Voice event handling
- * Processes voice state changes from the Python backend and updates UI accordingly.
+ * Processes voice state changes from the voice backend and updates UI accordingly.
  */
 
 import { createLog } from './log.js';
@@ -18,7 +18,7 @@ const statusIndicator = document.getElementById('status-indicator');
 const statusText = document.getElementById('status-text');
 
 /**
- * Handle voice events from Python backend
+ * Handle voice events from voice backend
  */
 export function handleVoiceEvent(data) {
     log.debug('Voice event:', data);
@@ -91,6 +91,10 @@ export function handleVoiceEvent(data) {
             setAIStatus('Speaking...', true, 0, 'voice');
             break;
         case 'idle':
+            // Don't downgrade from recording/dictating (e.g. PTT interrupted TTS —
+            // speaking_end arrives after recording already started)
+            if (statusIndicator.className === 'recording' ||
+                statusIndicator.className === 'dictating') break;
             setOrbState('idle');
             statusIndicator.className = '';
             statusText.textContent = 'Listening...';
@@ -99,7 +103,7 @@ export function handleVoiceEvent(data) {
             break;
         case 'claude_message':
             // Claude responded via inbox — transition to idle after a short delay
-            // (gives Python TTS time to claim 'speaking' state if notifications are on)
+            // (gives TTS time to claim 'speaking' state if notifications are on)
             setTimeout(() => {
                 if (statusText.textContent === 'Processing...') {
                     setOrbState('idle');

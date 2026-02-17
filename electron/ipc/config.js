@@ -9,7 +9,6 @@
 const { app, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { execFile } = require('child_process');
 const fontManager = require('../services/font-manager');
 const { CLI_PROVIDERS } = require('../constants');
 
@@ -201,7 +200,7 @@ function registerConfigHandlers(ctx, validators) {
             }
         }
 
-        // Dictation key is handled by Python's GlobalHotkeyListener (forwarded via config_update below)
+        // Dictation key is handled by the voice backend (forwarded via config_update below)
 
         // Forward overlay output change to wayland orb (only if actually changed)
         const waylandOrb = ctx.getWaylandOrb();
@@ -213,7 +212,7 @@ function registerConfigHandlers(ctx, validators) {
             }
         }
 
-        // Notify Python backend of config changes (only if voice-related settings changed)
+        // Notify voice backend of config changes (only if voice-related settings changed)
         const activationModeChanged = updates.behavior?.activationMode !== undefined && updates.behavior.activationMode !== oldActivationMode;
         const pttKeyChanged = updates.behavior?.pttKey !== undefined && updates.behavior.pttKey !== oldPttKey;
         const dictationKeyChanged = updates.behavior?.dictationKey !== undefined && updates.behavior.dictationKey !== oldDictationKey;
@@ -221,9 +220,11 @@ function registerConfigHandlers(ctx, validators) {
         const voiceSettingsChanged = activationModeChanged || pttKeyChanged || dictationKeyChanged || userNameChanged ||
             (updates.wakeWord && JSON.stringify(updates.wakeWord) !== JSON.stringify(oldWakeWord)) ||
             (updates.voice && JSON.stringify(updates.voice) !== JSON.stringify(oldVoice));
-        if (voiceSettingsChanged && ctx.getPythonBackend()?.isRunning()) {
+        if (voiceSettingsChanged && ctx.getVoiceBackend()?.isRunning()) {
             const currentConfig = ctx.getAppConfig();
-            ctx.sendToPython({
+            // Sync settings file so voice-core reads correct config on restart
+            ctx.getVoiceBackend().syncVoiceSettings(currentConfig);
+            ctx.sendToVoiceBackend({
                 command: 'config_update',
                 config: {
                     activationMode: currentConfig.behavior?.activationMode,
@@ -274,57 +275,6 @@ function registerConfigHandlers(ctx, validators) {
         });
         if (canceled || !filePaths?.length) return { success: false };
         return { success: true, data: filePaths[0] };
-    });
-
-    // Check if a Python pip package is installed in the venv
-    ipcMain.handle('check-pip-package', async (_event, packageName) => {
-        if (typeof packageName !== 'string' || packageName.length > 100) {
-            return { success: false, error: 'Invalid package name' };
-        }
-        try {
-            const pythonDir = path.join(__dirname, '..', '..', 'python');
-            const isWindows = process.platform === 'win32';
-            const venvPython = isWindows
-                ? path.join(pythonDir, '.venv', 'Scripts', 'python.exe')
-                : path.join(pythonDir, '.venv', 'bin', 'python');
-            // Use pip show to check by package distribution name (handles name mismatches
-            // like piper-tts installing as "piper" module)
-            return await new Promise((resolve) => {
-                execFile(venvPython, ['-m', 'pip', 'show', packageName], { timeout: 15000 }, (err) => {
-                    resolve({ success: true, installed: !err });
-                });
-            });
-        } catch (err) {
-            return { success: false, error: err.message };
-        }
-    });
-
-    // Install a pip package into the Python venv
-    ipcMain.handle('install-pip-package', async (_event, packageName) => {
-        if (typeof packageName !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(packageName) || packageName.length > 100) {
-            return { success: false, error: 'Invalid package name' };
-        }
-        try {
-            const pythonDir = path.join(__dirname, '..', '..', 'python');
-            const isWindows = process.platform === 'win32';
-            const venvPython = isWindows
-                ? path.join(pythonDir, '.venv', 'Scripts', 'python.exe')
-                : path.join(pythonDir, '.venv', 'bin', 'python');
-            ctx.logger.info('[Config]', `Installing pip package: ${packageName}`);
-            return await new Promise((resolve) => {
-                execFile(venvPython, ['-m', 'pip', 'install', packageName], { timeout: 120000 }, (err, stdout, stderr) => {
-                    if (err) {
-                        ctx.logger.error('[Config]', `pip install ${packageName} failed:`, stderr || err.message);
-                        resolve({ success: false, error: stderr || err.message });
-                    } else {
-                        ctx.logger.info('[Config]', `pip install ${packageName} succeeded`);
-                        resolve({ success: true });
-                    }
-                });
-            });
-        } catch (err) {
-            return { success: false, error: err.message };
-        }
     });
 
     ipcMain.handle('reset-config', () => {

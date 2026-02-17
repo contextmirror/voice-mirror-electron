@@ -1,11 +1,10 @@
 /**
  * IPC handlers for miscellaneous operations.
  * Handles: toggle-log-viewer, open-external, quit-app, hotkey-fallback, devlog,
- *          send-to-python, get-python-status, start-python, stop-python,
- *          python-restart, send-query, set-voice-mode, send-image,
- *          list-audio-devices, get-detected-keys, check-cli-available,
- *          install-cli, chat-list, chat-load, chat-save, chat-delete,
- *          chat-rename, apply-update, app-relaunch
+ *          check-cli-available, install-cli, check-dependency-versions,
+ *          update-dependency, run-uninstall,
+ *          chat-list, chat-load, chat-save, chat-delete, chat-rename,
+ *          apply-update, install-update, app-relaunch
  */
 
 const { app, ipcMain, shell } = require('electron');
@@ -61,21 +60,6 @@ function registerMiscHandlers(ctx, validators) {
         app.isQuitting = true;
         app.quit();
         return { success: true };
-    });
-
-    // Audio device enumeration (asks Python backend)
-    ipcMain.handle('list-audio-devices', async () => {
-        const devices = ctx.listAudioDevices ? await ctx.listAudioDevices() : null;
-        return { success: true, data: devices };
-    });
-
-    // Detect API keys from environment (returns provider names only, not keys)
-    ipcMain.handle('get-detected-keys', () => {
-        const { detectApiKeys } = require('../services/provider-detector');
-        const detected = detectApiKeys();
-        // Return only provider names that have keys — never send actual keys to renderer
-        const keys = Object.keys(detected).filter(k => !k.startsWith('_'));
-        return { success: true, data: keys };
     });
 
     // CLI availability check
@@ -198,8 +182,8 @@ function registerMiscHandlers(ctx, validators) {
             }
         }
 
-        // --- Run all 3 sections in parallel ---
-        const [npm, system, pip] = await Promise.all([
+        // --- Run both sections in parallel ---
+        const [npm, system] = await Promise.all([
             // Section 1: npm packages
             (async () => {
                 const results = {};
@@ -231,26 +215,6 @@ function registerMiscHandlers(ctx, validators) {
 
                 // Node.js
                 results.node = { version: process.version.replace(/^v/, '') };
-
-                // Python (from venv, fallback to system)
-                const pythonDir = path.join(__dirname, '..', '..', 'python');
-                const isWin = process.platform === 'win32';
-                const venvPython = isWin
-                    ? path.join(pythonDir, '.venv', 'Scripts', 'python.exe')
-                    : path.join(pythonDir, '.venv', 'bin', 'python');
-                const pythonBin = fs.existsSync(venvPython) ? venvPython : (isWin ? 'python' : 'python3');
-                try {
-                    const version = await new Promise((resolve) => {
-                        execFile(pythonBin, ['--version'], { timeout: 10000, windowsHide: true }, (err, stdout) => {
-                            if (err) return resolve(null);
-                            const match = stdout.match(/Python (\d+\.\d+\.\d+)/);
-                            resolve(match ? match[1] : null);
-                        });
-                    });
-                    results.python = version ? { version } : { version: null, error: 'Not found' };
-                } catch {
-                    results.python = { version: null, error: 'Not found' };
-                }
 
                 // Ollama — extract version from `ollama --version`
                 try {
@@ -285,41 +249,10 @@ function registerMiscHandlers(ctx, validators) {
                 }
 
                 return results;
-            })(),
-
-            // Section 3: Python pip outdated
-            (async () => {
-                const pythonDir = path.join(__dirname, '..', '..', 'python');
-                const isWin = process.platform === 'win32';
-                const venvPython = isWin
-                    ? path.join(pythonDir, '.venv', 'Scripts', 'python.exe')
-                    : path.join(pythonDir, '.venv', 'bin', 'python');
-
-                if (!fs.existsSync(venvPython)) {
-                    return { outdated: [], error: 'Python venv not found' };
-                }
-
-                try {
-                    const outdated = await new Promise((resolve, reject) => {
-                        execFile(venvPython, ['-m', 'pip', 'list', '--outdated', '--format=json'], {
-                            timeout: 30000, windowsHide: true, cwd: pythonDir
-                        }, (err, stdout) => {
-                            if (err) return reject(err);
-                            try {
-                                const data = JSON.parse(stdout);
-                                resolve(data.map(p => ({ name: p.name, installed: p.version, latest: p.latest_version })));
-                            } catch (e) { reject(e); }
-                        });
-                    });
-                    return { outdated };
-                } catch (err) {
-                    ctx.logger.error('[Deps]', `pip outdated check failed: ${err.message}`);
-                    return { outdated: [], error: 'Check failed' };
-                }
             })()
         ]);
 
-        return { success: true, data: { npm, system, pip } };
+        return { success: true, data: { npm, system } };
     });
 
     // Dependency update handler
@@ -355,135 +288,6 @@ function registerMiscHandlers(ctx, validators) {
                 }
             });
         });
-    });
-
-    // Pip package upgrade handler — stops Python first to release DLL locks
-    ipcMain.handle('update-pip-packages', async () => {
-        const { execFile } = require('child_process');
-        const pythonDir = path.join(__dirname, '..', '..', 'python');
-        const isWin = process.platform === 'win32';
-        const venvPython = isWin
-            ? path.join(pythonDir, '.venv', 'Scripts', 'python.exe')
-            : path.join(pythonDir, '.venv', 'bin', 'python');
-
-        if (!fs.existsSync(venvPython)) {
-            return { success: false, error: 'Python venv not found' };
-        }
-
-        // Stop Python backend to release DLL locks (onnxruntime, psutil, etc.)
-        const pythonBackend = ctx.getPythonBackend();
-        const wasRunning = pythonBackend?.isRunning();
-        if (wasRunning) {
-            ctx.logger.info('[Dep Update]', 'Stopping Python backend for pip upgrade...');
-            pythonBackend.stop();
-            // Wait for process to fully exit before pip install
-            await new Promise(r => setTimeout(r, 2000));
-        }
-
-        // Get the actual outdated package names, then upgrade them directly.
-        // (pip install -r requirements.txt --upgrade only upgrades direct deps,
-        // not transitive deps like filelock, setuptools, rdflib, etc.)
-        const outdated = await new Promise((resolve) => {
-            execFile(venvPython, ['-m', 'pip', 'list', '--outdated', '--format=json'], {
-                timeout: 30000, windowsHide: true, cwd: pythonDir
-            }, (err, stdout) => {
-                if (err) return resolve([]);
-                try { resolve(JSON.parse(stdout)); } catch { resolve([]); }
-            });
-        });
-
-        if (outdated.length === 0) {
-            if (wasRunning) ctx.startPythonVoiceMirror();
-            return { success: true };
-        }
-
-        const pkgNames = outdated.map(p => p.name);
-        ctx.logger.info('[Dep Update]', `Upgrading ${pkgNames.length} pip packages: ${pkgNames.join(', ')}`);
-
-        const result = await new Promise((resolve) => {
-            execFile(venvPython, ['-m', 'pip', 'install', '--upgrade', ...pkgNames], {
-                timeout: 300000, windowsHide: true, cwd: pythonDir
-            }, (err, stdout, stderr) => {
-                if (err) {
-                    const hint = stderr?.match(/ERROR: .*/)?.[0] || err.message;
-                    ctx.logger.error('[Dep Update]', 'pip upgrade failed:', err.message);
-                    if (stderr) ctx.logger.error('[Dep Update]', 'stderr:', stderr.slice(0, 500));
-                    resolve({ success: false, error: hint.slice(0, 200) });
-                } else {
-                    ctx.logger.info('[Dep Update]', 'pip packages upgraded successfully');
-                    resolve({ success: true });
-                }
-            });
-        });
-
-        // Restart Python backend if it was running before
-        if (wasRunning) {
-            ctx.logger.info('[Dep Update]', 'Restarting Python backend...');
-            ctx.startPythonVoiceMirror();
-        }
-
-        return result;
-    });
-
-    // Image handling - send to Python backend
-    ipcMain.handle('send-image', async (event, imageData) => {
-        const v = validators['send-image'](imageData);
-        if (!v.valid) return { success: false, error: v.error };
-        const result = await ctx.sendImageToPython(v.value);
-        return { success: true, data: result };
-    });
-
-    // Python backend communication
-    ipcMain.handle('send-query', (event, query) => {
-        const v = validators['send-query'](query);
-        if (!v.valid) return { success: false, error: v.error };
-        ctx.sendToPython({ command: 'query', text: v.value.text, image: v.value.image });
-        return { success: true };
-    });
-
-    ipcMain.handle('set-voice-mode', (event, mode) => {
-        const v = validators['set-voice-mode'](mode);
-        if (!v.valid) return { success: false, error: v.error };
-        ctx.sendToPython({ command: 'set_mode', mode: v.value });
-        return { success: true };
-    });
-
-    ipcMain.handle('get-python-status', () => {
-        const pythonBackend = ctx.getPythonBackend();
-        return {
-            success: true,
-            data: {
-                running: pythonBackend?.isRunning() || false,
-                pid: pythonBackend?.getProcess()?.pid
-            }
-        };
-    });
-
-    ipcMain.handle('start-python', () => {
-        if (!ctx.getPythonBackend()?.isRunning()) {
-            ctx.startPythonVoiceMirror();
-            return { success: true };
-        }
-        return { success: false, error: 'already running' };
-    });
-
-    ipcMain.handle('stop-python', () => {
-        const pythonBackend = ctx.getPythonBackend();
-        if (pythonBackend?.isRunning()) {
-            pythonBackend.stop();
-            return { success: true };
-        }
-        return { success: false, error: 'not running' };
-    });
-
-    // Manual restart (resets retry counter for user-initiated recovery)
-    ipcMain.handle('python-restart', () => {
-        const pythonBackend = ctx.getPythonBackend();
-        if (pythonBackend) {
-            pythonBackend.restart();
-            return { success: true };
-        }
-        return { success: false, error: 'backend not initialized' };
     });
 
     // ========== Chat History Persistence ==========
@@ -671,13 +475,20 @@ function registerMiscHandlers(ctx, validators) {
         };
     });
 
-    // Update checker
+    // Update checker — triggers download of available update
     ipcMain.handle('apply-update', async () => {
         const checker = ctx.getUpdateChecker?.();
         if (checker) {
             return await checker.applyUpdate();
         }
         return { success: false, error: 'Update checker not initialized' };
+    });
+
+    // Install downloaded update — quit and install via electron-updater
+    ipcMain.handle('install-update', () => {
+        const { autoUpdater } = require('electron-updater');
+        autoUpdater.quitAndInstall(false, true);
+        return { success: true };
     });
 
     // App relaunch (used after updates)

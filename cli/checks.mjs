@@ -3,9 +3,9 @@
  */
 
 import { execFileSync, execSync } from 'child_process';
-import { existsSync, readFileSync, statSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { platform, arch, release } from 'os';
+import { platform, arch } from 'os';
 
 /**
  * Check if a command exists on PATH.
@@ -28,20 +28,27 @@ export function getNodeVersion() {
 }
 
 /**
- * Detect Python 3 binary and version.
- * Returns { binary, version } or null.
+ * Detect if the voice-core binary exists.
+ * Checks packaged location and dev build locations.
+ * Returns true if found, false otherwise.
  */
-export function detectPython() {
-    for (const bin of ['python3', 'python']) {
-        try {
-            const version = execFileSync(bin, ['--version'], { encoding: 'utf8' }).trim();
-            const match = version.match(/Python (\d+\.\d+\.\d+)/);
-            if (match && parseInt(match[1]) >= 3) {
-                return { binary: bin, version: match[1] };
-            }
-        } catch { /* skip */ }
-    }
-    return null;
+export function detectVoiceCore(projectDir) {
+    const ext = platform() === 'win32' ? '.exe' : '';
+    const binaryName = `voice-core${ext}`;
+
+    // Packaged app: resources/bin/voice-core(.exe)
+    const resourcesBin = join(projectDir, 'resources', 'bin', binaryName);
+    if (existsSync(resourcesBin)) return true;
+
+    // Dev: voice-core/target/release/voice-core(.exe)
+    const releaseBin = join(projectDir, 'voice-core', 'target', 'release', binaryName);
+    if (existsSync(releaseBin)) return true;
+
+    // Dev: voice-core/target/debug/voice-core(.exe)
+    const debugBin = join(projectDir, 'voice-core', 'target', 'debug', binaryName);
+    if (existsSync(debugBin)) return true;
+
+    return false;
 }
 
 /**
@@ -101,56 +108,6 @@ export async function detectOllama() {
  */
 export function detectClaudeCli() {
     return commandExists('claude');
-}
-
-/**
- * Check Python venv status.
- */
-export function detectPythonVenv(projectDir) {
-    const venvDir = join(projectDir, 'python', '.venv');
-    const venvBin = platform() === 'win32'
-        ? join(venvDir, 'Scripts', 'python.exe')
-        : join(venvDir, 'bin', 'python');
-    return {
-        exists: existsSync(venvDir),
-        binary: venvBin,
-        binExists: existsSync(venvBin),
-    };
-}
-
-/**
- * Check if pip requirements are installed.
- */
-export function checkPipRequirements(venvPython, projectDir) {
-    const reqFile = join(projectDir, 'python', 'requirements.txt');
-    if (!existsSync(reqFile)) return { ok: false, reason: 'requirements.txt not found' };
-
-    try {
-        execFileSync(venvPython, ['-c', 'import openwakeword; import sounddevice'], {
-            stdio: 'ignore',
-            timeout: 10000,
-        });
-        return { ok: true };
-    } catch {
-        return { ok: false, reason: 'missing packages' };
-    }
-}
-
-/**
- * Check if wake word model exists.
- */
-export function detectWakeWordModel(projectDir) {
-    const modelPath = join(projectDir, 'python', 'models', 'hey_claude_v2.onnx');
-    return existsSync(modelPath);
-}
-
-/**
- * Check if TTS models exist (both ONNX model and voices file).
- */
-export function detectTTSModel(projectDir) {
-    const modelPath = join(projectDir, 'python', 'kokoro-v1.0.onnx');
-    const voicesPath = join(projectDir, 'python', 'voices-v1.0.bin');
-    return existsSync(modelPath) && existsSync(voicesPath);
 }
 
 /**

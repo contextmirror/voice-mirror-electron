@@ -69,12 +69,14 @@ coverage/
 
 # Rust
 wayland-orb/target/
+voice-core/target/
 
-# Python
-python/.venv
+# Bundled tools (downloaded, not committed)
+tools/espeak-ng/
+
+# Python (vendored tools only)
 **/__pycache__/
 *.pyc
-python/.context-mirror/
 *.onnx
 *.bin
 # Allow small wake word models (~4MB total)

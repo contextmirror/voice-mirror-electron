@@ -27,9 +27,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/status-alpha-orange" alt="Alpha">
-  <img src="https://img.shields.io/badge/version-0.9.5-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.10.0-blue" alt="Version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-blue" alt="Platform">
-  <img src="https://img.shields.io/badge/tests-568_passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-536_passing-brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <a href="https://discord.com/invite/JBpsSFB7EQ"><img src="https://img.shields.io/badge/Discord-Join%20us-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
 </p>
@@ -112,8 +112,7 @@ Claude Code or OpenCode runs inside Voice Mirror with full MCP tool access. Exec
 
 | Engine | Speed | Notes |
 |--------|-------|-------|
-| **Parakeet** (default) | Fast, ONNX | NVIDIA NeMo Parakeet model |
-| **Whisper** | Standard | OpenAI Whisper + Faster-Whisper adapters |
+| **Whisper** (default) | Fast | OpenAI Whisper via whisper-rs (native Rust, GGML) |
 
 ### Voice Synthesis
 
@@ -142,63 +141,43 @@ Claude Code or OpenCode runs inside Voice Mirror with full MCP tool access. Exec
 
 ## Quick Start
 
-### One-Line Install
+### Download (Recommended)
 
-**Linux / macOS:**
-```bash
-curl -fsSL https://raw.githubusercontent.com/contextmirror/voice-mirror-electron/main/install.sh | bash
-```
+Grab the latest installer from [**GitHub Releases**](https://github.com/contextmirror/voice-mirror-electron/releases):
 
-**Windows (PowerShell):**
-```powershell
-irm https://raw.githubusercontent.com/contextmirror/voice-mirror-electron/main/install.ps1 | iex
-```
+| Platform | Download |
+|----------|----------|
+| **Windows** | `Voice-Mirror-Setup-x.x.x.exe` (NSIS installer) |
+| **macOS** | `Voice-Mirror-x.x.x.dmg` |
+| **Linux** | `Voice-Mirror-x.x.x.AppImage` |
 
-### Manual Setup
+Everything is bundled — no Node.js, Rust, or build tools required. The app checks for updates automatically and notifies you when a new version is available.
+
+### Development Setup
+
+For contributors or running from source:
 
 ```bash
 git clone https://github.com/contextmirror/voice-mirror-electron.git
 cd voice-mirror-electron
 npm install
 
-# Python backend
-cd python
-python -m venv .venv
-source .venv/bin/activate   # Linux/macOS
-# .venv\Scripts\activate    # Windows
-pip install -r requirements.txt
+# Build voice-core (Rust backend for STT, TTS, wake word)
+cd voice-core
+cargo build --release
 cd ..
 
 # Launch
 npm start
 ```
 
-### Requirements
+**Dev requirements:** Node.js 22+, Rust toolchain, LLVM/libclang, CMake
 
-- **Node.js** 18+
-- **Python** 3.9+
+### Optional Dependencies
+
 - **Claude Code CLI** (for Claude provider) or **OpenCode** (for 75+ models — auto-install available from settings)
 - **ffmpeg** (for voice cloning)
 - **CUDA** (optional — GPU acceleration for Qwen3-TTS)
-
-### Uninstall
-
-**Linux / macOS:**
-```bash
-bash uninstall.sh
-```
-
-**Windows (PowerShell):**
-```powershell
-.\uninstall.ps1
-```
-
-Or from within the app:
-```bash
-voice-mirror uninstall
-```
-
-Removes shortcuts, npm link, and optionally config/data. Does not remove Node.js, Python, or Git.
 
 ---
 
@@ -240,7 +219,7 @@ voice-mirror-electron/
 │   ├── browser/           # CDP browser automation (9 modules)
 │   ├── tools/             # Tool system for local LLMs (4 tools)
 │   └── renderer/          # Renderer JS (15 files) + CSS (10 files)
-├── python/                # Voice backend (STT, TTS, wake word)
+├── voice-core/            # Rust voice backend (STT, TTS, wake word, VAD)
 ├── mcp-server/            # MCP server (58 tools, 10 groups)
 ├── wayland-orb/           # Rust native overlay (Linux/Wayland)
 ├── chrome-extension/      # Browser relay extension (MV3)
@@ -310,7 +289,7 @@ Cloud provider API keys (OpenAI, Google, xAI, etc.) are configured through OpenC
 npm test
 ```
 
-519 tests across 126 suites covering config safety, API key detection, provider detection, settings, startup behavior, cross-platform paths, terminal rendering, MCP memory, browser automation, IPC validation, structured logging, path safety, and more.
+536 tests across 131 suites covering config safety, API key detection, provider detection, settings, startup behavior, cross-platform paths, terminal rendering, MCP memory, browser automation, IPC validation, structured logging, path safety, and more.
 
 ---
 
@@ -321,5 +300,5 @@ npm test
 ---
 
 <p align="center">
-  <sub>Built with Electron, Python, and a lot of voice commands.</sub>
+  <sub>Built with Electron, Rust, and a lot of voice commands.</sub>
 </p>

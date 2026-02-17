@@ -5,7 +5,7 @@ You are running inside Voice Mirror Electron, a voice-controlled AI agent overla
 ## Project Architecture
 
 ```
-Voice Mirror = Electron overlay + Python voice backend + MCP server + AI provider (you)
+Voice Mirror = Electron overlay + Rust voice-core + MCP server + AI provider (you)
 
 Electron (frontend + main process)
 ├── electron/main.js              — Electron entry, window management
@@ -14,7 +14,7 @@ Electron (frontend + main process)
 ├── electron/services/            — Backend services (AI manager, hotkeys, screen capture)
 ├── electron/providers/           — AI providers + PTY spawners (Claude Code, OpenCode, Ollama, etc.)
 ├── electron/tools/               — MCP tool group definitions
-├── electron/ipc/                  — IPC bridge modules (ai, config, misc, screen, window)
+├── electron/ipc/                  — IPC bridge modules (ai, config, misc, screen, window, voice)
 ├── electron/lib/                  — Shared utilities (JSON watcher, Ollama launcher, safe paths, screen capture)
 ├── electron/constants.js         — Shared constants
 └── electron/browser/             — CDP browser automation engine
@@ -24,9 +24,9 @@ MCP Server (mcp-server/)
 ├── handlers/                     — Tool handlers (core, memory, browser, screen, n8n, voice-clone)
 └── lib/                          — Shared libraries (inbox, memory tiers, browser client)
 
-Python Backend (python/)
-├── voice_mirror/                 — Voice pipeline (wake word, STT, TTS, VAD)
-└── CLAUDE.md                     — Claude Code-specific instructions
+voice-core/ (Rust binary)
+├── src/                          — Voice pipeline (wake word, Whisper STT, Kokoro TTS)
+└── Cargo.toml                    — Rust dependencies
 ```
 
 ## Your MCP Tools

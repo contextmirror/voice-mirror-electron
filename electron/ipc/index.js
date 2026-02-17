@@ -8,6 +8,7 @@ const { registerWindowHandlers } = require('./window');
 const { registerConfigHandlers } = require('./config');
 const { registerScreenHandlers } = require('./screen');
 const { registerAIHandlers } = require('./ai');
+const { registerVoiceHandlers } = require('./voice');
 const { registerMiscHandlers } = require('./misc');
 
 /**
@@ -19,6 +20,7 @@ function registerIpcHandlers(ctx) {
     registerWindowHandlers(ctx, validators);
     registerScreenHandlers(ctx, validators);
     registerAIHandlers(ctx, validators);
+    registerVoiceHandlers(ctx, validators);
     registerMiscHandlers(ctx, validators);
 }
 

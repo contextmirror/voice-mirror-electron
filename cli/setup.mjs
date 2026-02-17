@@ -12,13 +12,10 @@ import { fileURLToPath } from 'url';
 import { platform, homedir } from 'os';
 import { emitBanner } from './banner.mjs';
 import {
-    detectPython,
     detectPlatform,
     detectOllama,
     detectClaudeCli,
-    detectPythonVenv,
-    detectWakeWordModel,
-    detectTTSModel,
+    detectVoiceCore,
     detectMCPServerDeps,
     readExistingConfig,
     getConfigPath,
@@ -34,13 +31,10 @@ import {
     verifyModel,
 } from './ollama-setup.mjs';
 import {
-    createVenv,
-    installRequirements,
     installChromium,
     installMCPDeps,
     detectFfmpeg,
-    downloadTTSModels,
-} from './python-setup.mjs';
+} from './dependency-setup.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_DIR = join(__dirname, '..');
@@ -117,14 +111,14 @@ export async function runSetup(opts = {}) {
     spin.start('Checking system...');
 
     const plat = detectPlatform();
-    const python = detectPython();
+    const voiceCore = detectVoiceCore(PROJECT_DIR);
     const ollama = await detectOllama();
     const claudeCli = detectClaudeCli();
 
     const systemLines = [
         `OS: ${plat.os}/${plat.arch} (${plat.display})`,
         `Node.js: ${process.version}`,
-        python ? `Python: ${python.version}` : chalk.red('Python 3 not found'),
+        voiceCore ? 'voice-core: found' : chalk.red('voice-core: not found'),
         claudeCli ? 'Claude CLI: installed' : chalk.dim('Claude CLI: not installed'),
         ollama.installed
             ? (ollama.running ? `Ollama: running (${ollama.models.length} models)` : 'Ollama: installed, not running')
@@ -133,10 +127,8 @@ export async function runSetup(opts = {}) {
     spin.stop('System detected');
     p.note(systemLines.join('\n'), 'System');
 
-    if (!python) {
-        p.log.error('Python 3.9+ is required. Install it and run setup again.');
-        p.outro(chalk.red('Setup incomplete.'));
-        process.exit(1);
+    if (!voiceCore) {
+        p.log.warn('voice-core binary not found. Build with: cd voice-core && cargo build --release');
     }
 
     // --- Step 3: AI Provider selection ---
@@ -387,35 +379,7 @@ export async function runSetup(opts = {}) {
             initialValue: 'wakeWord',
         }));
 
-    // --- Step 5: Python backend setup ---
-    p.log.info('Setting up Python backend (this may take a moment)...');
-    const spin9 = p.spinner();
-    spin9.start('Creating Python virtual environment...');
-
-    const venvResult = createVenv(PROJECT_DIR, { update: (m) => spin9.message(m) });
-    if (!venvResult.ok) {
-        spin9.stop(chalk.red('Python setup failed'));
-        p.log.error(venvResult.error);
-    } else {
-        const venvBinary = detectPythonVenv(PROJECT_DIR).binary;
-        const pipResult = installRequirements(venvBinary, PROJECT_DIR, { update: (m) => spin9.message(m) });
-        if (pipResult.ok) {
-            spin9.stop('Python backend ready');
-
-            // Download TTS models if missing
-            if (!detectTTSModel(PROJECT_DIR)) {
-                const spin9b = p.spinner();
-                spin9b.start('Downloading TTS models...');
-                const ttsResult = await downloadTTSModels(venvBinary, PROJECT_DIR, { update: (m) => spin9b.message(m) });
-                spin9b.stop(ttsResult.ok ? 'TTS models ready' : chalk.yellow('TTS models download skipped (will auto-download on first run)'));
-            }
-        } else {
-            spin9.stop(chalk.yellow('Python deps partially installed'));
-            p.log.warn(pipResult.error);
-        }
-    }
-
-    // --- Step 6: Optional features ---
+    // --- Step 5: Optional features ---
     const features = nonInteractive
         ? []
         : guard(await p.multiselect({
@@ -441,7 +405,7 @@ export async function runSetup(opts = {}) {
         p.log.warn('  macOS: brew install ffmpeg');
     }
 
-    // --- Step 7: MCP server setup ---
+    // --- Step 6: MCP server setup ---
     if (!detectMCPServerDeps(PROJECT_DIR)) {
         const spin11 = p.spinner();
         spin11.start('Installing MCP server dependencies...');
@@ -478,18 +442,6 @@ export async function runSetup(opts = {}) {
  * Run dependency setup only (for existing config).
  */
 async function runDependencySetup(config) {
-    const venv = detectPythonVenv(PROJECT_DIR);
-    if (!venv.exists) {
-        const spin = p.spinner();
-        spin.start('Setting up Python backend...');
-        const result = createVenv(PROJECT_DIR, { update: (m) => spin.message(m) });
-        if (result.ok) {
-            const venvBinary = detectPythonVenv(PROJECT_DIR).binary;
-            installRequirements(venvBinary, PROJECT_DIR, { update: (m) => spin.message(m) });
-        }
-        spin.stop('Python ready');
-    }
-
     if (!detectMCPServerDeps(PROJECT_DIR)) {
         const spin = p.spinner();
         spin.start('Installing MCP server dependencies...');
@@ -794,7 +746,7 @@ function printSummary(config) {
     if (config.ai?.localModel) lines.push(`Local LLM:    ${config.ai.localModel} (Ollama)`);
 
     lines.push(`Voice:        ${formatActivation(config.behavior?.activationMode)}`);
-    lines.push(`TTS:          Kokoro (local)`);
+    lines.push(`TTS:          voice-core (Rust)`);
 
     const feats = [];
     if (config.features?.browser) feats.push('Browser');

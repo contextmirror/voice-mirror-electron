@@ -4,10 +4,10 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * Source-inspection tests for the expanded Dependencies settings tab.
+ * Source-inspection tests for the Dependencies settings tab.
  *
- * Verifies that all 3 sections (Packages, System, Python Environment)
- * are wired up correctly across IPC, preload, HTML, and renderer.
+ * Verifies that Packages and System sections are wired up correctly
+ * across IPC, preload, HTML, and renderer.
  */
 
 const miscSource = fs.readFileSync(
@@ -42,22 +42,10 @@ describe('Dependencies IPC - check-dependency-versions', () => {
         }
     });
 
-    it('should return system section with node, python, ollama, ffmpeg', () => {
+    it('should return system section with node, ollama, ffmpeg', () => {
         assert.ok(miscSource.includes('results.node'), 'misc.js should populate results.node');
         assert.ok(miscSource.includes('results.ollama'), 'misc.js should populate results.ollama');
         assert.ok(miscSource.includes('results.ffmpeg'), 'misc.js should populate results.ffmpeg');
-        assert.ok(miscSource.includes('venvPython'), 'misc.js should detect Python via venv');
-    });
-
-    it('should return pip section with outdated check', () => {
-        assert.ok(
-            miscSource.includes('{ npm, system, pip }'),
-            'misc.js should return { npm, system, pip } data shape'
-        );
-        assert.ok(
-            miscSource.includes('--outdated'),
-            'misc.js should check pip outdated packages'
-        );
     });
 });
 
@@ -91,22 +79,6 @@ describe('Dependencies IPC - update-dependency ALLOWED whitelist', () => {
     });
 });
 
-describe('Dependencies IPC - update-pip-packages handler', () => {
-    it('should have update-pip-packages IPC handler', () => {
-        assert.ok(
-            miscSource.includes("'update-pip-packages'"),
-            'misc.js should register update-pip-packages handler'
-        );
-    });
-
-    it('should run pip install with --upgrade flag', () => {
-        assert.ok(
-            miscSource.includes('--upgrade'),
-            'update-pip-packages should use --upgrade flag'
-        );
-    });
-});
-
 // --- Preload bridge ---
 
 describe('Dependencies preload bridge', () => {
@@ -124,19 +96,6 @@ describe('Dependencies preload bridge', () => {
         );
     });
 
-    it('should expose updatePipPackages', () => {
-        assert.ok(
-            preloadSource.includes('updatePipPackages'),
-            'preload.js should expose updatePipPackages'
-        );
-    });
-
-    it('should reference update-pip-packages IPC channel', () => {
-        assert.ok(
-            preloadSource.includes('update-pip-packages'),
-            'preload.js should invoke update-pip-packages IPC'
-        );
-    });
 });
 
 // --- HTML template ---
@@ -174,11 +133,6 @@ describe('Dependencies HTML - System section', () => {
         assert.ok(htmlSource.includes('id="dep-node-badge"'), 'HTML should have node badge element');
     });
 
-    it('should have python system card', () => {
-        assert.ok(htmlSource.includes('id="dep-python-version"'), 'HTML should have python version element');
-        assert.ok(htmlSource.includes('id="dep-python-badge"'), 'HTML should have python badge element');
-    });
-
     it('should have ollama system card', () => {
         assert.ok(htmlSource.includes('id="dep-ollama-version"'), 'HTML should have ollama version element');
         assert.ok(htmlSource.includes('id="dep-ollama-badge"'), 'HTML should have ollama badge element');
@@ -194,30 +148,6 @@ describe('Dependencies HTML - System section', () => {
             htmlSource.includes('dep-card-compact'),
             'System cards should use dep-card-compact class'
         );
-    });
-});
-
-describe('Dependencies HTML - Python Environment section', () => {
-    it('should have pip summary badge', () => {
-        assert.ok(htmlSource.includes('id="dep-pip-summary"'), 'HTML should have pip summary element');
-    });
-
-    it('should have pip table container', () => {
-        assert.ok(htmlSource.includes('id="dep-pip-table-container"'), 'HTML should have pip table container');
-    });
-
-    it('should have pip table body for outdated packages', () => {
-        assert.ok(htmlSource.includes('id="dep-pip-tbody"'), 'HTML should have pip tbody element');
-    });
-
-    it('should have pip Update All button', () => {
-        assert.ok(htmlSource.includes('id="dep-pip-update-all"'), 'HTML should have pip Update All button');
-    });
-
-    it('should have pip table headers (Package, Installed, Latest)', () => {
-        assert.ok(htmlSource.includes('<th>Package</th>'), 'pip table should have Package header');
-        assert.ok(htmlSource.includes('<th>Installed</th>'), 'pip table should have Installed header');
-        assert.ok(htmlSource.includes('<th>Latest</th>'), 'pip table should have Latest header');
     });
 });
 
@@ -280,36 +210,13 @@ describe('Dependencies renderer - system card handling', () => {
         );
     });
 
-    it('should check all 4 system tools in checkVersions', () => {
-        for (const tool of ['node', 'python', 'ollama', 'ffmpeg']) {
+    it('should check all 3 system tools in checkVersions', () => {
+        for (const tool of ['node', 'ollama', 'ffmpeg']) {
             assert.ok(
                 rendererSource.includes(`'${tool}'`),
                 `checkVersions should handle ${tool} system card`
             );
         }
-    });
-});
-
-describe('Dependencies renderer - pip handling', () => {
-    it('should have updatePipSection function', () => {
-        assert.ok(
-            rendererSource.includes('function updatePipSection('),
-            'renderer should have updatePipSection function'
-        );
-    });
-
-    it('should have handlePipUpdateAll function', () => {
-        assert.ok(
-            rendererSource.includes('function handlePipUpdateAll'),
-            'renderer should have handlePipUpdateAll function'
-        );
-    });
-
-    it('should have escapeHtml function for XSS safety', () => {
-        assert.ok(
-            rendererSource.includes('function escapeHtml('),
-            'renderer should have escapeHtml helper'
-        );
     });
 });
 
@@ -322,10 +229,6 @@ describe('Dependencies CSS', () => {
 
     it('should define dep-card-compact styles', () => {
         assert.ok(htmlSource.includes('.dep-card-compact'), 'CSS should have .dep-card-compact');
-    });
-
-    it('should define dep-pip-table styles', () => {
-        assert.ok(htmlSource.includes('.dep-pip-table'), 'CSS should have .dep-pip-table');
     });
 
     it('should define dep-update-all-btn styles', () => {

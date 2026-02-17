@@ -693,7 +693,7 @@ export async function loadAISettingsUI() {
 
     // Load detected API keys from environment
     try {
-        const keysResult = await window.voiceMirror.python.getDetectedKeys();
+        const keysResult = await window.voiceMirror.voice.getDetectedKeys();
         state._detectedKeyProviders = keysResult.data || [];
     } catch { state._detectedKeyProviders = []; }
 
