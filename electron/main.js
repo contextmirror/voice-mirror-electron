@@ -348,19 +348,12 @@ if (isLinux) {
 
 // App lifecycle
 app.whenReady().then(() => {
-    const _t0 = performance.now();
-    const _ts = (label) => {
-        const ms = (performance.now() - _t0).toFixed(0);
-        logger.log('STARTUP', `+${ms}ms  ${label}`);
-    };
-
     // Initialize file logging
     logger.init();
-    _ts('logger.init');
 
     // Load configuration
     appConfig = config.loadConfig();
-    _ts('config.loadConfig');
+
     if (appConfig.advanced?.debugMode) {
         logger.log('CONFIG', `Debug mode enabled`);
     }
@@ -383,7 +376,6 @@ app.whenReady().then(() => {
             logger.info('[Config]', 'Auto-detected API keys:', realKeys.map(([k]) => k).join(', '));
         }
     }
-    _ts('detectApiKeys');
 
     // Initialize window manager
     windowManager = createWindowManager({
@@ -395,7 +387,6 @@ app.whenReady().then(() => {
             if (hotkeyManager) hotkeyManager.reRegisterAll();
         }
     });
-    _ts('createWindowManager');
 
     // Initialize Python backend service
     pythonBackend = createPythonBackend({
@@ -405,7 +396,6 @@ app.whenReady().then(() => {
         log: (level, msg) => logger.log(level, msg),
         getSenderName: () => (appConfig.user?.name || 'user').toLowerCase()
     });
-    _ts('createPythonBackend');
 
     // --- Jarvis-style startup greeting ---
     function getTimePeriod() {
@@ -507,7 +497,6 @@ app.whenReady().then(() => {
         addDisplayedMessageId(responseId);
     });
 
-    _ts('pythonBackend.onEvent + onResponseId');
 
     // Initialize screen capture watcher service
     screenCaptureWatcherService = createScreenCaptureWatcher({
@@ -566,7 +555,6 @@ app.whenReady().then(() => {
             logger.info('[Voice Mirror]', 'Cleared processed user message IDs for provider switch');
         }
     });
-    _ts('createAIManager');
 
     // Initialize inbox watcher service
     inboxWatcherService = createInboxWatcher({
@@ -618,7 +606,6 @@ app.whenReady().then(() => {
         getLogViewer: () => logViewer,
     };
     registerIpcHandlers(ipcCtx);
-    _ts('registerIpcHandlers');
 
     // Initialize log viewer service (creates window on demand, not at startup)
     logViewer = createLogViewer({
@@ -650,13 +637,10 @@ app.whenReady().then(() => {
     }
 
     createWindow();
-    _ts('createWindow');
 
     // Webview bridge: attach CDP debugger when <webview> connects
     const webviewCdp = require('./browser/webview-cdp');
-    _ts('require webview-cdp');
     const browserController = require('./browser/browser-controller');
-    _ts('require browser-controller');
 
     mainWindow.webContents.on('did-attach-webview', (event, guestWebContents) => {
         logger.info('[Voice Mirror]', 'Webview attached, setting up CDP debugger');
@@ -712,11 +696,9 @@ app.whenReady().then(() => {
     }
 
     createTray();
-    _ts('createTray');
     startScreenCaptureWatcher();
     startInboxWatcher();
     startBrowserRequestWatcher();
-    _ts('start watchers');
 
     // Initialize and start performance monitor
     perfMonitor = createPerfMonitor({
@@ -737,7 +719,6 @@ app.whenReady().then(() => {
     } catch (err) {
         logger.info('[Diagnostic]', 'Watcher not started:', err.message);
     }
-    _ts('perfMonitor + diagnosticWatcher');
 
     // Initialize hotkey manager (globalShortcut with health-checked recovery)
     hotkeyManager = createHotkeyManager({ log: (cat, msg) => logger.log(cat, msg) });
@@ -807,15 +788,12 @@ app.whenReady().then(() => {
         pythonBackend.syncVoiceSettings(appConfig);
 
         startPythonVoiceMirror();
-        _ts('startPythonVoiceMirror');
 
         // Fallback: start AI after 5 seconds if Python ready event hasn't fired
         aiStartupTimeout = setTimeout(doStartAI, 5000);
     } catch (err) {
         logger.error('[Voice Mirror]', 'Auto-start failed:', err.message);
     }
-
-    _ts('=== STARTUP COMPLETE (event loop unblocked) ===');
 });
 
 app.on('window-all-closed', () => {
