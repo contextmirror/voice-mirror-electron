@@ -55,6 +55,7 @@ function acquireListenerLock(instanceId) {
         return { success: true };
     } catch (err) {
         // On error, assume we can acquire (fail open for resilience)
+        console.warn('[MCP Core] acquireListenerLock failed, proceeding anyway:', err?.message || err);
         return { success: true };
     }
 }
