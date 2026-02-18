@@ -189,14 +189,20 @@ function createInboxWatcher(options = {}) {
                             });
                         }
 
-                        captureProviderResponse(activeProvider, msg.message, _devlog, msg.image_data_url || null).then((response) => {
-                            if (response !== null && response.length > 0) {
-                                const cleanedResponse = stripEchoedContent(response);
-                                writeResponseToInbox(contextMirrorDir, cleanedResponse, providerName, msg.id);
-                                if (onAssistantMessage) {
+                        captureProviderResponse(activeProvider, msg.message, _devlog, msg.image_data_url || null).then((result) => {
+                            if (result !== null) {
+                                const { speakable, full } = result;
+                                // TTS inbox gets the speakable (voice-readable) version
+                                if (speakable && speakable.length > 0) {
+                                    const cleanedSpeakable = stripEchoedContent(speakable);
+                                    writeResponseToInbox(contextMirrorDir, cleanedSpeakable, providerName, msg.id);
+                                }
+                                // Chat UI gets the full markdown response (preserves code blocks, URLs, formatting)
+                                const chatText = full && full.length > 0 ? stripEchoedContent(full) : '';
+                                if (onAssistantMessage && chatText.length > 0) {
                                     onAssistantMessage({
                                         role: 'assistant',
-                                        text: cleanedResponse,
+                                        text: chatText,
                                         source: providerName.toLowerCase(),
                                         timestamp: new Date().toISOString()
                                     });
@@ -339,14 +345,18 @@ async function captureProviderResponse(provider, message, _devlog = () => {}, im
         let maxIterationsReached = false;
         let emptyAfterToolChecks = 0;
 
-        function finish(response, reason) {
+        function finish(speakable, reason, rawFull) {
             if (resolved) return;
             resolved = true;
             clearInterval(checkInterval);
             if (timeoutHandle) clearTimeout(timeoutHandle);
             cleanup();
             // Preserve empty string distinct from null (empty = extraction failed, null = no output)
-            resolve(response !== null && response !== undefined ? response : null);
+            if (speakable === null || speakable === undefined) {
+                resolve(null);
+            } else {
+                resolve({ speakable, full: rawFull || speakable });
+            }
         }
 
         provider.onToolCall = (data) => {
@@ -409,7 +419,7 @@ async function captureProviderResponse(provider, message, _devlog = () => {}, im
                     finalResponse = extractSpeakableResponse(allOutput);
                     logger.info('[InboxWatcher]', `Max iterations reached, captured (${allOutput.length} chars) -> speakable: "${finalResponse?.slice(0, 100)}..."`);
                     _devlog('BACKEND', 'response-captured', { text: finalResponse, chars: allOutput.length, reason: 'max-iterations' });
-                    finish(finalResponse, 'max-iterations');
+                    finish(finalResponse, 'max-iterations', allOutput);
                     return;
                 }
             }
@@ -423,7 +433,7 @@ async function captureProviderResponse(provider, message, _devlog = () => {}, im
                     finalResponse = extractSpeakableResponse(allOutput);
                     logger.info('[InboxWatcher]', `No follow-up after tool, using full output (${allOutput.length} chars) -> speakable: "${finalResponse?.slice(0, 100)}..."`);
                     _devlog('BACKEND', 'response-captured', { text: finalResponse, chars: allOutput.length, reason: 'no-followup-after-tool' });
-                    finish(finalResponse, 'no-followup-after-tool');
+                    finish(finalResponse, 'no-followup-after-tool', allOutput);
                     return;
                 }
             }
@@ -484,7 +494,7 @@ async function captureProviderResponse(provider, message, _devlog = () => {}, im
 
                     logger.info('[InboxWatcher]', `Captured response (${fullResponse.length} chars) -> speakable: "${finalResponse?.slice(0, 100)}..."`);
                     _devlog('BACKEND', 'response-captured', { text: finalResponse, chars: fullResponse.length, reason: 'stable' });
-                    finish(finalResponse, 'stable');
+                    finish(finalResponse, 'stable', fullResponse);
                 }
             } else {
                 stableCount = 0;
@@ -510,7 +520,7 @@ async function captureProviderResponse(provider, message, _devlog = () => {}, im
             } else {
                 logger.info('[InboxWatcher]', `Timeout with no speakable content. fullResponse=${fullResponse.length} chars, allOutput=${allOutput.length} chars, toolCompleted=${toolCompleted}`);
             }
-            finish(finalResponse, 'timeout');
+            finish(finalResponse, 'timeout', source);
         }, 60000);
     });
 }

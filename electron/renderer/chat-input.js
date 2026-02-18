@@ -229,36 +229,23 @@ export function getAmplitudeHistory() {
 }
 
 export function setRecordingVisual(active) {
-    if (!waveformEl) waveformEl = document.getElementById('voice-waveform');
-    if (!waveformEl) return;
-    if (!barsContainer) barsContainer = waveformEl.querySelector('.waveform-bars');
-
-    const inputRow = waveformEl.closest('#chat-input-row');
+    // Waveform visualization disabled — it caused the input bar to fill and get stuck.
+    // The orb animation and status text already indicate recording state.
     isRecording = active;
 
-    if (active) {
-        if (inputRow) inputRow.classList.add('recording');
-        waveformEl.classList.remove('hidden');
-
-        // Calculate bar count now that element is visible and has layout
-        rebuildBars(calcBarCount());
-
-        // Watch for resize
-        if (!resizeObserver) {
-            resizeObserver = new ResizeObserver(() => {
-                if (isRecording) rebuildBars(calcBarCount());
-            });
+    // Still toggle the 'recording' class so the textarea hides (CSS: visibility:hidden)
+    const inputRow = document.getElementById('chat-input-row');
+    if (inputRow) {
+        if (active) {
+            inputRow.classList.add('recording');
+        } else {
+            inputRow.classList.remove('recording');
         }
-        resizeObserver.observe(waveformEl);
-
-        for (const bar of bars) bar.style.transform = 'scaleY(0.06)';
-        startAudioVisualizer();
-    } else {
-        stopAudioVisualizer();
-        if (resizeObserver) resizeObserver.disconnect();
-        waveformEl.classList.add('hidden');
-        if (inputRow) inputRow.classList.remove('recording');
     }
+
+    // Ensure waveform stays hidden
+    if (!waveformEl) waveformEl = document.getElementById('voice-waveform');
+    if (waveformEl) waveformEl.classList.add('hidden');
 }
 
 export function initChatInput() {
