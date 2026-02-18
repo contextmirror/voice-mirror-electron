@@ -29,6 +29,16 @@ Real-time chat streaming, inline tool activity cards, sentence-level TTS, and du
 - **Two-source dedup** — Both the inbox-watcher and voice-backend TTS path sent separate `chat-message` IPC events for the same response. Now suppressed via a 10-second `streamingFinalizedAt` window after streaming completes
 - **Text mismatch handled** — Inbox-watcher sends cleaned/stripped text while streaming uses raw text; time-based suppression works regardless of text differences
 
+### Fixed — TTS & Chat Polish
+- **TTS truncation on long responses** — TTS stopped mid-sentence on long Ollama answers because the stability timer (2s of no tokens) resolved during LLM pauses. Now uses `stream-end` as the definitive done signal instead of polling
+- **Stray `}` in chat bubbles** — Nested JSON tool calls left a trailing `}` visible in chat. Replaced regex-based `stripToolJson()` with brace-balanced iterative parsing
+- **Tool card stuck on "Running"** — Safety net in `finalizeStreamingMessage()` flips any still-running tool cards to "Done" on stream completion
+- **Text doubling in TTS** — Both `stdout` tokens and `response` events were accumulated into the TTS buffer, causing doubled speech. Now only `stdout` is accumulated
+
+### Fixed — OpenCode Voice Loop
+- **Voice loop command not sent on provider switch** — The `claude_listen` loop command was swallowed during OpenCode's splash animation. Generic ready patterns (`>`, `What`) triggered too early. Now uses specific patterns (`Ask anything`, `ctrl+p`) with a 2-second post-ready delay
+- **Reusable `sendVoiceLoop()`** — Extracted voice loop injection into a single function used by startup, interrupt recovery, and a new `send-voice-loop` IPC channel for manual retry
+
 ### Improved
 - **Copy button targets answer text** — `copyMessage()` now targets `.markdown-content` instead of the first `div`, preventing accidental copy of tool card text
 - **Max-iterations finalization** — `stream-end` now emits when max tool iterations are reached, ensuring streaming cards always get finalized
