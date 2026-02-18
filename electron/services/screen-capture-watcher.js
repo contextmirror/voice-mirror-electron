@@ -98,10 +98,13 @@ function createScreenCaptureWatcher(options = {}) {
                         return;
                     }
 
-                    const sources = await captureScreen({
-                        types: ['screen'],
-                        thumbnailSize: { width: 1920, height: 1080 }
-                    });
+                    const sources = await Promise.race([
+                        captureScreen({
+                            types: ['screen'],
+                            thumbnailSize: { width: 1920, height: 1080 }
+                        }),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Screen capture timed out after 30s')), 30000))
+                    ]);
 
                     logger.info('[ScreenCapture]', `desktopCapturer returned ${sources.length} source(s): ${sources.map((s, i) => `[${i}] "${s.name}" display_id=${s.display_id}`).join(', ')}`);
 
@@ -172,6 +175,12 @@ function createScreenCaptureWatcher(options = {}) {
                 }
             } catch (err) {
                 logger.error('[ScreenCapture]', 'Error:', err);
+                try {
+                    await fsPromises.writeFile(responsePath, JSON.stringify({
+                        success: false, error: err?.message || 'Screen capture failed',
+                        timestamp: new Date().toISOString()
+                    }));
+                } catch { /* best-effort error response */ }
             } finally {
                 processing = false;
             }

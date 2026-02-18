@@ -16,6 +16,9 @@ const { CLI_PROVIDERS } = require('../constants');
  */
 function registerAIHandlers(ctx, validators) {
     ipcMain.handle('start-claude', (event, cols, rows) => {
+        // Validate cols/rows: same range as claude-pty-resize, default to 80x24 if invalid
+        if (!Number.isInteger(cols) || cols < 1 || cols > 500) cols = 80;
+        if (!Number.isInteger(rows) || rows < 1 || rows > 200) rows = 24;
         if (!ctx.isAIProviderRunning()) {
             const started = ctx.startAIProvider(cols, rows);
             return { success: started, data: { started } };

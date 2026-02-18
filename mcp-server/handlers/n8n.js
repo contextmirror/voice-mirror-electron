@@ -306,7 +306,7 @@ const NODE_CONFIGS = {
 
 async function handleN8nSearchNodes(args) {
     const query = (args?.query || '').toLowerCase();
-    const limit = args?.limit || 10;
+    const limit = Math.min(Math.max(args?.limit || 10, 1), 100);
     const results = [];
 
     for (const [key, node] of Object.entries(COMMON_NODES)) {
@@ -711,7 +711,7 @@ async function handleN8nDeployTemplate(args) {
 // ============================================
 
 async function handleN8nGetExecutions(args) {
-    const params = [`limit=${args?.limit || 10}`];
+    const params = [`limit=${Math.min(Math.max(args?.limit || 10, 1), 100)}`];
     if (args?.workflow_id) params.push(`workflowId=${args.workflow_id}`);
     if (args?.status) params.push(`status=${args.status}`);
 

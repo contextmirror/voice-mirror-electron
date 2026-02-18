@@ -690,11 +690,11 @@ app.whenReady().then(async () => {
             const status = await browserController.getStatus();
             if (status.url && status.url !== 'about:blank') {
                 await shell.openExternal(status.url);
-                return { ok: true, url: status.url };
+                return { success: true, url: status.url };
             }
-            return { ok: false, reason: 'no URL to open' };
+            return { success: false, reason: 'no URL to open' };
         } catch (err) {
-            return { ok: false, error: err.message };
+            return { success: false, error: err.message };
         }
     });
 

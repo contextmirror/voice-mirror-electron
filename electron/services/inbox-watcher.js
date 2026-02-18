@@ -210,6 +210,8 @@ function createInboxWatcher(options = {}) {
                             }
                         }).catch((err) => {
                             logger.error('[InboxWatcher]', `Error forwarding to ${providerName}:`, err);
+                            // Remove from processed set so the message can be retried on next inbox change
+                            processedUserMessageIds.delete(msg.id);
                             if (onVoiceEvent) {
                                 onVoiceEvent({ type: 'idle' });
                             }

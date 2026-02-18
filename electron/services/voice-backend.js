@@ -334,7 +334,7 @@ function createVoiceBackend(options = {}) {
                         maxAttempts: MAX_RESTARTS
                     });
                 }
-                setTimeout(() => start(), RESTART_DELAY);
+                setTimeout(() => { try { start(); } catch (e) { logger.error('[VoiceBackend]', 'Auto-restart failed:', e?.message); } }, RESTART_DELAY);
             } else if (code !== 0 && restartAttempts >= MAX_RESTARTS) {
                 logger.error('[Voice]', 'Max restart attempts reached');
                 if (log) log('VOICE', 'Max restart attempts reached');

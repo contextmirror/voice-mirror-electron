@@ -25,6 +25,8 @@ export function showToast(message, type = 'info', duration = 4000, options = {})
 
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
+    toast.setAttribute('role', 'alert');
+    toast.setAttribute('aria-live', 'polite');
 
     const iconSpan = document.createElement('span');
     iconSpan.className = 'toast-icon';

@@ -70,13 +70,19 @@ async function loadAllTabTemplates() {
         const panel = document.querySelector(`.settings-tab-content[data-tab="${tab.id}"]`);
         if (!panel || panel.dataset.loaded) return;
 
-        if (!_templateCache[tab.id]) {
-            const resp = await fetch(`templates/settings-${tab.id}.html`);
-            _templateCache[tab.id] = await resp.text();
-        }
+        try {
+            if (!_templateCache[tab.id]) {
+                const resp = await fetch(`templates/settings-${tab.id}.html`);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                _templateCache[tab.id] = await resp.text();
+            }
 
-        panel.innerHTML = _templateCache[tab.id];
-        panel.dataset.loaded = 'true';
+            panel.innerHTML = _templateCache[tab.id];
+            panel.dataset.loaded = 'true';
+        } catch (err) {
+            log.error(`Failed to load template for tab "${tab.id}":`, err);
+            panel.innerHTML = `<div style="padding:24px;color:var(--muted);">Failed to load settings tab.</div>`;
+        }
     }));
 }
 

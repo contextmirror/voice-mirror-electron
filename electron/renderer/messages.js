@@ -6,7 +6,7 @@
 
 import { state, recentMessages, DEDUP_WINDOW_MS } from './state.js';
 import { renderMarkdown } from './markdown.js';
-import { formatTime } from './utils.js';
+import { formatTime, escapeHtml } from './utils.js';
 import { createLog } from './log.js';
 const log = createLog('[Chat]');
 
@@ -169,7 +169,12 @@ export function addMessage(role, text, imageBase64 = null) {
             // Use markdown rendering for assistant messages, plain text for user
             if (role === 'assistant') {
                 textNode.className = 'markdown-content';
-                textNode.innerHTML = renderMarkdown(displayText);
+                try {
+                    textNode.innerHTML = renderMarkdown(displayText);
+                } catch (err) {
+                    log.error('Markdown render failed:', err);
+                    textNode.innerHTML = escapeHtml(displayText).replace(/\n/g, '<br>');
+                }
             } else {
                 textNode.textContent = displayText;
             }

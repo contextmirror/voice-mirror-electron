@@ -55,9 +55,13 @@ export async function loadChatList() {
 
         const nameSpan = document.createElement('span');
         nameSpan.className = 'chat-name';
-        nameSpan.textContent = chat.name && chat.name.length > 40
+        const isTruncated = chat.name && chat.name.length > 40;
+        nameSpan.textContent = isTruncated
             ? chat.name.slice(0, 40) + '...'
             : (chat.name || 'New Chat');
+        if (isTruncated) {
+            nameSpan.title = chat.name;
+        }
 
         const timeSpan = document.createElement('span');
         timeSpan.className = 'chat-time';

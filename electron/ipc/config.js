@@ -266,12 +266,18 @@ function registerConfigHandlers(ctx, validators) {
 
     // File picker for custom model files (e.g. Piper .onnx voices)
     ipcMain.handle('browse-model-file', async (_event, fileType) => {
+        const ALLOWED_FILE_TYPES = ['piper', 'whisper', 'onnx'];
         const filters = {
-            piper: [{ name: 'Piper Voice Models', extensions: ['onnx'] }]
+            piper: [{ name: 'Piper Voice Models', extensions: ['onnx'] }],
+            whisper: [{ name: 'Whisper Models', extensions: ['bin'] }],
+            onnx: [{ name: 'ONNX Models', extensions: ['onnx'] }]
         };
+        if (typeof fileType !== 'string' || !ALLOWED_FILE_TYPES.includes(fileType)) {
+            fileType = null; // fall back to generic filter
+        }
         const { canceled, filePaths } = await dialog.showOpenDialog(ctx.getMainWindow(), {
             title: 'Select Model File',
-            filters: filters[fileType] || [{ name: 'Model Files', extensions: ['onnx', 'bin', 'pt'] }],
+            filters: (fileType && filters[fileType]) || [{ name: 'Model Files', extensions: ['onnx', 'bin', 'pt'] }],
             properties: ['openFile']
         });
         if (canceled || !filePaths?.length) return { success: false };

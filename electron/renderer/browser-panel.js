@@ -4,6 +4,7 @@
  */
 
 import { navigateTo } from './navigation.js';
+import { showToast } from './notifications.js';
 import { createLog } from './log.js';
 const log = createLog('[BrowserPanel]');
 
@@ -69,6 +70,7 @@ export function initBrowserPanel() {
     webview.addEventListener('did-fail-load', (e) => {
         if (e.errorCode !== -3) { // -3 = aborted (normal for navigations)
             log.error('Load failed:', e.errorDescription);
+            showToast(`Page failed to load: ${e.errorDescription || 'Unknown error'}`, 'error', 5000);
         }
     });
 

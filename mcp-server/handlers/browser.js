@@ -55,7 +55,8 @@ async function fileBasedRequest(action, args, timeoutMs) {
                     settled = true;
                     cleanup();
                     resolve({ response: data, timedOut: false });
-                } catch {
+                } catch (e) {
+                    console.error('[MCP]', 'Parse error in browser response:', e?.message);
                     // Partial write, wait for next event
                 }
             }
@@ -73,8 +74,8 @@ async function fileBasedRequest(action, args, timeoutMs) {
                 if (filename === expectedFilename) tryRead();
             });
             watcher.on('error', () => { /* ignore watch errors */ });
-        } catch {
-            // fs.watch may fail on some platforms
+        } catch (e) {
+            console.error('[MCP]', 'fs.watch setup error in browser handler:', e?.message);
         }
 
         // Poll fallback every 500ms in case fs.watch misses events

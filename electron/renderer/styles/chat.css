@@ -562,6 +562,11 @@
     transform: scale(0.95);
 }
 
+#chat-send-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
 #chat-send-btn svg {
     width: 16px;
     height: 16px;

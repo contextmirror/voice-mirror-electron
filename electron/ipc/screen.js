@@ -56,6 +56,15 @@ function registerScreenHandlers(ctx, validators) {
     });
 
     ipcMain.handle('capture-screen', async (_event, sourceId) => {
+        // Validate sourceId format if provided
+        if (sourceId !== undefined && sourceId !== null) {
+            if (typeof sourceId !== 'string' || sourceId.length > 200) {
+                return { success: false, error: 'sourceId must be a string (max 200 chars)' };
+            }
+            if (!/^(screen:|display:|window:)/.test(sourceId)) {
+                return { success: false, error: 'sourceId must start with "screen:", "display:", or "window:"' };
+            }
+        }
         // Windows native capture for multi-monitor (display:N format from get-screens)
         if (process.platform === 'win32' && typeof sourceId === 'string' && sourceId.startsWith('display:')) {
             const displayIndex = parseInt(sourceId.split(':')[1], 10) || 0;

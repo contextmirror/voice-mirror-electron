@@ -104,6 +104,7 @@ function registerMiscHandlers(ctx, validators) {
 
     // Dependency version checking (for Dependencies settings tab)
     ipcMain.handle('check-dependency-versions', async () => {
+      try {
         const { execFile } = require('child_process');
         const npmCmd = 'npm';
         const appDir = path.join(__dirname, '..', '..');
@@ -254,6 +255,9 @@ function registerMiscHandlers(ctx, validators) {
         ]);
 
         return { success: true, data: { npm, system } };
+      } catch (e) {
+        return { success: false, error: e.message };
+      }
     });
 
     // Dependency update handler
@@ -309,7 +313,7 @@ function registerMiscHandlers(ctx, validators) {
                         updated: data.updated,
                         messageCount: (data.messages || []).length,
                     });
-                } catch { /* skip corrupt files */ }
+                } catch { ctx.logger?.warn?.('[Chat]', 'Skipped corrupt file:', file); }
             }
             chats.sort((a, b) => new Date(b.updated) - new Date(a.updated));
             return { success: true, data: chats };
@@ -334,6 +338,9 @@ function registerMiscHandlers(ctx, validators) {
     ipcMain.handle('chat-save', async (_event, chat) => {
         try {
             if (!chat || !chat.id) return { success: false, error: 'Invalid chat data' };
+            if (typeof chat.id !== 'string' || chat.id.length > 100 || !/^[a-zA-Z0-9_-]+$/.test(chat.id)) {
+                return { success: false, error: 'chat.id must be alphanumeric with dashes/underscores (max 100 chars)' };
+            }
             await fsPromises.mkdir(chatsDir, { recursive: true });
             const filePath = ensureWithin(chatsDir, `${chat.id}.json`);
             chat.updated = new Date().toISOString();
@@ -358,6 +365,9 @@ function registerMiscHandlers(ctx, validators) {
 
     ipcMain.handle('chat-rename', async (_event, id, name) => {
         try {
+            if (typeof name !== 'string' || name.trim().length === 0 || name.length > 500) {
+                return { success: false, error: 'name must be a non-empty string (max 500 chars)' };
+            }
             const filePath = ensureWithin(chatsDir, `${id}.json`);
             let raw;
             try { raw = await fsPromises.readFile(filePath, 'utf-8'); } catch { return { success: false, error: 'Chat not found' }; }

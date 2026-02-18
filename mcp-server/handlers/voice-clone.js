@@ -39,7 +39,8 @@ function watchForResponse(responsePath, timeoutMs) {
                     settled = true;
                     cleanup();
                     resolve({ response: data, timedOut: false });
-                } catch {
+                } catch (e) {
+                    console.error('[MCP]', 'Parse error in watchForResponse:', e?.message);
                     // Partial write, wait for next event
                 }
             }
@@ -56,7 +57,9 @@ function watchForResponse(responsePath, timeoutMs) {
                 if (filename === expectedFilename) tryRead();
             });
             watcher.on('error', () => {});
-        } catch {}
+        } catch (e) {
+            console.error('[MCP]', 'fs.watch setup error in watchForResponse:', e?.message);
+        }
 
         fallbackInterval = setInterval(tryRead, 500);
 

@@ -105,7 +105,8 @@ async function handleCaptureScreen(args) {
                     settled = true;
                     cleanup();
                     resolve({ response, timedOut: false });
-                } catch {
+                } catch (e) {
+                    console.error('[MCP]', 'Parse error in screen capture response:', e?.message);
                     // Partial write, wait for next event
                 }
             }
@@ -122,7 +123,9 @@ async function handleCaptureScreen(args) {
                 if (filename === expectedFilename) tryRead();
             });
             watcher.on('error', () => {});
-        } catch {}
+        } catch (e) {
+            console.error('[MCP]', 'fs.watch setup error in screen handler:', e?.message);
+        }
 
         fallbackInterval = setInterval(tryRead, 500);
 
