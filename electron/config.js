@@ -48,7 +48,10 @@ const DEFAULT_CONFIG = {
         sttEndpoint: null,       // Custom STT endpoint URL
         sttModelName: null,      // Specific model name (e.g. "large-v3")
         inputDevice: null,       // Audio input device name (null = system default)
-        outputDevice: null       // Audio output device name (null = system default)
+        outputDevice: null,      // Audio output device name (null = system default)
+        announceStartup: true,   // Speak startup greeting ("Good morning, Voice Mirror online...")
+        announceProviderSwitch: true  // Speak provider switch ("Claude is online...")
+
     },
 
     // Appearance

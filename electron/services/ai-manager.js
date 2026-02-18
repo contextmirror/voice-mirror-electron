@@ -345,7 +345,7 @@ function createAIManager(options = {}) {
                     return false;
                 }
                 await startClaudeCode(cols, rows);
-                if (isSwitch && onSystemSpeak) {
+                if (isSwitch && onSystemSpeak && getConfig()?.voice?.announceProviderSwitch !== false) {
                     const hint = getActivationHint ? ` ${getActivationHint()}` : '';
                     const myGen = generation;
                     setTimeout(() => { if (myGen !== generation) return; onSystemSpeak(`Claude is online.${hint}`); }, 3000);
@@ -358,7 +358,7 @@ function createAIManager(options = {}) {
                     return false;
                 }
                 await startCLIAgent(providerType, cols, rows);
-                if (isSwitch && onSystemSpeak) {
+                if (isSwitch && onSystemSpeak && getConfig()?.voice?.announceProviderSwitch !== false) {
                     const displayName = cliSpawner?.config?.displayName || providerType;
                     const hint = getActivationHint ? ` ${getActivationHint()}` : '';
                     const myGen = generation;
@@ -468,7 +468,7 @@ function createAIManager(options = {}) {
             }
 
             // Announce provider switch via TTS
-            if (isSwitch && onSystemSpeak) {
+            if (isSwitch && onSystemSpeak && getConfig()?.voice?.announceProviderSwitch !== false) {
                 const displayName = activeProvider.getDisplayName();
                 const hint = getActivationHint ? ` ${getActivationHint()}` : '';
                 onSystemSpeak(`${displayName} is online.${hint}`);

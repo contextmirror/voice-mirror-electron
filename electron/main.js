@@ -427,6 +427,7 @@ app.whenReady().then(async () => {
 
     function doStartupGreeting() {
         if (!voiceBackend?.isRunning()) return;
+        if (appConfig.voice?.announceStartup === false) return;
         const hint = getActivationHint();
 
         // First-ever launch
