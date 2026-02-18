@@ -290,24 +290,39 @@ export function initChatInput() {
     // Send button
     sendBtn.addEventListener('click', sendMessage);
 
-    // Clear chat — two-step confirm
+    // Clear chat — two-step confirm with visual countdown
     let clearConfirmTimer = null;
+    let clearCountdownInterval = null;
     clearBtn.addEventListener('click', () => {
         if (clearBtn.classList.contains('confirming')) {
             // Second click — actually clear
             clearTimeout(clearConfirmTimer);
+            clearInterval(clearCountdownInterval);
             clearChat();
             resetClearBtn();
         } else {
-            // First click — switch to confirm state
+            // First click — switch to confirm state with countdown
             clearBtn.classList.add('confirming');
-            clearBtn.querySelector('span').textContent = 'Confirm';
             clearBtn.querySelector('svg').innerHTML = '<polyline points="20 6 9 17 4 12"/>';
+
+            let remaining = 3;
+            clearBtn.querySelector('span').textContent = `Clear? (${remaining}s)`;
+            clearCountdownInterval = setInterval(() => {
+                remaining--;
+                if (remaining > 0) {
+                    clearBtn.querySelector('span').textContent = `Clear? (${remaining}s)`;
+                } else {
+                    clearInterval(clearCountdownInterval);
+                }
+            }, 1000);
+
             clearConfirmTimer = setTimeout(resetClearBtn, 3000);
         }
     });
 
     function resetClearBtn() {
+        clearTimeout(clearConfirmTimer);
+        clearInterval(clearCountdownInterval);
         clearBtn.classList.remove('confirming');
         clearBtn.querySelector('span').textContent = 'Clear';
         clearBtn.querySelector('svg').innerHTML =

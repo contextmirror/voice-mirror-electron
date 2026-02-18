@@ -252,7 +252,7 @@ function parseModels(response) {
  * @param {string} customEndpoint - Optional custom endpoint override
  * @returns {Promise<Object>} Provider status
  */
-async function detectLocalProvider(type, customEndpoint = null) {
+async function detectLocalProvider(type, customEndpoint = null, retried = false) {
     const config = LOCAL_PROVIDERS[type];
     if (!config) {
         return { type, name: type, online: false, error: 'Unknown provider type' };
@@ -307,12 +307,12 @@ async function detectLocalProvider(type, customEndpoint = null) {
             logger.info('[ProviderDetector]', `${config.name}: OFFLINE`);
             status.error = 'offline';
 
-            // Auto-start Ollama if it's installed but not running
-            if (type === 'ollama' && !customEndpoint) {
+            // Auto-start Ollama if it's installed but not running (only on first attempt)
+            if (type === 'ollama' && !customEndpoint && !retried) {
                 const started = await tryStartOllama();
                 if (started) {
                     // Retry detection now that Ollama is running
-                    return detectLocalProvider(type, customEndpoint);
+                    return detectLocalProvider(type, customEndpoint, true);
                 }
             }
         }

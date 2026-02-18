@@ -107,6 +107,7 @@ const validators = {
         }
       }
       if (s.ai.contextLength !== undefined) {
+        // 1MB max context length (1048576 = 1024 * 1024)
         if (!Number.isInteger(s.ai.contextLength) || s.ai.contextLength < 1024 || s.ai.contextLength > 1048576) {
           errors.push('ai.contextLength must be an integer 1024-1048576');
         }
@@ -271,8 +272,13 @@ const validators = {
     if (typeof query.text !== 'string' || query.text.length > 50000) {
       return fail('query.text must be a string (max 50000 chars)');
     }
-    if (query.image !== undefined && query.image !== null && typeof query.image !== 'string') {
-      return fail('query.image must be a string or null');
+    if (query.image !== undefined && query.image !== null) {
+      if (typeof query.image !== 'string') {
+        return fail('query.image must be a string or null');
+      }
+      if (query.image.length > 20_000_000) {
+        return fail('Image data too large (max 20MB)');
+      }
     }
     return ok({ text: query.text, image: query.image || null });
   },
@@ -319,6 +325,9 @@ const validators = {
     }
     if (typeof imageData.base64 !== 'string') {
       return fail('imageData.base64 must be a string');
+    }
+    if (imageData.base64.length > 20_000_000) {
+      return fail('Image data too large (max 20MB)');
     }
     if (imageData.filename !== undefined && imageData.filename !== null) {
       if (typeof imageData.filename !== 'string' || imageData.filename.length > 255) {

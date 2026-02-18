@@ -221,7 +221,22 @@ function registerConfigHandlers(ctx, validators) {
         const voiceSettingsChanged = activationModeChanged || pttKeyChanged || dictationKeyChanged || userNameChanged ||
             (updates.wakeWord && JSON.stringify(updates.wakeWord) !== JSON.stringify(oldWakeWord)) ||
             (updates.voice && JSON.stringify(updates.voice) !== JSON.stringify(oldVoice));
-        if (voiceSettingsChanged && ctx.getVoiceBackend()?.isRunning()) {
+        // Audio device changes require a full voice backend restart (stream opened at startup)
+        // Check this separately from general voice settings — use explicit null-safe comparison
+        const oldInputDevice = oldVoice?.inputDevice || null;
+        const oldOutputDevice = oldVoice?.outputDevice || null;
+        const newInputDevice = updates.voice?.inputDevice !== undefined ? (updates.voice.inputDevice || null) : undefined;
+        const newOutputDevice = updates.voice?.outputDevice !== undefined ? (updates.voice.outputDevice || null) : undefined;
+        const inputDeviceChanged = newInputDevice !== undefined && newInputDevice !== oldInputDevice;
+        const outputDeviceChanged = newOutputDevice !== undefined && newOutputDevice !== oldOutputDevice;
+
+        if ((inputDeviceChanged || outputDeviceChanged) && ctx.getVoiceBackend()?.isRunning()) {
+            const currentConfig = ctx.getAppConfig();
+            ctx.getVoiceBackend().syncVoiceSettings(currentConfig);
+            ctx.logger.info('[Config]', `Audio device changed: input=${oldInputDevice}->${newInputDevice}, output=${oldOutputDevice}->${newOutputDevice}`);
+            ctx.suppressVoiceGreeting();
+            ctx.getVoiceBackend().restart();
+        } else if (voiceSettingsChanged && ctx.getVoiceBackend()?.isRunning()) {
             const currentConfig = ctx.getAppConfig();
             // Sync settings file so voice-core reads correct config on restart
             ctx.getVoiceBackend().syncVoiceSettings(currentConfig);
@@ -266,12 +281,18 @@ function registerConfigHandlers(ctx, validators) {
 
     // File picker for custom model files (e.g. Piper .onnx voices)
     ipcMain.handle('browse-model-file', async (_event, fileType) => {
+        const ALLOWED_FILE_TYPES = ['piper', 'whisper', 'onnx'];
         const filters = {
-            piper: [{ name: 'Piper Voice Models', extensions: ['onnx'] }]
+            piper: [{ name: 'Piper Voice Models', extensions: ['onnx'] }],
+            whisper: [{ name: 'Whisper Models', extensions: ['bin'] }],
+            onnx: [{ name: 'ONNX Models', extensions: ['onnx'] }]
         };
+        if (typeof fileType !== 'string' || !ALLOWED_FILE_TYPES.includes(fileType)) {
+            fileType = null; // fall back to generic filter
+        }
         const { canceled, filePaths } = await dialog.showOpenDialog(ctx.getMainWindow(), {
             title: 'Select Model File',
-            filters: filters[fileType] || [{ name: 'Model Files', extensions: ['onnx', 'bin', 'pt'] }],
+            filters: (fileType && filters[fileType]) || [{ name: 'Model Files', extensions: ['onnx', 'bin', 'pt'] }],
             properties: ['openFile']
         });
         if (canceled || !filePaths?.length) return { success: false };
@@ -341,6 +362,9 @@ function registerConfigHandlers(ctx, validators) {
     ipcMain.handle('font-add', async (_event, filePath, type) => {
         if (type !== 'ui' && type !== 'mono') return { success: false, error: 'type must be "ui" or "mono"' };
         if (typeof filePath !== 'string' || filePath.length > 1024) return { success: false, error: 'Invalid file path' };
+        // Path traversal protection: must be absolute and free of ".." segments
+        if (!path.isAbsolute(filePath)) return { success: false, error: 'File path must be absolute' };
+        if (filePath.includes('..')) return { success: false, error: 'File path must not contain ".." segments' };
         try { return await fontManager.addFont(filePath, type); }
         catch (err) { return { success: false, error: err.message }; }
     });
@@ -351,7 +375,13 @@ function registerConfigHandlers(ctx, validators) {
         catch (err) { return { success: false, error: err.message }; }
     });
 
-    ipcMain.handle('font-list', () => ({ success: true, data: fontManager.listFonts() }));
+    ipcMain.handle('font-list', () => {
+        try {
+            return { success: true, data: fontManager.listFonts() };
+        } catch (err) {
+            return { success: false, error: err.message };
+        }
+    });
 
     ipcMain.handle('font-get-data-url', async (_event, fontId) => {
         if (typeof fontId !== 'string' || fontId.length > 20) return { success: false, error: 'Invalid font ID' };

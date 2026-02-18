@@ -133,6 +133,7 @@ function start(dir) {
         });
         fsWatcher.on('error', (err) => {
             logger.error('[Diagnostic]', 'fs.watch error, falling back to polling:', err.message);
+            if (!isRunning()) return; // Service was stopped, don't start polling
             watcher = setInterval(() => processRequest(), 2000);
         });
         watcher = fsWatcher;

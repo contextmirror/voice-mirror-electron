@@ -57,21 +57,21 @@ describe('ai-manager', () => {
         assert.strictEqual(mgr.getDisplayName(), 'None');
     });
 
-    it('stop() should return false when nothing is running', () => {
+    it('stop() should return false when nothing is running', async () => {
         const mgr = makeManager();
-        const result = mgr.stop();
+        const result = await mgr.stop();
         assert.strictEqual(result, false);
     });
 
-    it('stop() should not fire providerSwitch when nothing was running', () => {
+    it('stop() should not fire providerSwitch when nothing was running', async () => {
         const mgr = makeManager();
-        mgr.stop();
+        await mgr.stop();
         assert.strictEqual(events.providerSwitches, 0);
     });
 
-    it('stop() should not fire voice events when nothing was running', () => {
+    it('stop() should not fire voice events when nothing was running', async () => {
         const mgr = makeManager();
-        mgr.stop();
+        await mgr.stop();
         const disconnects = events.voiceEvents.filter(e => e.type === 'claude_disconnected');
         assert.strictEqual(disconnects.length, 0);
     });
@@ -91,11 +91,11 @@ describe('ai-manager', () => {
         assert.strictEqual(mgr.getProvider(), null);
     });
 
-    it('consecutive stops should be safe (idempotent)', () => {
+    it('consecutive stops should be safe (idempotent)', async () => {
         const mgr = makeManager();
-        mgr.stop();
-        mgr.stop();
-        mgr.stop();
+        await mgr.stop();
+        await mgr.stop();
+        await mgr.stop();
         assert.strictEqual(events.providerSwitches, 0);
     });
 });

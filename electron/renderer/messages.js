@@ -6,7 +6,7 @@
 
 import { state, recentMessages, DEDUP_WINDOW_MS } from './state.js';
 import { renderMarkdown } from './markdown.js';
-import { formatTime } from './utils.js';
+import { formatTime, escapeHtml } from './utils.js';
 import { createLog } from './log.js';
 const log = createLog('[Chat]');
 
@@ -169,7 +169,12 @@ export function addMessage(role, text, imageBase64 = null) {
             // Use markdown rendering for assistant messages, plain text for user
             if (role === 'assistant') {
                 textNode.className = 'markdown-content';
-                textNode.innerHTML = renderMarkdown(displayText);
+                try {
+                    textNode.innerHTML = renderMarkdown(displayText);
+                } catch (err) {
+                    log.error('Markdown render failed:', err);
+                    textNode.innerHTML = escapeHtml(displayText).replace(/\n/g, '<br>');
+                }
             } else {
                 textNode.textContent = displayText;
             }
@@ -182,6 +187,7 @@ export function addMessage(role, text, imageBase64 = null) {
         const copyBtn = document.createElement('button');
         copyBtn.className = 'message-copy-btn';
         copyBtn.title = 'Copy';
+        copyBtn.setAttribute('aria-label', 'Copy message');
         copyBtn.innerHTML = `
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>

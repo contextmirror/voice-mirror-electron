@@ -37,15 +37,19 @@ if (!fs.existsSync(HOME_DATA_DIR)) {
 }
 
 // Clean up any stale listener lock from previous crashes
+// Only delete locks that expired more than 60s ago to avoid racing with active processes
 if (fs.existsSync(LISTENER_LOCK_PATH)) {
     try {
         const lock = JSON.parse(fs.readFileSync(LISTENER_LOCK_PATH, 'utf-8'));
-        if (lock.expires_at < Date.now()) {
+        const STALE_GRACE_PERIOD_MS = 60000; // 60 seconds grace period
+        if (lock.expires_at < Date.now() - STALE_GRACE_PERIOD_MS) {
             fs.unlinkSync(LISTENER_LOCK_PATH);
             console.error('[MCP] Cleaned up stale listener lock');
         }
-    } catch {
-        fs.unlinkSync(LISTENER_LOCK_PATH);
+    } catch (e) {
+        console.error('[MCP]', 'Parse error reading lock file at startup:', e?.message);
+        // Corrupt lock file — safe to remove
+        try { fs.unlinkSync(LISTENER_LOCK_PATH); } catch (e2) { console.error('[MCP]', 'Failed to remove corrupt lock file:', e2?.message); }
     }
 }
 

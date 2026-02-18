@@ -10,7 +10,7 @@ const { getMemoryManager } = require('../lib/memory/MemoryManager');
 async function handleMemorySearch(args) {
     try {
         const query = args?.query;
-        const maxResults = args?.max_results || 5;
+        const maxResults = Math.min(Math.max(args?.max_results || 5, 1), 100);
         const minScore = args?.min_score || 0.3;
 
         if (!query) {

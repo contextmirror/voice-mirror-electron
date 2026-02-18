@@ -8,6 +8,7 @@ import { createLog } from './log.js';
 import { blobToBase64, formatSize } from './utils.js';
 import { addMessage, isDuplicate } from './messages.js';
 import { triggerAutoName } from './chat-store.js';
+import { showToast } from './notifications.js';
 
 const log = createLog('[Image]');
 
@@ -257,7 +258,10 @@ export async function captureScreen() {
     try {
         const result = await window.voiceMirror.getScreens();
         const screens = result.data;
-        if (!screens || screens.length === 0) return;
+        if (!screens || screens.length === 0) {
+            showToast('No screens found for capture', 'warning');
+            return;
+        }
         if (screens.length === 1) {
             await captureAndPreview(screens[0].id);
         } else {
@@ -265,6 +269,7 @@ export async function captureScreen() {
         }
     } catch (err) {
         log.error('Screen capture failed:', err);
+        showToast('Screen capture failed: ' + (err.message || 'Unknown error'), 'error');
     }
 }
 

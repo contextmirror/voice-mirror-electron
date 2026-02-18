@@ -169,6 +169,9 @@ class TUIRenderer {
         // First render flag
         this._firstRender = true;
 
+        // Destroyed flag — prevents use after destroy()
+        this._destroyed = false;
+
         // Theme: ANSI escape code overrides for colors
         // _bgCode: explicit ANSI 24-bit background (empty string = use terminal default)
         // _resetBg: RESET + background restore (used wherever RESET + CLEAR_EOL appears)
@@ -304,6 +307,10 @@ class TUIRenderer {
     // ── Full render ─────────────────────────────────────────────────────
 
     render() {
+        if (this._destroyed) {
+            if (this._spinnerTimer) { clearInterval(this._spinnerTimer); this._spinnerTimer = null; }
+            return;
+        }
         const L = this._computeLayout();
         this._layout = L;
         const buf = [];
@@ -648,6 +655,10 @@ class TUIRenderer {
     }
 
     streamToken(token) {
+        if (this._destroyed) {
+            if (this._spinnerTimer) { clearInterval(this._spinnerTimer); this._spinnerTimer = null; }
+            return;
+        }
         this.streaming = true;
         this.streamBuffer += token;
 
@@ -813,6 +824,7 @@ class TUIRenderer {
      * Tear down timers. Call when the renderer is no longer needed.
      */
     destroy() {
+        this._destroyed = true;
         if (this._spinnerTimer) {
             clearInterval(this._spinnerTimer);
             this._spinnerTimer = null;

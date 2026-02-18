@@ -155,10 +155,14 @@
     pointer-events: auto;
 }
 
-.message-copy-btn:hover {
+.message-copy-btn:hover,
+.message-copy-btn:focus-visible {
     opacity: 1;
     background: rgba(0, 0, 0, 0.5);
     color: var(--text-strong);
+    pointer-events: auto;
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
 }
 
 .message-copy-btn.copied {
@@ -562,6 +566,11 @@
     transform: scale(0.95);
 }
 
+#chat-send-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
 #chat-send-btn svg {
     width: 16px;
     height: 16px;
@@ -728,4 +737,27 @@
 .screen-picker-label {
     color: var(--muted);
     font-size: 12px;
+}
+
+/* ========== Reduced Motion ========== */
+@media (prefers-reduced-motion: reduce) {
+    .message-group {
+        animation: none;
+    }
+
+    .tool-card {
+        animation: none;
+    }
+
+    .tool-status.running {
+        animation: none;
+    }
+
+    #ai-status-text.shiny-text {
+        animation: none;
+    }
+
+    .toast.exiting {
+        animation: none;
+    }
 }

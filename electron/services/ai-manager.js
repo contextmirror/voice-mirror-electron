@@ -14,7 +14,7 @@ const {
     resizePty
 } = require('../providers/claude-spawner');
 
-const { CLI_PROVIDERS } = require('../constants');
+const { CLI_PROVIDERS, DEFAULT_TERMINAL } = require('../constants');
 const { createProvider } = require('../providers');
 const { ensureLocalLLMRunning: _ensureLocalLLMRunning } = require('../lib/ollama-launcher');
 
@@ -76,7 +76,7 @@ async function configureOpenCodeMCP(appConfig) {
  * @param {Function} options.onVoiceEvent - Callback for voice events
  * @param {Function} options.onToolCall - Callback for tool calls
  * @param {Function} options.onToolResult - Callback for tool results
- * @param {Function} options.onProviderSwitch - Callback when provider is switched (clear message IDs)
+ * @param {Function} [options.onProviderSwitch] - Synchronous callback invoked when provider stops. Must not return a Promise.
  * @returns {Object} AI manager service instance
  */
 function createAIManager(options = {}) {
@@ -85,19 +85,18 @@ function createAIManager(options = {}) {
     let activeProvider = null;  // Current OpenAI-compatible provider instance
     let hasStartedOnce = false; // Track initial startup vs provider switch
     let cliSpawner = null;      // CLI spawner for non-Claude PTY providers (OpenCode, etc.)
-    let outputGated = false;    // When true, sendOutput drops all events (set during provider switch)
+    let generation = 0;         // Monotonic counter — bumped on stop to gate stale output and prevent races
+    let starting = false;       // True while a start() is in progress — prevents concurrent spawns
 
     /**
      * Send output to the terminal UI.
-     * Gated during provider switches to prevent stale PTY output from reaching the renderer.
+     * Uses generation counter to prevent stale output from old providers reaching the renderer.
+     * Only output whose captured generation matches the current generation is emitted.
      */
-    function sendOutput(type, text) {
-        if (outputGated && type !== 'start') {
-            // During provider switch, only allow 'start' events through (from new provider)
+    function sendOutput(type, text, outputGeneration) {
+        // If a generation is provided, check it matches current. This gates stale output.
+        if (outputGeneration !== undefined && outputGeneration !== generation) {
             return;
-        }
-        if (type === 'start') {
-            outputGated = false;  // New provider started — re-enable output
         }
         if (onOutput) {
             onOutput({ type, text });
@@ -144,8 +143,8 @@ function createAIManager(options = {}) {
                 sendOutput('exit', code);
                 sendVoiceEvent({ type: 'claude_disconnected' });
             },
-            cols: cols || 120,
-            rows: rows || 30,
+            cols: cols || DEFAULT_TERMINAL.COLS,
+            rows: rows || DEFAULT_TERMINAL.ROWS,
             appConfig
         });
 
@@ -170,14 +169,17 @@ function createAIManager(options = {}) {
             }
             voicePrompt += `Use claude_listen to wait for voice input from ${senderName}, then reply with claude_send. Loop forever.\n`;
 
+            const startGen = generation;
             sendInputWhenReady(voicePrompt, 20000)
                 .then(() => {
+                    if (startGen !== generation) return;
                     logger.info('[AIManager]', 'Voice mode command sent successfully');
                 })
                 .catch((err) => {
                     logger.error('[AIManager]', 'Failed to send voice mode command:', err.message);
-                    // Fallback: try sending anyway after a delay
+                    // Fallback: try sending anyway after a delay (only if still same generation)
                     setTimeout(() => {
+                        if (startGen !== generation) return;
                         if (isClaudeRunning()) {
                             sendInput(voicePrompt + '\r');
                             logger.info('[AIManager]', 'Sent voice mode command (fallback)');
@@ -231,8 +233,8 @@ function createAIManager(options = {}) {
                 sendVoiceEvent({ type: 'claude_disconnected' });
                 cliSpawner = null;
             },
-            cols: cols || 120,
-            rows: rows || 30,
+            cols: cols || DEFAULT_TERMINAL.COLS,
+            rows: rows || DEFAULT_TERMINAL.ROWS,
             appConfig
         });
 
@@ -251,11 +253,16 @@ function createAIManager(options = {}) {
                 const senderName = (appConfig.user?.name || 'user').toLowerCase();
                 const voicePrompt = `Use claude_listen to wait for voice input from ${senderName}, then reply with claude_send. Loop forever.\n`;
 
+                const cliStartGen = generation;
                 cliSpawner.sendInputWhenReady(voicePrompt, 20000)
-                    .then(() => logger.info('[AIManager]', `${displayName} voice mode command sent`))
+                    .then(() => {
+                        if (cliStartGen !== generation) return;
+                        logger.info('[AIManager]', `${displayName} voice mode command sent`);
+                    })
                     .catch((err) => {
                         logger.error('[AIManager]', `Failed to send ${displayName} voice command:`, err.message);
                         setTimeout(() => {
+                            if (cliStartGen !== generation) return;
                             if (cliSpawner && cliSpawner.isRunning()) {
                                 cliSpawner.sendInput(voicePrompt);
                             }
@@ -290,6 +297,12 @@ function createAIManager(options = {}) {
      * @returns {boolean} True if started
      */
     async function start(cols, rows) {
+        if (starting) {
+            logger.info('[AIManager]', 'Start already in progress, ignoring concurrent start()');
+            return false;
+        }
+        starting = true;
+
         const config = getConfig();
         const providerType = config?.ai?.provider || 'claude';
         const model = config?.ai?.model || null;
@@ -304,7 +317,10 @@ function createAIManager(options = {}) {
             // About to start CLI — kill any leftover API provider
             if (activeProvider) {
                 logger.info('[AIManager]', 'Cleaning up stale API provider before CLI start');
-                try { if (activeProvider.isRunning()) activeProvider.stop(); } catch (e) { /* ignore */ }
+                try {
+                    if (activeProvider.isRunning()) await activeProvider.stop();
+                } catch (e) { /* ignore */ }
+                activeProvider.removeAllListeners();
                 activeProvider = null;
             }
         } else {
@@ -325,32 +341,38 @@ function createAIManager(options = {}) {
                 // Claude Code uses its own dedicated PTY spawner
                 if (isClaudeRunning()) {
                     logger.info('[AIManager]', 'Claude already running');
+                    starting = false;
                     return false;
                 }
                 await startClaudeCode(cols, rows);
                 if (isSwitch && onSystemSpeak) {
                     const hint = getActivationHint ? ` ${getActivationHint()}` : '';
-                    setTimeout(() => onSystemSpeak(`Claude is online.${hint}`), 3000);
+                    const myGen = generation;
+                    setTimeout(() => { if (myGen !== generation) return; onSystemSpeak(`Claude is online.${hint}`); }, 3000);
                 }
             } else {
                 // Non-Claude CLI agents (OpenCode, Codex, Gemini CLI, Kimi CLI)
                 if (cliSpawner && cliSpawner.isRunning()) {
                     logger.info('[AIManager]', `${providerType} already running`);
+                    starting = false;
                     return false;
                 }
                 await startCLIAgent(providerType, cols, rows);
                 if (isSwitch && onSystemSpeak) {
                     const displayName = cliSpawner?.config?.displayName || providerType;
                     const hint = getActivationHint ? ` ${getActivationHint()}` : '';
-                    setTimeout(() => onSystemSpeak(`${displayName} is online.${hint}`), 3000);
+                    const myGen = generation;
+                    setTimeout(() => { if (myGen !== generation) return; onSystemSpeak(`${displayName} is online.${hint}`); }, 3000);
                 }
             }
+            starting = false;
             return true;
         }
 
         // For non-Claude providers, use the OpenAI-compatible provider
         if (activeProvider && activeProvider.isRunning()) {
             logger.info('[AIManager]', `${providerType} already running`);
+            starting = false;
             return false;
         }
 
@@ -370,6 +392,9 @@ function createAIManager(options = {}) {
                        process.env[envVarAltMap[providerType]] ||
                        undefined;
 
+        // Capture generation for this spawn — output only emitted if generation still matches
+        const myGeneration = generation;
+
         // Create provider instance
         activeProvider = createProvider(providerType, {
             model: model,
@@ -379,9 +404,9 @@ function createAIManager(options = {}) {
             systemPrompt: config?.ai?.systemPrompt || null
         });
 
-        // Set up output handlers
+        // Set up output handlers — gated by generation counter
         activeProvider.on('output', (data) => {
-            sendOutput(data.type, data.text);
+            sendOutput(data.type, data.text, myGeneration);
         });
 
         // Set up tool callbacks for local providers
@@ -389,6 +414,7 @@ function createAIManager(options = {}) {
             activeProvider.setToolCallbacks(
                 // onToolCall - when a tool is being executed
                 (data) => {
+                    if (myGeneration !== generation) return;
                     logger.info('[AIManager]', `Tool call: ${data.tool}`);
                     if (onToolCall) {
                         onToolCall({
@@ -400,6 +426,7 @@ function createAIManager(options = {}) {
                 },
                 // onToolResult - when a tool execution completes
                 (data) => {
+                    if (myGeneration !== generation) return;
                     logger.info('[AIManager]', `Tool result: ${data.tool} - ${data.success ? 'success' : 'failed'}`);
                     if (onToolResult) {
                         onToolResult({
@@ -414,6 +441,12 @@ function createAIManager(options = {}) {
 
         // Start the provider (pass terminal dimensions and app config for instructions)
         activeProvider.spawn({ cols, rows, appConfig: config }).then(() => {
+            // Check generation — if it changed, this spawn is stale
+            if (myGeneration !== generation) {
+                logger.info('[AIManager]', `Stale spawn completed for ${providerType} (gen ${myGeneration} != ${generation}), ignoring`);
+                return;
+            }
+            starting = false;
             sendOutput('start', `[${activeProvider.getDisplayName()}] Ready\n`);
             sendVoiceEvent({
                 type: 'claude_connected',
@@ -443,7 +476,14 @@ function createAIManager(options = {}) {
         }).catch((err) => {
             logger.error('[AIManager]', `Failed to start ${providerType}:`, err);
             sendOutput('stderr', `[Error] Failed to start ${providerType}: ${err.message}\n`);
-            activeProvider = null; // Clear broken provider
+            // Only clear if this is still the active generation (not already replaced)
+            if (myGeneration === generation) {
+                if (activeProvider) {
+                    activeProvider.removeAllListeners();
+                }
+                activeProvider = null;
+            }
+            starting = false;
             if (isSwitch && onSystemSpeak) {
                 onSystemSpeak(`System check failed. ${providerType} is not responding.`);
             }
@@ -455,12 +495,12 @@ function createAIManager(options = {}) {
     /**
      * Stop the active AI provider.
      * Stops whatever is actually running, not based on config.
-     * @returns {boolean} True if something was stopped
+     * @returns {Promise<boolean>} True if something was stopped
      */
-    function stop() {
-        // Gate output FIRST — prevents any stale PTY data from reaching the renderer
-        // while the old provider is dying and before the new one starts.
-        outputGated = true;
+    async function stop() {
+        // Bump generation FIRST — invalidates output callbacks from the dying provider
+        generation++;
+        starting = false;
 
         let stopped = false;
 
@@ -482,11 +522,12 @@ function createAIManager(options = {}) {
             const name = activeProvider.getDisplayName();
             try {
                 if (activeProvider.isRunning()) {
-                    activeProvider.stop();
+                    await activeProvider.stop();
                 }
             } catch (err) {
                 logger.error('[AIManager]', `Error stopping ${name}:`, err.message);
             }
+            activeProvider.removeAllListeners();
             activeProvider = null;
             logger.info('[AIManager]', `Stopped ${name}`);
             stopped = true;
@@ -520,10 +561,16 @@ function createAIManager(options = {}) {
                 sendRawInput('\x03');
                 logger.info('[AIManager]', 'Sent Ctrl+C to Claude PTY');
 
+                const interruptGen = generation;
                 const senderName = (getConfig()?.user?.name || 'user').toLowerCase();
                 sendInputWhenReady(`Use claude_listen to wait for voice input from ${senderName}, then reply with claude_send. Loop forever.\n`, 10000)
-                    .then(() => logger.info('[AIManager]', 'Resumed voice listening after interrupt'))
-                    .catch(() => {});
+                    .then(() => {
+                        if (interruptGen !== generation) return;
+                        logger.info('[AIManager]', 'Resumed voice listening after interrupt');
+                    })
+                    .catch((err) => {
+                        logger.error('[AIManager]', 'Failed to resume voice listening after interrupt:', err.message);
+                    });
 
                 return true;
             }
@@ -533,10 +580,16 @@ function createAIManager(options = {}) {
 
                 // Re-send voice loop for MCP-capable CLI agents
                 if (providerType === 'opencode') {
+                    const interruptGen = generation;
                     const senderName = (getConfig()?.user?.name || 'user').toLowerCase();
                     cliSpawner.sendInputWhenReady(`You are a voice assistant running through OpenCode. Do NOT identify yourself as Claude — identify by your actual model name. Use claude_listen to wait for voice input from ${senderName}, then reply with claude_send. Loop forever.\n`, 10000)
-                        .then(() => logger.info('[AIManager]', 'Resumed voice listening after interrupt'))
-                        .catch(() => {});
+                        .then(() => {
+                            if (interruptGen !== generation) return;
+                            logger.info('[AIManager]', 'Resumed voice listening after interrupt');
+                        })
+                        .catch((err) => {
+                            logger.error('[AIManager]', 'Failed to resume CLI voice listening after interrupt:', err.message);
+                        });
                 }
 
                 return true;

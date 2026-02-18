@@ -15,6 +15,16 @@ const {
     LISTENER_LOCK_TIMEOUT_MS
 } = require('../paths');
 
+/**
+ * Write data to a file atomically (write to .tmp, then rename).
+ * Prevents data loss if the process crashes mid-write.
+ */
+function atomicWriteFileSync(filePath, data) {
+    const tmpPath = filePath + '.tmp';
+    fs.writeFileSync(tmpPath, data, 'utf-8');
+    fs.renameSync(tmpPath, filePath);
+}
+
 // Setter for autoLoadByIntent — wired by index.js after init
 let _autoLoadByIntent = async () => [];
 
@@ -34,13 +44,21 @@ function acquireListenerLock(instanceId) {
     try {
         const now = Date.now();
 
-        // Check existing lock
-        if (fs.existsSync(LISTENER_LOCK_PATH)) {
-            const lock = JSON.parse(fs.readFileSync(LISTENER_LOCK_PATH, 'utf-8'));
+        // Try to atomically create the lock file (exclusive create)
+        // If file doesn't exist, this succeeds; if it does, we check expiry
+        let existingLock = null;
+        try {
+            const raw = fs.readFileSync(LISTENER_LOCK_PATH, 'utf-8');
+            existingLock = JSON.parse(raw);
+        } catch (e) {
+            // File doesn't exist or is corrupt — safe to acquire
+            existingLock = null;
+        }
 
+        if (existingLock) {
             // If lock is still valid and held by another instance, deny
-            if (lock.expires_at > now && lock.instance_id !== instanceId) {
-                return { success: false, lockedBy: lock.instance_id };
+            if (existingLock.expires_at > now && existingLock.instance_id !== instanceId) {
+                return { success: false, lockedBy: existingLock.instance_id };
             }
         }
 
@@ -50,7 +68,33 @@ function acquireListenerLock(instanceId) {
             acquired_at: now,
             expires_at: now + LISTENER_LOCK_TIMEOUT_MS
         };
-        fs.writeFileSync(LISTENER_LOCK_PATH, JSON.stringify(lock, null, 2), 'utf-8');
+        const lockData = JSON.stringify(lock, null, 2);
+
+        if (!existingLock) {
+            // No existing lock — try exclusive create to prevent TOCTOU race
+            try {
+                fs.writeFileSync(LISTENER_LOCK_PATH, lockData, { encoding: 'utf-8', flag: 'wx' });
+            } catch (wxErr) {
+                if (wxErr.code === 'EEXIST') {
+                    // Another process created the lock between our read and write
+                    // Re-read and check ownership
+                    try {
+                        const raceCheck = JSON.parse(fs.readFileSync(LISTENER_LOCK_PATH, 'utf-8'));
+                        if (raceCheck.expires_at > now && raceCheck.instance_id !== instanceId) {
+                            return { success: false, lockedBy: raceCheck.instance_id };
+                        }
+                    } catch {
+                        // Corrupt file from race, overwrite it
+                    }
+                    fs.writeFileSync(LISTENER_LOCK_PATH, lockData, 'utf-8');
+                } else {
+                    throw wxErr;
+                }
+            }
+        } else {
+            // Existing lock is ours or expired — overwrite
+            fs.writeFileSync(LISTENER_LOCK_PATH, lockData, 'utf-8');
+        }
 
         return { success: true };
     } catch (err) {
@@ -66,7 +110,15 @@ function acquireListenerLock(instanceId) {
 function releaseListenerLock(instanceId) {
     try {
         if (fs.existsSync(LISTENER_LOCK_PATH)) {
-            const lock = JSON.parse(fs.readFileSync(LISTENER_LOCK_PATH, 'utf-8'));
+            let lock;
+            try {
+                lock = JSON.parse(fs.readFileSync(LISTENER_LOCK_PATH, 'utf-8'));
+            } catch (parseErr) {
+                console.error('[MCP Core]', 'Failed to parse lock file during release:', parseErr?.message);
+                // Corrupt lock file — remove it
+                fs.unlinkSync(LISTENER_LOCK_PATH);
+                return;
+            }
 
             // Only release if we own the lock
             if (lock.instance_id === instanceId) {
@@ -84,7 +136,13 @@ function releaseListenerLock(instanceId) {
 function refreshListenerLock(instanceId) {
     try {
         if (fs.existsSync(LISTENER_LOCK_PATH)) {
-            const lock = JSON.parse(fs.readFileSync(LISTENER_LOCK_PATH, 'utf-8'));
+            let lock;
+            try {
+                lock = JSON.parse(fs.readFileSync(LISTENER_LOCK_PATH, 'utf-8'));
+            } catch (parseErr) {
+                console.error('[MCP Core]', 'Failed to parse lock file during refresh:', parseErr?.message);
+                return;
+            }
 
             if (lock.instance_id === instanceId) {
                 lock.expires_at = Date.now() + LISTENER_LOCK_TIMEOUT_MS;
@@ -103,7 +161,12 @@ function updateHeartbeat(instanceId, status = 'active', currentTask) {
     try {
         let store = { statuses: [] };
         if (fs.existsSync(CLAUDE_STATUS_PATH)) {
-            store = JSON.parse(fs.readFileSync(CLAUDE_STATUS_PATH, 'utf-8'));
+            try {
+                store = JSON.parse(fs.readFileSync(CLAUDE_STATUS_PATH, 'utf-8'));
+            } catch (parseErr) {
+                console.error('[MCP Core]', 'Failed to parse status file in heartbeat:', parseErr?.message);
+                store = { statuses: [] };
+            }
         }
 
         const now = new Date().toISOString();
@@ -194,7 +257,7 @@ async function handleClaudeSend(args) {
             messages = messages.slice(-100);
         }
 
-        fs.writeFileSync(CLAUDE_MESSAGES_PATH, JSON.stringify({ messages }, null, 2), 'utf-8');
+        atomicWriteFileSync(CLAUDE_MESSAGES_PATH, JSON.stringify({ messages }, null, 2));
 
         // Create trigger file for Voice Mirror notification
         const triggerPath = path.join(HOME_DATA_DIR, 'claude_message_trigger.json');
@@ -225,7 +288,7 @@ async function handleClaudeSend(args) {
 async function handleClaudeInbox(args) {
     try {
         const instanceId = args?.instance_id;
-        const limit = args?.limit || 10;
+        const limit = Math.min(Math.max(args?.limit || 10, 1), 100);
         const includeRead = args?.include_read || false;
         const markAsRead = args?.mark_as_read || false;
 
@@ -244,12 +307,23 @@ async function handleClaudeInbox(args) {
             };
         }
 
-        let data = JSON.parse(fs.readFileSync(CLAUDE_MESSAGES_PATH, 'utf-8'));
+        let data;
+        try {
+            data = JSON.parse(fs.readFileSync(CLAUDE_MESSAGES_PATH, 'utf-8'));
+        } catch (parseErr) {
+            console.error('[MCP Core]', 'Failed to parse inbox file:', parseErr?.message);
+            data = { messages: [] };
+        }
         let allMessages = data.messages || [];
 
-        // Auto-cleanup old messages
+        // Auto-cleanup old messages (24h cutoff)
         const cutoff = Date.now() - (AUTO_CLEANUP_HOURS * 60 * 60 * 1000);
         allMessages = allMessages.filter(m => new Date(m.timestamp).getTime() > cutoff);
+
+        // Secondary cap: if total messages exceed 500, trim oldest beyond 500
+        if (allMessages.length > 500) {
+            allMessages = allMessages.slice(-500);
+        }
 
         // Filter out own messages
         let inbox = allMessages.filter(m => m.from !== instanceId);
@@ -271,7 +345,7 @@ async function handleClaudeInbox(args) {
                     msg.read_by.push(instanceId);
                 }
             }
-            fs.writeFileSync(CLAUDE_MESSAGES_PATH, JSON.stringify({ messages: allMessages }, null, 2), 'utf-8');
+            atomicWriteFileSync(CLAUDE_MESSAGES_PATH, JSON.stringify({ messages: allMessages }, null, 2));
         }
 
         // Apply limit
@@ -503,7 +577,13 @@ async function handleClaudeStatus(args) {
                 };
             }
 
-            const store = JSON.parse(fs.readFileSync(CLAUDE_STATUS_PATH, 'utf-8'));
+            let store;
+            try {
+                store = JSON.parse(fs.readFileSync(CLAUDE_STATUS_PATH, 'utf-8'));
+            } catch (parseErr) {
+                console.error('[MCP Core]', 'Failed to parse status file:', parseErr?.message);
+                store = { statuses: [] };
+            }
             const now = Date.now();
 
             const formatted = store.statuses.map(s => {

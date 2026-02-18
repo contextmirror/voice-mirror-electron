@@ -290,14 +290,11 @@ function createVoiceBackend(options = {}) {
                 const line = msg.trim();
                 if (!line) continue;
                 if (line.includes(' ERROR ')) {
-                    logger.error('[Voice]', 'stderr:', line);
-                    if (log) log('ERROR', line);
+                    if (log) { log('ERROR', line); } else { logger.error('[Voice]', 'stderr:', line); }
                 } else if (line.includes(' WARN ')) {
-                    logger.warn('[Voice]', 'stderr:', line);
-                    if (log) log('WARN', line);
+                    if (log) { log('WARN', line); } else { logger.warn('[Voice]', 'stderr:', line); }
                 } else {
-                    logger.info('[VOICE]', line);
-                    if (log) log('VOICE', line);
+                    if (log) { log('VOICE', line); } else { logger.info('[VOICE]', line); }
                 }
             }
         });
@@ -334,7 +331,7 @@ function createVoiceBackend(options = {}) {
                         maxAttempts: MAX_RESTARTS
                     });
                 }
-                setTimeout(() => start(), RESTART_DELAY);
+                setTimeout(() => { try { start(); } catch (e) { logger.error('[VoiceBackend]', 'Auto-restart failed:', e?.message); } }, RESTART_DELAY);
             } else if (code !== 0 && restartAttempts >= MAX_RESTARTS) {
                 logger.error('[Voice]', 'Max restart attempts reached');
                 if (log) log('VOICE', 'Max restart attempts reached');
