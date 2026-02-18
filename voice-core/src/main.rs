@@ -584,7 +584,109 @@ async fn run_stt_and_emit(app_state: &Arc<Mutex<AppState>>, audio: Vec<f32>) {
     }
 }
 
+/// Split text into sentences for incremental TTS synthesis.
+///
+/// Uses punctuation boundaries (. ! ? and double newlines) to split text
+/// into chunks suitable for sentence-level TTS. Very short fragments are
+/// merged with neighbors to avoid choppy audio.
+fn split_into_sentences(text: &str) -> Vec<String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return vec![];
+    }
+
+    // Short text — don't split (single sentence)
+    if trimmed.len() < 80 {
+        return vec![trimmed.to_string()];
+    }
+
+    let mut sentences: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let chars: Vec<char> = trimmed.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+
+    while i < len {
+        current.push(chars[i]);
+
+        // Sentence boundary: punctuation followed by whitespace or end-of-string
+        let is_punct_boundary = matches!(chars[i], '.' | '!' | '?')
+            && (i + 1 >= len || chars[i + 1].is_whitespace());
+
+        // Paragraph break: newline when we have accumulated content
+        let is_para_break = chars[i] == '\n' && current.trim().len() > 10;
+
+        if is_punct_boundary || is_para_break {
+            let s = current.trim().to_string();
+            if !s.is_empty() {
+                sentences.push(s);
+            }
+            current.clear();
+            // Skip whitespace after boundary
+            while i + 1 < len && chars[i + 1].is_whitespace() {
+                i += 1;
+            }
+        }
+        i += 1;
+    }
+
+    // Push remaining text
+    let remainder = current.trim().to_string();
+    if !remainder.is_empty() {
+        if remainder.len() < 15 {
+            // Very short remainder — merge with last sentence
+            if let Some(last) = sentences.last_mut() {
+                last.push(' ');
+                last.push_str(&remainder);
+            } else {
+                sentences.push(remainder);
+            }
+        } else {
+            sentences.push(remainder);
+        }
+    }
+
+    // Merge very short sentences (under 20 chars) with the next longer sentence.
+    // Short fragments are carried forward until a long enough sentence absorbs them.
+    let mut merged: Vec<String> = Vec::new();
+    let mut carry = String::new();
+    for s in sentences {
+        if !carry.is_empty() {
+            carry.push(' ');
+            carry.push_str(&s);
+            // If combined is long enough, commit it
+            if carry.len() >= 20 {
+                merged.push(std::mem::take(&mut carry));
+            }
+        } else if s.len() < 20 {
+            // Start carrying short fragment
+            carry = s;
+        } else {
+            merged.push(s);
+        }
+    }
+    // Flush remaining carry by appending to last sentence
+    if !carry.is_empty() {
+        if let Some(last) = merged.last_mut() {
+            last.push(' ');
+            last.push_str(&carry);
+        } else {
+            merged.push(carry);
+        }
+    }
+
+    if merged.is_empty() {
+        vec![trimmed.to_string()]
+    } else {
+        merged
+    }
+}
+
 /// Speak text via TTS with interruptible playback.
+///
+/// Splits text into sentences and synthesizes/plays them incrementally.
+/// The first sentence starts playing as soon as it's synthesized, while
+/// remaining sentences are synthesized and queued behind it.
 ///
 /// If `system` is true, the speak is non-interruptible (startup greeting).
 /// Otherwise, playback can be cancelled via `tts_cancel` / `tts_sink`.
@@ -616,69 +718,78 @@ async fn speak_text(app_state: &Arc<Mutex<AppState>>, text: &str, system: bool) 
                 app.tts_cancel.store(false, Ordering::SeqCst);
             }
 
-            match engine.speak(text).await {
-                Ok(samples) => {
-                    // Put engine back immediately so StopSpeaking can call engine.stop()
-                    {
-                        let mut app = app_state.lock().unwrap();
-                        app.tts_engine = Some(engine);
-                    }
+            // Split text into sentences for incremental synthesis + playback.
+            // Each sentence is synthesized and queued to the rodio sink, which
+            // auto-plays them in sequence. First sentence starts playing as soon
+            // as its synthesis completes.
+            let sentences = split_into_sentences(text);
+            info!("TTS: split into {} sentence(s)", sentences.len());
 
-                    if !samples.is_empty() {
-                        // Check if cancelled during synthesis
-                        let cancelled = {
-                            let app = app_state.lock().unwrap();
-                            app.tts_cancel.load(Ordering::SeqCst)
-                        };
+            // Get sink handle for queuing audio
+            let sink = player.sink_handle();
+            {
+                let mut app = app_state.lock().unwrap();
+                app.tts_sink = Some(Arc::clone(&sink));
+            }
+            let cancel = {
+                let app = app_state.lock().unwrap();
+                app.tts_cancel.clone()
+            };
 
-                        if cancelled {
-                            info!("TTS cancelled during synthesis");
-                            let mut app = app_state.lock().unwrap();
-                            app.tts_player = Some(player);
-                        } else {
-                            // Store sink handle so external code can stop playback
-                            let sink = player.sink_handle();
-                            let cancel = {
-                                let mut app = app_state.lock().unwrap();
-                                app.tts_sink = Some(Arc::clone(&sink));
-                                app.tts_cancel.clone()
-                            };
+            let mut synth_error = false;
 
-                            // Append audio to sink (non-blocking)
+            for (idx, sentence) in sentences.iter().enumerate() {
+                // Check cancellation before each sentence
+                if cancel.load(Ordering::SeqCst) {
+                    info!("TTS cancelled between sentences (before sentence {})", idx + 1);
+                    break;
+                }
+
+                match engine.speak(sentence).await {
+                    Ok(samples) => {
+                        if !samples.is_empty() && !cancel.load(Ordering::SeqCst) {
                             let source = rodio::buffer::SamplesBuffer::new(
                                 1,
                                 TTS_SAMPLE_RATE,
                                 samples,
                             );
+                            // Sink auto-queues: first append starts playing immediately,
+                            // subsequent appends play after previous finishes.
                             sink.append(source);
-
-                            // Poll until playback finishes or is cancelled
-                            while !sink.empty() {
-                                if cancel.load(Ordering::SeqCst) {
-                                    sink.stop();
-                                    info!("TTS playback interrupted");
-                                    break;
-                                }
-                                tokio::time::sleep(Duration::from_millis(50)).await;
-                            }
-
-                            // Clear sink handle and put player back (reused, not recreated)
-                            let mut app = app_state.lock().unwrap();
-                            app.tts_sink = None;
-                            app.tts_player = Some(player);
                         }
-                    } else {
-                        let mut app = app_state.lock().unwrap();
-                        app.tts_player = Some(player);
+                    }
+                    Err(e) => {
+                        warn!("TTS sentence synthesis error (sentence {}): {}", idx + 1, e);
+                        emit_error(&format!("TTS synthesis failed: {}", e));
+                        synth_error = true;
+                        break;
                     }
                 }
-                Err(e) => {
-                    warn!("TTS synthesis error: {}", e);
-                    emit_error(&format!("TTS synthesis failed: {}", e));
-                    let mut app = app_state.lock().unwrap();
-                    app.tts_engine = Some(engine);
-                    app.tts_player = Some(player);
+            }
+
+            // Put engine back (available for next speak or StopSpeaking)
+            {
+                let mut app = app_state.lock().unwrap();
+                app.tts_engine = Some(engine);
+            }
+
+            // Wait for all queued audio to finish playing (or cancel)
+            if !synth_error {
+                while !sink.empty() {
+                    if cancel.load(Ordering::SeqCst) {
+                        sink.stop();
+                        info!("TTS playback interrupted");
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(50)).await;
                 }
+            }
+
+            // Clear sink handle and put player back
+            {
+                let mut app = app_state.lock().unwrap();
+                app.tts_sink = None;
+                app.tts_player = Some(player);
             }
 
             emit_event(&VoiceEvent::SpeakingEnd {});
@@ -1117,4 +1228,80 @@ async fn handle_command(cmd: VoiceCommand, app_state: &Arc<Mutex<AppState>>) -> 
     }
 
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_into_sentences;
+
+    #[test]
+    fn empty_text() {
+        assert!(split_into_sentences("").is_empty());
+        assert!(split_into_sentences("   ").is_empty());
+    }
+
+    #[test]
+    fn short_text_no_split() {
+        let result = split_into_sentences("Hello world.");
+        assert_eq!(result, vec!["Hello world."]);
+    }
+
+    #[test]
+    fn short_text_under_80_chars() {
+        let result = split_into_sentences("This is a short sentence. And another one.");
+        assert_eq!(result, vec!["This is a short sentence. And another one."]);
+    }
+
+    #[test]
+    fn multiple_sentences() {
+        let text = "This is the first sentence with enough characters to exceed the limit. \
+                     The second sentence follows here. And here is a third one for good measure.";
+        let result = split_into_sentences(text);
+        assert!(result.len() >= 2, "Expected at least 2 sentences, got {}: {:?}", result.len(), result);
+    }
+
+    #[test]
+    fn exclamation_and_question_marks() {
+        let text = "Wow, that is really something incredible to see! \
+                     Don't you think so? I certainly do and I have more to say about it.";
+        let result = split_into_sentences(text);
+        assert!(result.len() >= 2, "Expected at least 2 sentences, got {}: {:?}", result.len(), result);
+    }
+
+    #[test]
+    fn newline_paragraph_breaks() {
+        let text = "First paragraph with enough content to matter.\n\
+                     Second paragraph also has enough content here.";
+        let result = split_into_sentences(text);
+        assert!(result.len() >= 2, "Expected at least 2 paragraphs, got {}: {:?}", result.len(), result);
+    }
+
+    #[test]
+    fn short_fragments_merged() {
+        // Text must be >80 chars to trigger splitting, then short fragments should merge
+        let text = "OK. Sure. I will help you with that request right away and provide a very detailed response with lots of info.";
+        let result = split_into_sentences(text);
+        // "OK." and "Sure." are under 20 chars, should be merged with neighbors
+        for s in &result {
+            assert!(s.len() >= 15, "Fragment too short (should be merged): '{}'", s);
+        }
+    }
+
+    #[test]
+    fn single_long_sentence_no_split() {
+        let text = "This is one very long sentence that goes on and on without any punctuation marks at all and should remain as a single chunk for synthesis";
+        let result = split_into_sentences(text);
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn preserves_all_content() {
+        let text = "First sentence is here. Second sentence follows. Third wraps it up.";
+        let result = split_into_sentences(text);
+        let joined = result.join(" ");
+        // All words from original should be present
+        assert!(joined.contains("First"));
+        assert!(joined.contains("Second"));
+        assert!(joined.contains("Third"));
+    }
 }

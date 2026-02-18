@@ -530,6 +530,15 @@ app.whenReady().then(async () => {
                 } catch { /* ignore parse errors */ }
                 return;
             }
+            // Forward stream tokens to chat UI (separate channel from terminal)
+            if (data.type === 'stream-token') {
+                safeSend('chat-stream-token', { token: data.text });
+                return;
+            }
+            if (data.type === 'stream-end') {
+                safeSend('chat-stream-end', { text: data.text });
+                return;
+            }
             safeSend('claude-terminal', data);
         },
         onVoiceEvent: (event) => {

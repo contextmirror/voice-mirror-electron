@@ -7,7 +7,7 @@ import { state } from './state.js';
 import { createLog } from './log.js';
 const log = createLog('[Main]');
 import { initMarkdown } from './markdown.js';
-import { addMessage, isDuplicate, copyMessage, initScrollButtons } from './messages.js';
+import { addMessage, isDuplicate, copyMessage, initScrollButtons, startStreamingMessage, appendStreamingToken, finalizeStreamingMessage } from './messages.js';
 import { initTerminal, handleAIOutput, updateAIStatus, toggleTerminal, startAI, stopAI, updateProviderDisplay } from './terminal.js';
 import { initSettings, toggleSettings } from './settings.js';
 import { initNavigation, navigateTo, toggleSidebarCollapse } from './navigation.js';
@@ -338,6 +338,48 @@ async function init() {
 
         if (!isDuplicate(data.text)) {
             addMessage(data.role, data.text);
+            autoSave();
+        }
+    });
+
+    // --- Streaming token handling (real-time chat card updates) ---
+    let streamTokenBuffer = '';
+    let streamTokenTimer = null;
+    const STREAM_BATCH_MS = 30;
+
+    function flushStreamTokens() {
+        if (!streamTokenBuffer) return;
+        if (!state.streamingActive) {
+            startStreamingMessage();
+        }
+        appendStreamingToken(streamTokenBuffer);
+        streamTokenBuffer = '';
+        streamTokenTimer = null;
+    }
+
+    window.voiceMirror.onChatStreamToken((data) => {
+        streamTokenBuffer += data.token;
+        if (!streamTokenTimer) {
+            streamTokenTimer = setTimeout(flushStreamTokens, STREAM_BATCH_MS);
+        }
+    });
+
+    window.voiceMirror.onChatStreamEnd((data) => {
+        // Flush any remaining buffered tokens
+        if (streamTokenTimer) {
+            clearTimeout(streamTokenTimer);
+            streamTokenTimer = null;
+        }
+        if (streamTokenBuffer) {
+            if (!state.streamingActive) {
+                startStreamingMessage();
+            }
+            appendStreamingToken(streamTokenBuffer);
+            streamTokenBuffer = '';
+        }
+        // Finalize with markdown rendering
+        if (state.streamingActive) {
+            finalizeStreamingMessage(data.text);
             autoSave();
         }
     });

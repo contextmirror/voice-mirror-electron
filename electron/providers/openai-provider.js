@@ -407,6 +407,8 @@ class OpenAIProvider extends BaseProvider {
                                 } catch (tuiErr) {
                                     logger.error('[OpenAIProvider]', `TUI streamToken error: ${tuiErr.message}`);
                                 }
+                                // Emit stream token for real-time chat UI (parallel to TUI)
+                                this.emitOutput('stream-token', content);
                             }
 
                             // Accumulate native tool calls from streaming deltas
@@ -761,6 +763,8 @@ class OpenAIProvider extends BaseProvider {
                 if (fullResponse) {
                     this.emitOutput('response', fullResponse);
                 }
+                // Signal end of streaming to chat UI (finalize card with markdown)
+                this.emitOutput('stream-end', fullResponse);
             } else {
                 this.emitOutput('stdout', '\n\n');
             }

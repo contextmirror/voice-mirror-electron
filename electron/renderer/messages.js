@@ -230,6 +230,171 @@ export function addMessage(role, text, imageBase64 = null) {
 }
 
 /**
+ * Start a new streaming message in the chat UI.
+ * Creates the message group with an empty bubble that fills token-by-token.
+ */
+export function startStreamingMessage() {
+    const chatContainer = document.getElementById('chat-container');
+
+    const group = document.createElement('div');
+    group.className = 'message-group assistant streaming';
+
+    const avatar = document.createElement('div');
+    avatar.className = 'message-avatar';
+    avatar.textContent = '\u{1F916}';
+
+    const content = document.createElement('div');
+    content.className = 'message-content';
+
+    const header = document.createElement('div');
+    header.className = 'message-header';
+    const senderSpan = document.createElement('span');
+    senderSpan.className = 'message-sender';
+    senderSpan.textContent = state.currentProviderName;
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'message-time';
+    timeSpan.textContent = formatTime();
+    header.appendChild(senderSpan);
+    header.appendChild(timeSpan);
+
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble';
+
+    const textNode = document.createElement('div');
+    textNode.className = 'streaming-text';
+    bubble.appendChild(textNode);
+
+    const cursor = document.createElement('span');
+    cursor.className = 'streaming-cursor';
+    cursor.textContent = '\u2588';
+    bubble.appendChild(cursor);
+
+    content.appendChild(header);
+    content.appendChild(bubble);
+    group.appendChild(avatar);
+    group.appendChild(content);
+    chatContainer.appendChild(group);
+
+    // Instant scroll during streaming (no animation delay)
+    chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'instant' });
+
+    state.streamingMessageGroup = group;
+    state.streamingBubble = textNode;
+    state.streamingText = '';
+    state.streamingActive = true;
+}
+
+/**
+ * Append a token to the active streaming message.
+ * Uses plain text (no markdown) for performance during streaming.
+ */
+export function appendStreamingToken(token) {
+    if (!state.streamingActive || !state.streamingBubble) return;
+
+    state.streamingText += token;
+    state.streamingBubble.textContent = state.streamingText;
+
+    // Instant scroll during active streaming
+    const chatContainer = document.getElementById('chat-container');
+    const distanceFromBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight;
+    if (distanceFromBottom <= 150) {
+        chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'instant' });
+    }
+}
+
+/**
+ * Finalize the streaming message: apply markdown rendering, add copy button.
+ * @param {string} fullText - The complete response text
+ */
+export function finalizeStreamingMessage(fullText) {
+    if (!state.streamingActive || !state.streamingMessageGroup) return;
+
+    const group = state.streamingMessageGroup;
+    const bubble = group.querySelector('.message-bubble');
+    if (!bubble) return;
+
+    // Remove streaming class and cursor
+    group.classList.remove('streaming');
+    const cursor = bubble.querySelector('.streaming-cursor');
+    if (cursor) cursor.remove();
+
+    // Clean text for display
+    let displayText = stripProviderPrefix(fullText);
+    displayText = stripToolJson(displayText);
+
+    // If was just a tool call, remove the streaming message
+    if (isToolCallOnly(fullText)) {
+        group.remove();
+        state.streamingMessageGroup = null;
+        state.streamingBubble = null;
+        state.streamingText = '';
+        state.streamingActive = false;
+        return;
+    }
+
+    // Replace plain text with markdown-rendered content
+    const textNode = bubble.querySelector('.streaming-text');
+    if (textNode && displayText) {
+        textNode.className = 'markdown-content';
+        try {
+            textNode.innerHTML = renderMarkdown(displayText);
+        } catch (err) {
+            log.error('Markdown render failed during finalize:', err);
+            textNode.innerHTML = escapeHtml(displayText).replace(/\n/g, '<br>');
+        }
+    }
+
+    // Add copy button
+    if (fullText) {
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'message-copy-btn';
+        copyBtn.title = 'Copy';
+        copyBtn.setAttribute('aria-label', 'Copy message');
+        copyBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+        `;
+        copyBtn.onclick = function() { copyMessage(this); };
+        bubble.appendChild(copyBtn);
+    }
+
+    // Push to in-memory array for persistence
+    messagesArray.push({ role: 'assistant', text: fullText, time: formatTime() });
+
+    // Trim oldest message groups if over cap
+    const chatContainer = document.getElementById('chat-container');
+    const groups = chatContainer.querySelectorAll('.message-group:not(#welcome-message)');
+    if (groups.length > MAX_MESSAGE_GROUPS) {
+        const excess = groups.length - MAX_MESSAGE_GROUPS;
+        for (let i = 0; i < excess; i++) {
+            groups[i].remove();
+        }
+        messagesArray.splice(0, excess);
+    }
+
+    autoScroll(chatContainer);
+
+    // Register in dedup map so the later chat-message from inbox-watcher is suppressed
+    isDuplicate(fullText);
+
+    // Dev log
+    window.voiceMirror?.devlog('UI', 'card-rendered', {
+        role: 'assistant',
+        text: fullText?.slice(0, 200),
+        source: state.currentProviderName,
+        streaming: true,
+    });
+
+    // Reset streaming state
+    state.streamingMessageGroup = null;
+    state.streamingBubble = null;
+    state.streamingText = '';
+    state.streamingActive = false;
+}
+
+/**
  * Get the in-memory messages array (for persistence, avoids DOM scraping).
  */
 export function getMessagesArray() {

@@ -89,6 +89,20 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         return () => ipcRenderer.removeListener('chat-message', handler);
     },
 
+    // Listen for streaming tokens from AI provider (real-time chat updates)
+    onChatStreamToken: (callback) => {
+        const handler = (_event, data) => callback(data);
+        ipcRenderer.on('chat-stream-token', handler);
+        return () => ipcRenderer.removeListener('chat-stream-token', handler);
+    },
+
+    // Listen for stream completion (finalize streaming message with markdown)
+    onChatStreamEnd: (callback) => {
+        const handler = (_event, data) => callback(data);
+        ipcRenderer.on('chat-stream-end', handler);
+        return () => ipcRenderer.removeListener('chat-stream-end', handler);
+    },
+
     // Voice backend control (Rust voice-core process)
     voice: {
         sendQuery: (query) => ipcRenderer.invoke('send-query', query),

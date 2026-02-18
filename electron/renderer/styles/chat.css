@@ -739,6 +739,24 @@
     font-size: 12px;
 }
 
+/* ========== Streaming Message ========== */
+.message-group.streaming .streaming-text {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.streaming-cursor {
+    display: inline;
+    animation: blink-cursor 0.8s step-end infinite;
+    color: var(--accent);
+    font-weight: bold;
+}
+
+@keyframes blink-cursor {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
 /* ========== Reduced Motion ========== */
 @media (prefers-reduced-motion: reduce) {
     .message-group {
