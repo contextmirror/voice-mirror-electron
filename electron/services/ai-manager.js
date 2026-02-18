@@ -232,7 +232,8 @@ function createAIManager(options = {}) {
                 cliSpawner = null;
             },
             cols: cols || 120,
-            rows: rows || 30
+            rows: rows || 30,
+            appConfig
         });
 
         if (pty) {
@@ -244,13 +245,11 @@ function createAIManager(options = {}) {
                 model: null
             });
 
-            // Send voice mode command for MCP-capable CLI agents
+            // Send voice loop command for MCP-capable CLI agents
+            // (full instructions are written to .opencode/instructions.md by the spawner)
             if (providerType === 'opencode') {
                 const senderName = (appConfig.user?.name || 'user').toLowerCase();
-                const customPrompt = appConfig.ai?.systemPrompt;
-                let voicePrompt = '';
-                if (customPrompt) voicePrompt += `${customPrompt}\n\n`;
-                voicePrompt += `You are a voice assistant running through OpenCode. Do NOT identify yourself as Claude — identify by your actual model name. Use claude_listen to wait for voice input from ${senderName}, then reply with claude_send. Loop forever.\n`;
+                const voicePrompt = `Use claude_listen to wait for voice input from ${senderName}, then reply with claude_send. Loop forever.\n`;
 
                 cliSpawner.sendInputWhenReady(voicePrompt, 20000)
                     .then(() => logger.info('[AIManager]', `${displayName} voice mode command sent`))
@@ -413,8 +412,8 @@ function createAIManager(options = {}) {
             );
         }
 
-        // Start the provider (pass terminal dimensions so TUI renders at correct size)
-        activeProvider.spawn({ cols, rows }).then(() => {
+        // Start the provider (pass terminal dimensions and app config for instructions)
+        activeProvider.spawn({ cols, rows, appConfig: config }).then(() => {
             sendOutput('start', `[${activeProvider.getDisplayName()}] Ready\n`);
             sendVoiceEvent({
                 type: 'claude_connected',

@@ -34,7 +34,7 @@ class CLIProvider extends BaseProvider {
     }
 
     async spawn(options = {}) {
-        const { cols = 120, rows = 30 } = options;
+        const { cols = 120, rows = 30, appConfig } = options;
 
         if (this.running) {
             return true;
@@ -58,7 +58,8 @@ class CLIProvider extends BaseProvider {
                     this.emitExit(code);
                 },
                 cols,
-                rows
+                rows,
+                appConfig
             });
 
             if (pty) {

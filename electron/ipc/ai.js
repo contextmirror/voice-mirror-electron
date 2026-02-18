@@ -141,6 +141,18 @@ function registerAIHandlers(ctx, validators) {
         return { success: false, error: CLI_PROVIDERS.includes(providerType) ? 'not running' : 'not PTY' };
     });
 
+    // TUI theme update — pass app theme colors to the TUI renderer
+    ipcMain.handle('ai-set-tui-theme', (event, colors) => {
+        if (!colors || typeof colors !== 'object') return { success: false, error: 'invalid colors' };
+        const aiManager = ctx.getAIManager();
+        const provider = aiManager?.getProvider();
+        if (provider && provider.tui && provider.tui.setThemeColors) {
+            provider.tui.setThemeColors(colors);
+            return { success: true };
+        }
+        return { success: false, error: 'no TUI active' };
+    });
+
     // AI Provider IPC handlers
     ipcMain.handle('ai-scan-providers', async () => {
         const { providerDetector } = require('../services/provider-detector');

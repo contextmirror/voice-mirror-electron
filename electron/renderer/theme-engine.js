@@ -84,14 +84,14 @@ function hexToRgba(hex, alpha) {
 // ========== Preset Themes ==========
 
 export const PRESETS = {
-    dark: {
-        name: 'Dark',
+    colorblind: {
+        name: 'Colorblind',
         colors: {
             bg: '#0c0d10', bgElevated: '#14161c',
             text: '#e4e4e7', textStrong: '#fafafa', muted: '#71717a',
-            accent: '#667eea',
-            ok: '#4ade80', warn: '#fbbf24', danger: '#ef4444',
-            orbCore: '#2d1b4e'
+            accent: '#56b4e9',
+            ok: '#0072b2', warn: '#e69f00', danger: '#d55e00',
+            orbCore: '#1b2e4e'
         },
         fonts: {
             fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
@@ -181,6 +181,20 @@ export const PRESETS = {
             fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
             fontMono: "'Cascadia Code', 'Fira Code', monospace"
         }
+    },
+    light: {
+        name: 'Light',
+        colors: {
+            bg: '#f5f5f5', bgElevated: '#ffffff',
+            text: '#1a1a2e', textStrong: '#0a0a0a', muted: '#6b7280',
+            accent: '#4f46e5',
+            ok: '#16a34a', warn: '#d97706', danger: '#dc2626',
+            orbCore: '#c7d2fe'
+        },
+        fonts: {
+            fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
+            fontMono: "'Cascadia Code', 'Fira Code', monospace"
+        }
     }
 };
 
@@ -228,8 +242,8 @@ export function deriveTheme(colors, fonts = {}) {
         '--shadow-sm': `0 1px 3px ${hexToRgba(darken(c.bg, 0.05), 0.4)}`,
         '--shadow-md': `0 4px 12px ${hexToRgba(darken(c.bg, 0.05), 0.5)}`,
         '--shadow-lg': `0 12px 28px ${hexToRgba(darken(c.bg, 0.05), 0.6)}`,
-        '--font-family': f.fontFamily || PRESETS.dark.fonts.fontFamily,
-        '--font-mono': f.fontMono || PRESETS.dark.fonts.fontMono,
+        '--font-family': f.fontFamily || PRESETS.colorblind.fonts.fontFamily,
+        '--font-mono': f.fontMono || PRESETS.colorblind.fonts.fontMono,
         '--msg-font-size': '14px',
         '--msg-line-height': '1.5',
         '--msg-padding': '12px 16px',
@@ -272,8 +286,8 @@ export function deriveOrbColors(colors) {
  * @returns {{ colors: Object, fonts: Object }}
  */
 export function resolveTheme(appearance = {}) {
-    const themeName = appearance.theme || 'dark';
-    const preset = PRESETS[themeName] || PRESETS.dark;
+    const themeName = appearance.theme || 'colorblind';
+    const preset = PRESETS[themeName] || PRESETS.colorblind;
 
     const colors = appearance.colors || preset.colors;
     const fonts = appearance.fonts || preset.fonts;
@@ -291,27 +305,32 @@ export function resolveTheme(appearance = {}) {
  */
 export function deriveTerminalTheme(colors) {
     const c = colors;
+    // Detect light vs dark background to choose correct contrast direction
+    const { r, g, b } = hexToRgb(c.bg);
+    const isLight = (r * 0.299 + g * 0.587 + b * 0.114) > 128;
+    const shift = isLight ? darken : lighten;
+
     return {
         background: c.bg,
         foreground: c.text,
         cursor: c.accent,
         cursorAccent: c.bg,
         selectionBackground: hexToRgba(c.accent, 0.3),
-        black: lighten(c.bg, 0.05),
+        black: isLight ? darken(c.bg, 0.05) : lighten(c.bg, 0.05),
         red: c.danger,
         green: c.ok,
         yellow: c.warn,
         blue: c.accent,
-        magenta: lighten(blend(c.accent, c.danger, 0.5), 0.1),
-        cyan: lighten(blend(c.accent, c.ok, 0.5), 0.1),
-        white: c.text,
+        magenta: shift(blend(c.accent, c.danger, 0.5), 0.1),
+        cyan: shift(blend(c.accent, c.ok, 0.5), 0.1),
+        white: isLight ? lighten(c.bg, 0.05) : c.text,
         brightBlack: c.muted,
-        brightRed: lighten(c.danger, 0.15),
-        brightGreen: lighten(c.ok, 0.15),
-        brightYellow: lighten(c.warn, 0.15),
-        brightBlue: lighten(c.accent, 0.15),
-        brightMagenta: lighten(blend(c.accent, c.danger, 0.5), 0.25),
-        brightCyan: lighten(blend(c.accent, c.ok, 0.5), 0.25),
+        brightRed: shift(c.danger, 0.15),
+        brightGreen: shift(c.ok, 0.15),
+        brightYellow: shift(c.warn, 0.15),
+        brightBlue: shift(c.accent, 0.15),
+        brightMagenta: shift(blend(c.accent, c.danger, 0.5), 0.25),
+        brightCyan: shift(blend(c.accent, c.ok, 0.5), 0.25),
         brightWhite: c.textStrong
     };
 }
@@ -346,8 +365,13 @@ export function applyTheme(colors, fonts = {}) {
     if (_orbColorCallback) _orbColorCallback(orbColors);
 
     const termTheme = deriveTerminalTheme(colors);
-    const termFont = fonts.fontMono || PRESETS.dark.fonts.fontMono;
+    const termFont = fonts.fontMono || PRESETS.colorblind.fonts.fontMono;
     if (_terminalThemeCallback) _terminalThemeCallback(termTheme, termFont);
+
+    // Push theme colors to TUI renderer (for local provider dashboards)
+    if (window.voiceMirror?.claude?.setTuiTheme) {
+        window.voiceMirror.claude.setTuiTheme(colors);
+    }
 }
 
 /**
@@ -415,6 +439,6 @@ export function validateImportData(data) {
         }
     }
 
-    const fonts = data.fonts || PRESETS.dark.fonts;
+    const fonts = data.fonts || PRESETS.colorblind.fonts;
     return { valid: true, colors: data.colors, fonts };
 }

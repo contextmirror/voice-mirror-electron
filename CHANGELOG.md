@@ -5,6 +5,19 @@ Format inspired by game dev patch notes — grouped by release, categorized by i
 
 ---
 
+## v0.10.3 (2026-02-18)
+
+### New — Theme System
+- **Colorblind preset** — Replaces the old Dark preset with a colorblind-safe palette (Wong 2011 / IBM Design: blue accent, orange warn, vermillion danger, sky blue highlights)
+- **Light preset** — New white/light-gray theme for users who prefer light mode
+- **Custom theme persistence** — Imported themes now save as reusable preset cards in the Appearance grid. Each card has a hover-reveal X button to delete. Custom themes persist across restarts via config
+- **TUI theme adaptation** — The local provider TUI dashboard (Conversation, Tool Calls, Info panels) now dynamically adapts its colors to the active app theme using 24-bit ANSI codes. Light mode renders a light terminal background with dark text instead of the previous always-dark look
+
+### Fixed — UI
+- **Update banner dismiss** — The "Updated to vX.X.X" sidebar banner now has an X dismiss button (post-update banners only, not update/restart prompts)
+
+---
+
 ## v0.10.2 (2026-02-17)
 
 ### Fixed — Voice Pipeline

@@ -50,7 +50,8 @@ const CLI_CONFIGS = {
         command: 'opencode',
         args: [],
         readyPatterns: ['>', 'What', 'How can', 'help'],
-        displayName: 'OpenCode'
+        displayName: 'OpenCode',
+        instructionsDir: '.opencode'
     }
 };
 
@@ -94,7 +95,8 @@ function createCLISpawner(cliType) {
             onExit = () => {},
             cols = 120,
             rows = 30,
-            cwd
+            cwd,
+            appConfig
         } = options;
 
         if (ptyProcess) {
@@ -127,6 +129,27 @@ function createCLISpawner(cliType) {
         }
 
         const spawnCwd = cwd || process.cwd();
+
+        // Write Voice Mirror instructions for CLI agents that support instruction files
+        if (config.instructionsDir && appConfig) {
+            try {
+                const { buildGenericInstructions } = require('./claude-instructions');
+                const instructions = buildGenericInstructions({
+                    providerName: config.displayName,
+                    userName: appConfig.user?.name || 'User',
+                    enabledGroups: appConfig.tools?.activeProfile
+                        ? (appConfig.tools.profiles?.[appConfig.tools.activeProfile]?.groups || 'core,meta')
+                        : 'core,meta',
+                    appVersion: require('../../package.json').version,
+                });
+                const instrDir = path.join(spawnCwd, config.instructionsDir);
+                if (!fs.existsSync(instrDir)) fs.mkdirSync(instrDir, { recursive: true });
+                fs.writeFileSync(path.join(instrDir, 'instructions.md'), instructions, 'utf8');
+                debugLog(label, `Wrote instructions to ${instrDir}/instructions.md`);
+            } catch (err) {
+                debugLog(label, `Failed to write instructions: ${err.message}`);
+            }
+        }
 
         debugLog(label, `Spawning ${config.displayName} PTY...`);
         onOutput(`[${config.displayName}] Starting interactive session...\n`);
