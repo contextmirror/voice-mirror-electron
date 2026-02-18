@@ -305,27 +305,32 @@ export function resolveTheme(appearance = {}) {
  */
 export function deriveTerminalTheme(colors) {
     const c = colors;
+    // Detect light vs dark background to choose correct contrast direction
+    const { r, g, b } = hexToRgb(c.bg);
+    const isLight = (r * 0.299 + g * 0.587 + b * 0.114) > 128;
+    const shift = isLight ? darken : lighten;
+
     return {
         background: c.bg,
         foreground: c.text,
         cursor: c.accent,
         cursorAccent: c.bg,
         selectionBackground: hexToRgba(c.accent, 0.3),
-        black: lighten(c.bg, 0.05),
+        black: isLight ? darken(c.bg, 0.05) : lighten(c.bg, 0.05),
         red: c.danger,
         green: c.ok,
         yellow: c.warn,
         blue: c.accent,
-        magenta: lighten(blend(c.accent, c.danger, 0.5), 0.1),
-        cyan: lighten(blend(c.accent, c.ok, 0.5), 0.1),
-        white: c.text,
+        magenta: shift(blend(c.accent, c.danger, 0.5), 0.1),
+        cyan: shift(blend(c.accent, c.ok, 0.5), 0.1),
+        white: isLight ? lighten(c.bg, 0.05) : c.text,
         brightBlack: c.muted,
-        brightRed: lighten(c.danger, 0.15),
-        brightGreen: lighten(c.ok, 0.15),
-        brightYellow: lighten(c.warn, 0.15),
-        brightBlue: lighten(c.accent, 0.15),
-        brightMagenta: lighten(blend(c.accent, c.danger, 0.5), 0.25),
-        brightCyan: lighten(blend(c.accent, c.ok, 0.5), 0.25),
+        brightRed: shift(c.danger, 0.15),
+        brightGreen: shift(c.ok, 0.15),
+        brightYellow: shift(c.warn, 0.15),
+        brightBlue: shift(c.accent, 0.15),
+        brightMagenta: shift(blend(c.accent, c.danger, 0.5), 0.25),
+        brightCyan: shift(blend(c.accent, c.ok, 0.5), 0.25),
         brightWhite: c.textStrong
     };
 }
@@ -362,6 +367,11 @@ export function applyTheme(colors, fonts = {}) {
     const termTheme = deriveTerminalTheme(colors);
     const termFont = fonts.fontMono || PRESETS.colorblind.fonts.fontMono;
     if (_terminalThemeCallback) _terminalThemeCallback(termTheme, termFont);
+
+    // Push theme colors to TUI renderer (for local provider dashboards)
+    if (window.voiceMirror?.claude?.setTuiTheme) {
+        window.voiceMirror.claude.setTuiTheme(colors);
+    }
 }
 
 /**

@@ -127,7 +127,10 @@ contextBridge.exposeInMainWorld('voiceMirror', {
         sendInput: (data) => ipcRenderer.invoke('claude-pty-input', data),
 
         // Resize Claude PTY (when terminal resizes)
-        resize: (cols, rows) => ipcRenderer.invoke('claude-pty-resize', cols, rows)
+        resize: (cols, rows) => ipcRenderer.invoke('claude-pty-resize', cols, rows),
+
+        // Update TUI theme colors (when user changes app theme)
+        setTuiTheme: (colors) => ipcRenderer.invoke('ai-set-tui-theme', colors)
     },
 
     // Clipboard access (for terminal copy/paste)

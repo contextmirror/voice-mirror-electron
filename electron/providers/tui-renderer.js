@@ -17,8 +17,8 @@ const CLEAR_EOL = `${ESC}K`;
 
 const moveTo = (row, col) => `${ESC}${row};${col}H`;
 
-// Theme colours
-const THEME = {
+// Default theme colours (dark background — standard ANSI codes)
+const DEFAULT_THEME = {
     border:    `${ESC}38;5;69m`,
     user:      `${ESC}1;37m`,
     assistant: `${ESC}97m`,
@@ -30,6 +30,28 @@ const THEME = {
     accent:    `${ESC}38;5;69m`,
     green:     `${ESC}32m`,
 };
+
+// Module-level alias (used by class instances via this._theme)
+let THEME = DEFAULT_THEME;
+
+/** Convert hex #rrggbb to {r,g,b} */
+function hexToRgbTui(hex) {
+    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+    if (!m) return null;
+    return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
+}
+
+/** Build ANSI 24-bit foreground code from hex */
+function fgHex(hex) {
+    const c = hexToRgbTui(hex);
+    return c ? `${ESC}38;2;${c.r};${c.g};${c.b}m` : '';
+}
+
+/** Build ANSI 24-bit background code from hex */
+function bgHex(hex) {
+    const c = hexToRgbTui(hex);
+    return c ? `${ESC}48;2;${c.r};${c.g};${c.b}m` : '';
+}
 
 // Spinner frames for running tools
 const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -147,6 +169,16 @@ class TUIRenderer {
         // First render flag
         this._firstRender = true;
 
+        // Theme: ANSI escape code overrides for colors
+        // _bgCode: explicit ANSI 24-bit background (empty string = use terminal default)
+        // _resetBg: RESET + background restore (used wherever RESET + CLEAR_EOL appears)
+        this._theme = { ...DEFAULT_THEME };
+        this._bgCode = '';
+        this._fgCode = '';
+        this._resetBg = RESET;     // \x1b[0m (+ optional bg code)
+        this._clearEol = CLEAR_EOL; // \x1b[K (optionally preceded by bg)
+        this._clearScreen = CLEAR_SCREEN;
+
         // Layout cache (computed on render / resize)
         this._layout = null;
 
@@ -154,6 +186,43 @@ class TUIRenderer {
         this._cachedChatLinesNoStream = null;
         this._cachedChatLinesWidth = 0;
         this._cachedMessageCount = 0;
+    }
+
+    // ── Theme colors ─────────────────────────────────────────────────
+
+    /**
+     * Update TUI colors from the app theme.
+     * @param {{ bg: string, text: string, accent: string, muted: string, ok: string, warn: string, danger: string, textStrong: string }} colors - hex color values
+     */
+    setThemeColors(colors) {
+        if (!colors || !colors.bg) return;
+
+        this._bgCode = bgHex(colors.bg);
+        this._fgCode = fgHex(colors.text);
+
+        // RESET clears all attributes, then we re-apply bg + fg so CLEAR_EOL uses the right background
+        this._resetBg = `${RESET}${this._bgCode}${this._fgCode}`;
+        this._clearEol = `${this._bgCode}${CLEAR_EOL}`;
+        this._clearScreen = `${this._bgCode}${CLEAR_SCREEN}`;
+
+        // Rebuild theme using 24-bit foreground colors for crisp rendering
+        this._theme = {
+            border:    fgHex(colors.accent),
+            user:      `${ESC}1m${fgHex(colors.textStrong)}`, // bold + strong text
+            assistant: fgHex(colors.text),
+            dim:       fgHex(colors.muted),
+            toolRun:   fgHex(colors.warn),
+            toolOk:    fgHex(colors.ok),
+            toolFail:  fgHex(colors.danger),
+            status:    fgHex(colors.muted),
+            accent:    fgHex(colors.accent),
+            green:     fgHex(colors.ok),
+        };
+
+        // Force full repaint
+        this._firstRender = true;
+        this._cachedChatLinesNoStream = null;
+        this.render();
     }
 
     // ── Layout calculation ──────────────────────────────────────────────
@@ -240,7 +309,7 @@ class TUIRenderer {
         const buf = [];
 
         if (this._firstRender) {
-            buf.push(CLEAR_SCREEN);
+            buf.push(this._clearScreen);
             this._firstRender = false;
         }
 
@@ -251,12 +320,12 @@ class TUIRenderer {
 
         // ── Left panel top border ───────────────────────────────────────
         buf.push(moveTo(L.contentStartRow, L.leftPanelLeft));
-        buf.push(THEME.border);
+        buf.push(this._theme.border);
         buf.push(BOX.itl + this._titledLine('Conversation', L.leftWidth - 2) + BOX.itr);
 
         // ── Right panel top border ──────────────────────────────────────
         buf.push(moveTo(L.contentStartRow, L.rightPanelLeft));
-        buf.push(THEME.border);
+        buf.push(this._theme.border);
         buf.push(BOX.itl + this._titledLine('Tool Calls', L.rightWidth - 2) + BOX.itr);
 
         // ── Content rows ────────────────────────────────────────────────
@@ -278,20 +347,20 @@ class TUIRenderer {
 
             // Left panel content
             buf.push(moveTo(row, L.outerLeft));
-            buf.push(THEME.border + BOX.v + RESET); // outer left border
-            buf.push(THEME.border + BOX.iv + RESET); // left panel left border
+            buf.push(this._theme.border + BOX.v + this._resetBg); // outer left border
+            buf.push(this._theme.border + BOX.iv + this._resetBg); // left panel left border
 
             const chatIdx = startLine + i;
             const chatContent = chatIdx < chatLines.length ? chatLines[chatIdx] : '';
             buf.push(padRight(chatContent, L.leftInner));
 
-            buf.push(THEME.border + BOX.iv + RESET); // left panel right border
+            buf.push(this._theme.border + BOX.iv + this._resetBg); // left panel right border
 
             // Gap
             buf.push(' ');
 
             // Right panel content
-            buf.push(THEME.border + BOX.iv + RESET); // right panel left border
+            buf.push(this._theme.border + BOX.iv + this._resetBg); // right panel left border
 
             // Determine if this row is in tool section or info section
             const rightContentIdx = i;
@@ -304,11 +373,11 @@ class TUIRenderer {
                 rightContent = rightContentIdx < toolLines.length ? toolLines[rightContentIdx] : '';
             } else if (rightContentIdx === infoSepLocalIdx) {
                 // Info separator line
-                buf.push(THEME.border);
+                buf.push(this._theme.border);
                 buf.push(BOX.bar_l + this._titledLine('Info', L.rightInner) + BOX.bar_r);
-                buf.push(RESET);
-                buf.push(THEME.border + BOX.v + RESET); // outer right border
-                buf.push(CLEAR_EOL);
+                buf.push(this._resetBg);
+                buf.push(this._theme.border + BOX.v + this._resetBg); // outer right border
+                buf.push(this._clearEol);
                 continue;
             } else {
                 const infoIdx = rightContentIdx - infoContentStart;
@@ -316,20 +385,20 @@ class TUIRenderer {
             }
 
             buf.push(padRight(rightContent, L.rightInner));
-            buf.push(THEME.border + BOX.iv + RESET); // right panel right border
-            buf.push(THEME.border + BOX.v + RESET);   // outer right border
-            buf.push(CLEAR_EOL);
+            buf.push(this._theme.border + BOX.iv + this._resetBg); // right panel right border
+            buf.push(this._theme.border + BOX.v + this._resetBg);   // outer right border
+            buf.push(this._clearEol);
         }
 
         // ── Left panel bottom border ────────────────────────────────────
         const bottomContentRow = L.contentEndRow;
         buf.push(moveTo(bottomContentRow, L.outerLeft));
-        buf.push(THEME.border + BOX.v + RESET);
-        buf.push(THEME.border + BOX.ibr + this._hLine(BOX.ih, L.leftInner) + BOX.ibl + RESET);
+        buf.push(this._theme.border + BOX.v + this._resetBg);
+        buf.push(this._theme.border + BOX.ibr + this._hLine(BOX.ih, L.leftInner) + BOX.ibl + this._resetBg);
         buf.push(' ');
-        buf.push(THEME.border + BOX.ibr + this._hLine(BOX.ih, L.rightInner) + BOX.ibl + RESET);
-        buf.push(THEME.border + BOX.v + RESET);
-        buf.push(CLEAR_EOL);
+        buf.push(this._theme.border + BOX.ibr + this._hLine(BOX.ih, L.rightInner) + BOX.ibl + this._resetBg);
+        buf.push(this._theme.border + BOX.v + this._resetBg);
+        buf.push(this._clearEol);
 
         // ── Status separator ────────────────────────────────────────────
         buf.push(this._renderStatusSep(L));
@@ -339,9 +408,9 @@ class TUIRenderer {
 
         // ── Bottom border ───────────────────────────────────────────────
         buf.push(moveTo(L.bottomRow, L.outerLeft));
-        buf.push(THEME.border);
+        buf.push(this._theme.border);
         buf.push(BOX.bl + this._hLine(BOX.h, L.innerWidth) + BOX.br);
-        buf.push(RESET + CLEAR_EOL);
+        buf.push(this._resetBg + this._clearEol);
 
         buf.push(SHOW_CURSOR);
 
@@ -359,23 +428,23 @@ class TUIRenderer {
 
         // Build header content between corners
         const inner = L.innerWidth;
-        const parts = `${BOX.h} ${title} ${BOX.h}${BOX.h}${BOX.h}${BOX.h} ${provider} ${BOX.h}${BOX.h}${BOX.h}${BOX.h}${BOX.h}${BOX.h} ${THEME.green}${status}${THEME.border} `;
+        const parts = `${BOX.h} ${title} ${BOX.h}${BOX.h}${BOX.h}${BOX.h} ${provider} ${BOX.h}${BOX.h}${BOX.h}${BOX.h}${BOX.h}${BOX.h} ${this._theme.green}${status}${this._theme.border} `;
         const partsVisible = `${BOX.h} ${title} ${BOX.h}${BOX.h}${BOX.h}${BOX.h} ${provider} ${BOX.h}${BOX.h}${BOX.h}${BOX.h}${BOX.h}${BOX.h} ${status} `;
         const fill = Math.max(0, inner - partsVisible.length);
 
         return moveTo(L.headerRow, L.outerLeft)
-            + THEME.border
+            + this._theme.border
             + BOX.tl + parts + this._hLine(BOX.h, fill) + BOX.tr
-            + RESET + CLEAR_EOL;
+            + this._resetBg + this._clearEol;
     }
 
     // ── Status bar ──────────────────────────────────────────────────────
 
     _renderStatusSep(L) {
         return moveTo(L.statusSepRow, L.outerLeft)
-            + THEME.border
+            + this._theme.border
             + BOX.bar_l + this._hLine(BOX.h, L.innerWidth) + BOX.bar_r
-            + RESET + CLEAR_EOL;
+            + this._resetBg + this._clearEol;
     }
 
     _renderStatusBar(L) {
@@ -386,13 +455,13 @@ class TUIRenderer {
         const tools = `${toolCount} tool call${toolCount !== 1 ? 's' : ''}`;
 
         const content = ` ${ctx} │ ${tts} │ ${stt} │ ${tools}`;
-        const padded = padRight(THEME.status + content + RESET, L.innerWidth);
+        const padded = padRight(this._theme.status + content + this._resetBg, L.innerWidth);
 
         return moveTo(L.statusRow, L.outerLeft)
-            + THEME.border + BOX.v + RESET
+            + this._theme.border + BOX.v + this._resetBg
             + padded
-            + THEME.border + BOX.v + RESET
-            + CLEAR_EOL;
+            + this._theme.border + BOX.v + this._resetBg
+            + this._clearEol;
     }
 
     _formatContext() {
@@ -425,7 +494,7 @@ class TUIRenderer {
                 lines[lines.length - 1] = lastLine + '█';
             }
         } else if (this.streaming) {
-            lines.push(`  ${THEME.dim}█${RESET}`);
+            lines.push(`  ${this._theme.dim}█${this._resetBg}`);
         }
 
         return lines;
@@ -439,25 +508,25 @@ class TUIRenderer {
             let icon, color;
             if (tc.status === 'done') {
                 icon = '✓';
-                color = THEME.toolOk;
+                color = this._theme.toolOk;
             } else if (tc.status === 'failed') {
                 icon = '✗';
-                color = THEME.toolFail;
+                color = this._theme.toolFail;
             } else {
                 icon = SPINNER[this._spinnerIdx % SPINNER.length];
-                color = THEME.toolRun;
+                color = this._theme.toolRun;
             }
 
             const dur = tc.duration ? `${tc.duration}s` : '';
             const name = truncate(tc.name, width - 6 - dur.length);
-            const nameLine = ` ${color}${icon}${RESET} ${name}`;
+            const nameLine = ` ${color}${icon}${this._resetBg} ${name}`;
             const pad = Math.max(1, width - name.length - 3 - dur.length);
-            lines.push(nameLine + ' '.repeat(pad) + `${THEME.dim}${dur}${RESET}`);
+            lines.push(nameLine + ' '.repeat(pad) + `${this._theme.dim}${dur}${this._resetBg}`);
 
             // Detail line (indented)
             if (tc.detail) {
                 const detail = truncate(tc.detail, width - 4);
-                lines.push(`   ${THEME.dim}"${detail}"${RESET}`);
+                lines.push(`   ${this._theme.dim}"${detail}"${this._resetBg}`);
             }
 
             lines.push('');
@@ -479,13 +548,13 @@ class TUIRenderer {
             const labelStr = ` ${label}`;
             const pad = Math.max(1, 10 - labelStr.length);
             const valStr = truncate(value, width - 12);
-            lines.push(`${THEME.dim}${labelStr}${RESET}${' '.repeat(pad)}${valStr}`);
+            lines.push(`${this._theme.dim}${labelStr}${this._resetBg}${' '.repeat(pad)}${valStr}`);
         }
 
         // Voice status
         lines.push('');
         if (this.info.voiceStatus) {
-            lines.push(` ${THEME.green}▶${RESET} ${this.info.voiceStatus}`);
+            lines.push(` ${this._theme.green}▶${this._resetBg} ${this.info.voiceStatus}`);
         } else {
             lines.push('');
         }
@@ -656,13 +725,13 @@ class TUIRenderer {
         for (const msg of this.messages) {
             const ts = formatTime(msg.timestamp);
             const isUser = msg.role === 'user';
-            const nameColor = isUser ? THEME.user : THEME.assistant;
+            const nameColor = isUser ? this._theme.user : this._theme.assistant;
             const name = isUser ? 'You' : this.model.split(':')[0];
 
             const headerLabel = `  ▸ ${name}`;
-            const tsStr = `${THEME.dim}${ts}${RESET}`;
+            const tsStr = `${this._theme.dim}${ts}${this._resetBg}`;
             const headerPad = Math.max(1, width - headerLabel.length - ts.length);
-            lines.push(`${nameColor}${headerLabel}${RESET}${' '.repeat(headerPad)}${tsStr}`);
+            lines.push(`${nameColor}${headerLabel}${this._resetBg}${' '.repeat(headerPad)}${tsStr}`);
 
             const wrapped = wrapText(msg.text, width - 2);
             for (const wl of wrapped) {
