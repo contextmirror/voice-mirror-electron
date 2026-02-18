@@ -290,6 +290,10 @@ function interruptAIProvider() {
     return false;
 }
 
+function sendVoiceLoop() {
+    if (aiManager) aiManager.sendVoiceLoop();
+}
+
 // Inbox watcher helper functions that delegate to inboxWatcherService
 function startInboxWatcher() {
     if (inboxWatcherService) {
@@ -427,6 +431,7 @@ app.whenReady().then(async () => {
 
     function doStartupGreeting() {
         if (!voiceBackend?.isRunning()) return;
+        if (appConfig.voice?.announceStartup === false) return;
         const hint = getActivationHint();
 
         // First-ever launch
@@ -529,6 +534,15 @@ app.whenReady().then(async () => {
                 } catch { /* ignore parse errors */ }
                 return;
             }
+            // Forward stream tokens to chat UI (separate channel from terminal)
+            if (data.type === 'stream-token') {
+                safeSend('chat-stream-token', { token: data.text });
+                return;
+            }
+            if (data.type === 'stream-end') {
+                safeSend('chat-stream-end', { text: data.text });
+                return;
+            }
             safeSend('claude-terminal', data);
         },
         onVoiceEvent: (event) => {
@@ -602,6 +616,7 @@ app.whenReady().then(async () => {
         startAIProvider,
         stopAIProvider,
         interruptAIProvider,
+        sendVoiceLoop,
         isAIProviderRunning,
         getAIManager: () => aiManager,
         getVoiceBackend: () => voiceBackend,

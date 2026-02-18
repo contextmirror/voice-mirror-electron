@@ -49,7 +49,8 @@ const CLI_CONFIGS = {
     opencode: {
         command: 'opencode',
         args: [],
-        readyPatterns: ['>', 'What', 'How can', 'help'],
+        readyPatterns: ['Ask anything', 'ctrl+p'],
+        readyDelay: 2000,
         displayName: 'OpenCode',
         instructionsDir: '.opencode'
     }
@@ -137,8 +138,8 @@ function createCLISpawner(cliType) {
                 const instructions = buildGenericInstructions({
                     providerName: config.displayName,
                     userName: appConfig.user?.name || 'User',
-                    enabledGroups: appConfig.tools?.activeProfile
-                        ? (appConfig.tools.profiles?.[appConfig.tools.activeProfile]?.groups || 'core,meta')
+                    enabledGroups: appConfig.ai?.toolProfile
+                        ? (appConfig.ai.toolProfiles?.[appConfig.ai.toolProfile]?.groups || []).join(',') || 'core,meta'
                         : 'core,meta',
                     appVersion: require('../../package.json').version,
                 });
@@ -269,7 +270,7 @@ function createCLISpawner(cliType) {
                 setTimeout(() => {
                     sendInput(text);
                     resolve(true);
-                }, 500);
+                }, config.readyDelay || 500);
             };
 
             readyCallbacks.push(sendCallback);

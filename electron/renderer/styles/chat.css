@@ -414,6 +414,33 @@
     display: none;  /* Hidden - status badge shows success/error */
 }
 
+/* Tool cards inline in streaming message bubbles */
+.tool-card.inline {
+    margin: 8px 0;
+    border-radius: 6px;
+    font-size: 12px;
+}
+
+.tool-card.inline .tool-card-header {
+    padding: 6px 10px;
+    gap: 8px;
+}
+
+.tool-card.inline .tool-icon {
+    width: 16px;
+    height: 16px;
+    font-size: 12px;
+}
+
+.tool-card.inline .tool-name {
+    font-size: 12px;
+}
+
+.tool-card.inline .tool-status {
+    font-size: 10px;
+    padding: 2px 8px;
+}
+
 /* (spacer removed — scroll buttons moved to send column) */
 
 /* ========== AI Activity Status Bar ========== */
@@ -737,6 +764,24 @@
 .screen-picker-label {
     color: var(--muted);
     font-size: 12px;
+}
+
+/* ========== Streaming Message ========== */
+.message-group.streaming .streaming-text {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.streaming-cursor {
+    display: inline;
+    animation: blink-cursor 0.8s step-end infinite;
+    color: var(--accent);
+    font-weight: bold;
+}
+
+@keyframes blink-cursor {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
 }
 
 /* ========== Reduced Motion ========== */

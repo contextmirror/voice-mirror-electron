@@ -378,6 +378,12 @@ export async function loadVoiceSettingsUI() {
     document.getElementById('tts-volume').value = state.currentConfig.voice?.ttsVolume || 1.0;
     document.getElementById('volume-value').textContent = Math.round((state.currentConfig.voice?.ttsVolume || 1.0) * 100) + '%';
 
+    // Announcement toggles
+    const announceStartupEl = document.getElementById('announce-startup');
+    if (announceStartupEl) announceStartupEl.checked = state.currentConfig.voice?.announceStartup !== false;
+    const announceProviderEl = document.getElementById('announce-provider-switch');
+    if (announceProviderEl) announceProviderEl.checked = state.currentConfig.voice?.announceProviderSwitch !== false;
+
     // TTS extra fields
     const apiKeyEl = document.getElementById('tts-api-key');
     if (apiKeyEl) {
@@ -463,7 +469,9 @@ export function collectVoiceSaveData() {
             sttEndpoint: document.getElementById('stt-endpoint')?.value || null,
             sttModelName: document.getElementById('stt-model-name')?.value || null,
             inputDevice: document.getElementById('audio-input-device').value || null,
-            outputDevice: document.getElementById('audio-output-device').value || null
+            outputDevice: document.getElementById('audio-output-device').value || null,
+            announceStartup: document.getElementById('announce-startup')?.checked !== false,
+            announceProviderSwitch: document.getElementById('announce-provider-switch')?.checked !== false
         }
     };
 }

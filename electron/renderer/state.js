@@ -24,7 +24,14 @@ export const state = {
     currentPage: 'chat',            // 'chat' | 'terminal' | 'settings'
     sidebarCollapsed: false,        // Whether sidebar is collapsed to icons
     pendingProviderClear: false,    // Flag: clear terminal when new provider connects
-    providerGeneration: 0           // Monotonic counter — incremented on each provider switch
+    providerGeneration: 0,          // Monotonic counter — incremented on each provider switch
+    // Streaming state for real-time chat token display
+    streamingMessageGroup: null,    // DOM reference to the active streaming message group
+    streamingBubble: null,          // DOM reference to the streaming bubble's text node
+    streamingText: '',              // Accumulated plain text during streaming
+    streamingActive: false,         // Whether a streaming message is being built
+    streamingFinalizedAt: 0,         // Timestamp when streaming was last finalized (for dedup)
+    streamingToolCount: 0            // Number of inline tool cards in current streaming bubble
 };
 
 // Deduplication: track recent messages to prevent duplicates
