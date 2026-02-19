@@ -5,7 +5,7 @@
   import { overlayStore } from './lib/stores/overlay.svelte.js';
   import { aiStatusStore, initAiStatusListeners, startProvider } from './lib/stores/ai-status.svelte.js';
   import { voiceStore, initVoiceListeners, startVoiceEngine } from './lib/stores/voice.svelte.js';
-  import { shortcutsStore, setActionHandler, setReleaseHandler } from './lib/stores/shortcuts.svelte.js';
+  import { shortcutsStore, setActionHandler, setReleaseHandler, setupInAppShortcuts } from './lib/stores/shortcuts.svelte.js';
   import { initStartupGreeting } from './lib/voice-greeting.js';
   import { listen } from '@tauri-apps/api/event';
   import { writeUserMessage, aiPtyInput, pttPress, pttRelease, configurePttKey, configureDictationKey } from './lib/api.js';
@@ -16,7 +16,6 @@
   import Terminal from './components/terminal/Terminal.svelte';
   import SettingsPanel from './components/settings/SettingsPanel.svelte';
   import OverlayPanel from './components/overlay/OverlayPanel.svelte';
-  import MigrationPrompt from './components/MigrationPrompt.svelte';
 
   // Load config on mount and init event listeners
   $effect(() => {
@@ -81,7 +80,7 @@
     // Toggle mode: release does nothing (only next press stops)
   }
 
-  // Initialize global shortcuts once config is loaded
+  // Initialize global + in-app shortcuts once config is loaded
   let shortcutsInitialized = $state(false);
   $effect(() => {
     if (configStore.loaded && !shortcutsInitialized) {
@@ -98,6 +97,22 @@
       listen('ptt-key-pressed', () => handleVoicePress());
       listen('ptt-key-released', () => handleVoiceRelease());
     }
+  });
+
+  // In-app DOM shortcuts (Ctrl+,, Ctrl+N, Ctrl+T, Escape)
+  $effect(() => {
+    if (!shortcutsInitialized) return;
+    const cleanup = setupInAppShortcuts();
+    return cleanup;
+  });
+
+  // Clean up global shortcuts on window close
+  $effect(() => {
+    const handleBeforeUnload = () => {
+      shortcutsStore.destroy();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   });
 
   // Configure PTT/dictation key bindings in the native input hook.
@@ -251,9 +266,6 @@
     </div>
   </div>
 {/if}
-
-<!-- Config migration prompt (shown on first run if Electron config detected) -->
-<MigrationPrompt />
 
 <style>
   .app-shell {
