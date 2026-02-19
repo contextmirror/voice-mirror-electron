@@ -183,11 +183,14 @@ fn generate_msg_id() -> String {
 
 /// Simple pseudo-random u32 (no external crate dependency).
 fn rand_u32() -> u32 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
     let ptr = Box::new(0u8);
     let addr = &*ptr as *const u8 as usize;
     let ts = now_ms();
-    // Mix address entropy with time
-    ((addr as u64).wrapping_mul(6364136223846793005).wrapping_add(ts)) as u32
+    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
+    // Mix address entropy with time and counter for uniqueness
+    ((addr as u64).wrapping_mul(6364136223846793005).wrapping_add(ts).wrapping_add(seq)) as u32
 }
 
 // ---------------------------------------------------------------------------
@@ -408,8 +411,7 @@ pub async fn handle_voice_inbox(args: &Value, data_dir: &Path) -> McpToolResult 
         .get("limit")
         .and_then(|v| v.as_u64())
         .unwrap_or(10)
-        .min(100)
-        .max(1) as usize;
+        .clamp(1, 100) as usize;
     let include_read = args
         .get("include_read")
         .and_then(|v| v.as_bool())
@@ -686,7 +688,7 @@ pub async fn handle_voice_listen(
                 }
             })
             .filter(|m| !existing_ids.contains(&m.id))
-            .last();
+            .next_back();
 
         if let Some(msg) = new_msg {
             let wait_secs = start.elapsed().as_secs();

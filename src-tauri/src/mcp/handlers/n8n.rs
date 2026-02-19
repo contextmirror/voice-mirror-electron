@@ -322,15 +322,14 @@ pub async fn handle_n8n_search_nodes(args: &Value, _data_dir: &Path) -> McpToolR
         .get("limit")
         .and_then(|v| v.as_u64())
         .unwrap_or(10)
-        .min(100)
-        .max(1) as usize;
+        .clamp(1, 100) as usize;
 
     let nodes = common_nodes();
     let results: Vec<&NodeInfo> = nodes
         .iter()
         .filter(|(key, node)| {
             query.contains(key)
-                || key.contains(&query.as_str())
+                || key.contains(query.as_str())
                 || node.description.to_lowercase().contains(&query)
         })
         .map(|(_, node)| node)
@@ -919,8 +918,7 @@ pub async fn handle_n8n_get_executions(args: &Value, _data_dir: &Path) -> McpToo
         .get("limit")
         .and_then(|v| v.as_u64())
         .unwrap_or(10)
-        .min(100)
-        .max(1);
+        .clamp(1, 100);
 
     let mut params = vec![format!("limit={}", limit)];
     if let Some(wf_id) = extract_string_or_number(&args_val, "workflow_id") {

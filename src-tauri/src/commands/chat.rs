@@ -356,8 +356,8 @@ mod tests {
         assert_eq!(loaded["messages"].as_array().unwrap().len(), 1);
         assert_eq!(loaded["messages"][0]["content"], "Hello");
 
-        // Cleanup
-        let _ = fs::remove_dir_all(dir.parent().unwrap());
+        // Cleanup — only remove this test's subdirectory, not the shared parent
+        let _ = fs::remove_dir_all(&dir);
     }
 
     // ---- List returns sorted metadata ----

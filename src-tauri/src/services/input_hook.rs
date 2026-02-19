@@ -8,8 +8,12 @@
 //! preventing "44444" in text fields when holding a mouse side button for PTT.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
-use tauri::{AppHandle, Emitter};
-use tracing::{error, info, warn};
+use tauri::AppHandle;
+#[cfg(target_os = "windows")]
+use tauri::Emitter;
+use tracing::info;
+#[cfg(target_os = "windows")]
+use tracing::{error, warn};
 
 // ---- Key binding types ----
 
@@ -27,6 +31,7 @@ struct KeyBinding {
     active: AtomicBool,
 }
 
+#[allow(dead_code)]
 impl KeyBinding {
     const fn new() -> Self {
         Self {

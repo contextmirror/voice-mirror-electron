@@ -22,17 +22,10 @@ pub struct ShortcutEntry {
 /// Managed state for all registered shortcuts.
 pub struct ShortcutManagerState(pub Mutex<ShortcutManager>);
 
+#[derive(Default)]
 pub struct ShortcutManager {
     /// Map of shortcut ID -> entry.
     pub entries: HashMap<String, ShortcutEntry>,
-}
-
-impl Default for ShortcutManager {
-    fn default() -> Self {
-        Self {
-            entries: HashMap::new(),
-        }
-    }
 }
 
 impl ShortcutManager {

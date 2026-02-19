@@ -56,7 +56,6 @@ pub fn start_ai(
         context_length: context_length.unwrap_or(32768),
         system_prompt,
         cwd,
-        ..Default::default()
     };
 
     match manager.start(&provider_type, cols, rows, config) {
@@ -327,7 +326,6 @@ pub fn set_provider(
         context_length: context_length.unwrap_or(32768),
         system_prompt,
         cwd,
-        ..Default::default()
     };
 
     match manager.switch(&provider_id, cols, rows, config) {

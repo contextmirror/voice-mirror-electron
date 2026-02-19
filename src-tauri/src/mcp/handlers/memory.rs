@@ -374,8 +374,7 @@ pub async fn handle_memory_search(args: &Value, data_dir: &Path) -> McpToolResul
         .get("max_results")
         .and_then(|v| v.as_u64())
         .unwrap_or(5)
-        .min(100)
-        .max(1) as usize;
+        .clamp(1, 100) as usize;
     let min_score = args
         .get("min_score")
         .and_then(|v| v.as_f64())

@@ -62,7 +62,7 @@ fn detect_tool(name: &str) -> ToolInfo {
     // Try `--version` to get version info.
     // Some tools need cmd.exe on Windows because they're .cmd/.bat shims.
     // But standalone .exe files should NOT use cmd.exe (it can mask errors).
-    let is_exe = info.path.as_ref().map_or(false, |p| p.ends_with(".exe"));
+    let is_exe = info.path.as_ref().is_some_and(|p| p.ends_with(".exe"));
     let needs_shell = cfg!(target_os = "windows") && !is_exe;
 
     let version_result = if needs_shell {
