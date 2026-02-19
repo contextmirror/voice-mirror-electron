@@ -189,17 +189,22 @@ pub fn scan_available_providers() -> Vec<String> {
 /// 3. Walk up from current working directory
 /// 4. Common dev path: walk up from exe looking for `package.json` with "voice-mirror"
 ///
-/// Validates by checking for `mcp-server/index.js`.
+/// Validates by checking for `src-tauri/tauri.conf.json`.
 fn find_project_root() -> Option<PathBuf> {
+    /// Check if a directory looks like the Voice Mirror project root.
+    fn is_project_root(path: &std::path::Path) -> bool {
+        path.join("src-tauri").join("tauri.conf.json").exists()
+    }
+
     // 1. Explicit env var override
     if let Ok(root) = std::env::var("VOICE_MIRROR_ROOT") {
         let path = PathBuf::from(&root);
-        if path.join("mcp-server").join("index.js").exists() {
+        if is_project_root(&path) {
             info!("Project root from VOICE_MIRROR_ROOT: {}", path.display());
             return Some(path);
         }
         warn!(
-            "VOICE_MIRROR_ROOT={} does not contain mcp-server/index.js",
+            "VOICE_MIRROR_ROOT={} does not contain src-tauri/tauri.conf.json",
             root
         );
     }
@@ -211,7 +216,7 @@ fn find_project_root() -> Option<PathBuf> {
             if !path.pop() {
                 break;
             }
-            if path.join("mcp-server").join("index.js").exists() {
+            if is_project_root(&path) {
                 info!("Project root from exe walk-up: {}", path.display());
                 return Some(path);
             }
@@ -222,7 +227,7 @@ fn find_project_root() -> Option<PathBuf> {
     if let Ok(cwd) = std::env::current_dir() {
         let mut path = cwd.clone();
         for _ in 0..4 {
-            if path.join("mcp-server").join("index.js").exists() {
+            if is_project_root(&path) {
                 info!("Project root from cwd walk-up: {}", path.display());
                 return Some(path);
             }
@@ -233,7 +238,7 @@ fn find_project_root() -> Option<PathBuf> {
     }
 
     warn!(
-        "Could not find project root (mcp-server/index.js). \
+        "Could not find project root (src-tauri/tauri.conf.json). \
          MCP tools will NOT be available. Set VOICE_MIRROR_ROOT env var \
          or run from the project directory."
     );
@@ -365,7 +370,7 @@ fn resolve_mcp_binary(project_root: &std::path::Path) -> Result<PathBuf, String>
     }
 
     // 2. Check Cargo target directories (dev builds)
-    let src_tauri = project_root.join("tauri").join("src-tauri");
+    let src_tauri = project_root.join("src-tauri");
     for profile in &["release", "debug"] {
         let candidate = src_tauri.join("target").join(profile).join(binary_name);
         if candidate.exists() {
@@ -845,6 +850,12 @@ impl Provider for CliProvider {
                                                 clean.len(),
                                                 &clean[..clean.len().min(60)]);
                                             let _ = w.write_all(clean.as_bytes());
+                                            let _ = w.flush();
+                                            // Give the TUI time to process the text before
+                                            // pressing Enter — without this delay the \r
+                                            // arrives in the same chunk and the TUI may not
+                                            // register it as a submit action.
+                                            std::thread::sleep(Duration::from_millis(200));
                                             let _ = w.write_all(b"\r");
                                             let _ = w.flush();
                                         }
