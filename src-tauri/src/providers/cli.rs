@@ -920,12 +920,21 @@ impl Provider for CliProvider {
 
     fn send_input(&mut self, data: &str) {
         if let Some(ref writer) = self.pty_writer {
-            if let Ok(mut w) = writer.lock() {
-                let clean_text = data.trim_end_matches(['\r', '\n']);
-                let _ = w.write_all(clean_text.as_bytes());
-                let _ = w.write_all(b"\r");
-                let _ = w.flush();
-            }
+            let writer = writer.clone();
+            let text = data.trim_end_matches(['\r', '\n']).to_string();
+            // TUI apps need a delay between text and carriage return —
+            // they must process/render the text before receiving Enter.
+            std::thread::spawn(move || {
+                if let Ok(mut w) = writer.lock() {
+                    let _ = w.write_all(text.as_bytes());
+                    let _ = w.flush();
+                }
+                std::thread::sleep(std::time::Duration::from_millis(200));
+                if let Ok(mut w) = writer.lock() {
+                    let _ = w.write_all(b"\r");
+                    let _ = w.flush();
+                }
+            });
         }
     }
 
