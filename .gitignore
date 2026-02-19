@@ -43,6 +43,9 @@ coverage/
 *.tmp
 *.temp
 
+# Bundled tools (downloaded, not committed)
+tools/espeak-ng/
+
 # Local-only
 CLAUDE.md
 scripts/
