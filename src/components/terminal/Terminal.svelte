@@ -162,7 +162,7 @@
       // Create ghostty-web Terminal instance
       const ghosttyTerm = new Terminal({
         cursorBlink: false,
-        cursorStyle: 'bar',
+        cursorStyle: 'none',
         fontSize: 13,
         fontFamily: getCssVar('--font-mono') || "'Cascadia Code', 'Fira Code', monospace",
         theme: buildTermTheme(),
