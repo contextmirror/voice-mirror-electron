@@ -161,7 +161,7 @@
 
       // Create ghostty-web Terminal instance
       const ghosttyTerm = new Terminal({
-        cursorBlink: true,
+        cursorBlink: false,
         cursorStyle: 'bar',
         fontSize: 13,
         fontFamily: getCssVar('--font-mono') || "'Cascadia Code', 'Fira Code', monospace",
@@ -368,10 +368,18 @@
     /* Ensure ghostty-web fills the container */
     min-height: 0;
     position: relative;
+    /* Clip canvas rendering to container bounds */
+    contain: strict;
   }
 
   /* ghostty-web renders into a canvas; ensure it fills the container */
   .terminal-container :global(canvas) {
     display: block;
+  }
+
+  /* Prevent ghostty-web wrapper from overflowing */
+  .terminal-container :global(.ghostty-web),
+  .terminal-container :global(.xterm) {
+    overflow: hidden !important;
   }
 </style>

@@ -15,7 +15,7 @@
   // ---- Bundled components (shipped with the app via Vite) ----
 
   const BUNDLED = [
-    { key: 'ghosttyWeb', label: 'ghostty-web', desc: 'Terminal Emulator (WASM)', version: '0.4.0' },
+    { key: 'ghosttyWeb', label: 'ghostty-web', desc: 'Terminal Emulator (WASM) — contextmirror fork', version: '0.4.0' },
   ];
 
   // ---- System tools (external CLIs detected on the user's machine) ----
