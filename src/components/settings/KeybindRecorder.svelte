@@ -140,7 +140,10 @@
     </button>
   </div>
   <div class="keybind-row">
-    <span class="keybind-label">Dictation</span>
+    <span class="keybind-label">
+      Dictation
+      <span class="keybind-hint">Toggle mode only</span>
+    </span>
     <button
       class="keybind-input"
       class:recording={recordingKeybind === 'dictation'}

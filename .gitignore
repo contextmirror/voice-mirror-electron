@@ -10,6 +10,9 @@ src-tauri/target/
 # Ghostty WASM (downloaded at build time)
 ghostty-vt.wasm
 
+# Windows reserved device names (created by tools writing to "nul" literally)
+nul
+
 # Environment
 .env
 .env.local

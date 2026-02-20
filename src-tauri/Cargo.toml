@@ -58,6 +58,9 @@ uuid = { version = "1", features = ["v4"] }
 # Performance monitoring (CPU + memory stats)
 sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 
+# Clipboard access for text injection (dictation feature)
+arboard = "3"
+
 [[bin]]
 name = "voice-mirror-mcp"
 path = "src/bin/mcp.rs"

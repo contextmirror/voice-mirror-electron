@@ -120,6 +120,14 @@ export async function configureDictationKey(keySpec) {
   return invoke('configure_dictation_key', { keySpec });
 }
 
+/**
+ * Inject text into the currently focused field via clipboard + Ctrl+V.
+ * Used by dictation: transcribed speech → paste into active app.
+ */
+export async function injectText(text) {
+  return invoke('inject_text', { text });
+}
+
 // ============ AI ============
 
 /**

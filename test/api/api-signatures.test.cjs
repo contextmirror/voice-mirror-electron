@@ -143,6 +143,7 @@ describe('api.js -- exported async functions', () => {
     'pttRelease',
     'configurePttKey',
     'configureDictationKey',
+    'injectText',
     // AI
     'startAI',
     'stopAI',

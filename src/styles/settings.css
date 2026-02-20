@@ -410,6 +410,12 @@
   font-size: 14px;
 }
 
+.keybind-hint {
+  color: var(--muted);
+  font-size: 11px;
+  margin-left: 6px;
+}
+
 .keybind-input {
   background: var(--bg-hover);
   border: 1px solid var(--border-strong);

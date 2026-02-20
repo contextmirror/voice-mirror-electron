@@ -259,6 +259,15 @@ pub fn configure_dictation_key(key_spec: String) -> IpcResponse {
     }
 }
 
+/// Inject text into the currently focused field via clipboard + Ctrl+V.
+///
+/// Used by the dictation feature: after STT transcribes speech, the
+/// frontend calls this to paste the text into whatever app has focus.
+#[tauri::command]
+pub async fn inject_text(text: String) -> Result<(), String> {
+    crate::services::text_injector::inject_text(&text).await
+}
+
 // ── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]

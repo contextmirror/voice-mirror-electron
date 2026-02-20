@@ -5,7 +5,7 @@
  * and exposes reactive state for the Sidebar, ChatInput, Overlay, etc.
  */
 import { listen } from '@tauri-apps/api/event';
-import { startVoice, stopVoice, getVoiceStatus, speakText, setVoiceMode, aiPtyInput, writeUserMessage } from '../api.js';
+import { startVoice, stopVoice, getVoiceStatus, speakText, setVoiceMode, aiPtyInput, writeUserMessage, injectText } from '../api.js';
 import { configStore } from './config.svelte.js';
 import { chatStore } from './chat.svelte.js';
 import { aiStatusStore } from './ai-status.svelte.js';
@@ -15,6 +15,7 @@ function createVoiceStore() {
   let running = $state(false);
   let lastTranscription = $state('');
   let error = $state(null);
+  let isDictating = $state(false);     // true when recording for dictation (not AI)
 
   return {
     get state() { return state; },
@@ -27,6 +28,7 @@ function createVoiceStore() {
     get isListening() { return state === 'listening'; },
     get isSpeaking() { return state === 'speaking'; },
     get isProcessing() { return state === 'processing'; },
+    get isDictating() { return isDictating; },
 
     /** Update state from voice-event payload */
     _handleVoiceEvent(payload) {
@@ -56,7 +58,14 @@ function createVoiceStore() {
         case 'transcription':
           if (data.text) {
             lastTranscription = data.text;
-            routeTranscriptionToAI(data.text);
+            if (isDictating) {
+              isDictating = false;
+              injectText(data.text).catch((err) => {
+                console.warn('[voice] Failed to inject dictation text:', err);
+              });
+            } else {
+              routeTranscriptionToAI(data.text);
+            }
           }
           break;
         case 'speaking_start':
@@ -84,6 +93,14 @@ function createVoiceStore() {
 
     _setError(msg) {
       error = msg;
+    },
+
+    startDictation() {
+      isDictating = true;
+    },
+
+    stopDictation() {
+      isDictating = false;
     },
   };
 }

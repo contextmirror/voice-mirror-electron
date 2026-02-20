@@ -245,6 +245,48 @@ describe('voice: imports from api.js', () => {
   });
 });
 
+// ============ Dictation support ============
+
+describe('voice: dictation', () => {
+  it('has isDictating $state', () => {
+    assert.ok(
+      /let\s+isDictating\s*=\s*\$state\(/.test(src),
+      'Should have isDictating $state'
+    );
+  });
+
+  it('has isDictating getter', () => {
+    assert.ok(src.includes('get isDictating()'), 'Should have isDictating getter');
+  });
+
+  it('has startDictation method', () => {
+    assert.ok(src.includes('startDictation()'), 'Should have startDictation method');
+  });
+
+  it('has stopDictation method', () => {
+    assert.ok(src.includes('stopDictation()'), 'Should have stopDictation method');
+  });
+
+  it('imports injectText from api.js', () => {
+    assert.ok(src.includes('injectText'), 'Should import injectText');
+  });
+
+  it('calls injectText when isDictating is true on transcription', () => {
+    assert.ok(
+      src.includes('injectText(data.text)'),
+      'Should call injectText with transcription text when dictating'
+    );
+  });
+
+  it('resets isDictating after injecting text', () => {
+    // isDictating should be set to false before/after calling injectText
+    assert.ok(
+      src.includes('isDictating = false'),
+      'Should reset isDictating to false after injecting'
+    );
+  });
+});
+
 // ============ Voice mode from config ============
 
 describe('voice: applyVoiceModeFromConfig', () => {

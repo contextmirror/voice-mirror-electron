@@ -84,6 +84,23 @@
     // Toggle mode: release does nothing (only next press stops)
   }
 
+  // ---- Dictation handler (toggle-only: press to start, press again to stop) ----
+
+  function handleDictationPress() {
+    // Dictation only works in toggle mode
+    const mode = configStore.value?.behavior?.activationMode;
+    if (mode !== 'toggle') return;
+
+    if (voiceStore.isRecording && voiceStore.isDictating) {
+      // Currently dictating → stop recording, triggers STT → inject text
+      pttRelease();
+    } else if (!voiceStore.isRecording) {
+      // Not recording → start dictation recording
+      voiceStore.startDictation();
+      pttPress();
+    }
+  }
+
   // Initialize global + in-app shortcuts once config is loaded
   let shortcutsInitialized = $state(false);
   $effect(() => {
@@ -101,6 +118,9 @@
       // ptt-key-pressed/released — no frontend key comparison needed.
       listen('ptt-key-pressed', () => handleVoicePress());
       listen('ptt-key-released', () => handleVoiceRelease());
+
+      // Dictation: toggle-only (press to start, press again to stop)
+      listen('dictation-key-pressed', () => handleDictationPress());
     }
   });
 

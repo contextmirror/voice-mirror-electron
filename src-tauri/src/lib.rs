@@ -76,6 +76,7 @@ pub fn run() {
             voice_cmds::ptt_release,
             voice_cmds::configure_ptt_key,
             voice_cmds::configure_dictation_key,
+            voice_cmds::inject_text,
             // AI (real implementations)
             ai_cmds::start_ai,
             ai_cmds::stop_ai,

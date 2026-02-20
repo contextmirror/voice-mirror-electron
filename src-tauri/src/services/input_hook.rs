@@ -344,7 +344,7 @@ unsafe extern "system" fn low_level_mouse_proc(
         };
 
         if let Some(id) = button_id {
-            // Check PTT binding
+            // Check PTT binding — suppress the mouse button at OS level
             if PTT_BINDING.matches_mouse(id) {
                 handle_binding_event(
                     &PTT_BINDING,
@@ -352,9 +352,10 @@ unsafe extern "system" fn low_level_mouse_proc(
                     "ptt-key-released",
                     is_press,
                 );
+                return 1;
             }
 
-            // Check dictation binding
+            // Check dictation binding — suppress the mouse button at OS level
             if DICTATION_BINDING.matches_mouse(id) {
                 handle_binding_event(
                     &DICTATION_BINDING,
@@ -362,6 +363,7 @@ unsafe extern "system" fn low_level_mouse_proc(
                     "dictation-key-released",
                     is_press,
                 );
+                return 1;
             }
         }
     }
