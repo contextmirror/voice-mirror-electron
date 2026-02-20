@@ -17,6 +17,7 @@
   import Terminal from './components/terminal/Terminal.svelte';
   import SettingsPanel from './components/settings/SettingsPanel.svelte';
   import LensWorkspace from './components/lens/LensWorkspace.svelte';
+  import StatusDropdown from './components/lens/StatusDropdown.svelte';
   import OverlayPanel from './components/overlay/OverlayPanel.svelte';
   import ResizeEdges from './components/shared/ResizeEdges.svelte';
   import StatsBar from './components/shared/StatsBar.svelte';
@@ -318,7 +319,7 @@
               <span>Search Voice Mirror</span>
               <kbd>Ctrl+P</kbd>
             </div>
-            <span class="titlebar-status-badge">Status</span>
+            <StatusDropdown />
           </div>
         {/if}
       {/snippet}
@@ -444,12 +445,4 @@
     font-family: var(--font-mono);
   }
 
-  .titlebar-status-badge {
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 10px;
-    background: var(--accent);
-    color: var(--bg);
-    font-weight: 600;
-  }
 </style>
