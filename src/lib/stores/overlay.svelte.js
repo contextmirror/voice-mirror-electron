@@ -71,13 +71,14 @@ function createOverlayStore() {
 
       try {
         if (entering) {
-          // Entering orb mode — save dashboard position first
+          // Entering orb mode — save dashboard position + dimensions first
           try {
             const posResult = await getWindowPosition();
             const pos = posResult?.data || posResult;
             if (pos?.x != null && pos?.y != null) {
               await updateConfig({
-                window: { dashboardX: pos.x, dashboardY: pos.y, expanded: false }
+                window: { dashboardX: pos.x, dashboardY: pos.y, expanded: false },
+                appearance: { panelWidth: pos.width, panelHeight: pos.height },
               });
             } else {
               await updateConfig({ window: { expanded: false } });

@@ -375,6 +375,16 @@ describe('overlay: mode-aware position saving', () => {
     );
   });
 
+  it('saves dashboard dimensions when entering orb mode', () => {
+    // The toggleOverlay entering block must save panelWidth/panelHeight
+    // so that expanding back restores the correct dashboard size
+    const enterBlock = src.slice(src.indexOf('if (entering)'), src.indexOf('} else {'));
+    assert.ok(
+      enterBlock.includes('panelWidth') && enterBlock.includes('panelHeight'),
+      'Should save panelWidth/panelHeight when entering orb mode'
+    );
+  });
+
   it('saves orb position when leaving orb mode', () => {
     // When leaving orb mode, the current (orb) position should be saved
     const toggleBlock = src.slice(src.indexOf('async toggleOverlay()'));

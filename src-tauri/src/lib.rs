@@ -369,7 +369,8 @@ pub fn run() {
                 if let Ok(pos) = _window.outer_position() {
                     if let Ok(size) = _window.outer_size() {
                         let config_dir = platform::get_config_dir();
-                        let current_config = persistence::load_config(&config_dir);
+                        // Use in-memory config (always current) instead of disk read
+                        let current_config = commands::config::get_config_snapshot();
                         let is_dashboard = current_config.window.expanded;
 
                         let patch = if is_dashboard {

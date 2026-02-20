@@ -6,20 +6,29 @@ use tauri::{AppHandle, Manager};
 /// Holds a persistent `System` instance so CPU deltas are accurate across calls.
 pub type PerfMonitorState = std::sync::Mutex<System>;
 
-/// Get the current window position.
+/// Get the current window position and size.
 #[tauri::command]
 pub fn get_window_position(app: AppHandle) -> IpcResponse {
     let Some(window) = app.get_webview_window("main") else {
         return IpcResponse::err("Main window not found");
     };
 
-    match window.outer_position() {
-        Ok(pos) => IpcResponse::ok(serde_json::json!({
-            "x": pos.x,
-            "y": pos.y,
-        })),
-        Err(e) => IpcResponse::err(format!("Failed to get position: {}", e)),
-    }
+    let pos = match window.outer_position() {
+        Ok(p) => p,
+        Err(e) => return IpcResponse::err(format!("Failed to get position: {}", e)),
+    };
+
+    let size = match window.outer_size() {
+        Ok(s) => s,
+        Err(e) => return IpcResponse::err(format!("Failed to get size: {}", e)),
+    };
+
+    IpcResponse::ok(serde_json::json!({
+        "x": pos.x,
+        "y": pos.y,
+        "width": size.width,
+        "height": size.height,
+    }))
 }
 
 /// Set the window position.
@@ -59,7 +68,8 @@ pub fn save_window_bounds(app: AppHandle) -> IpcResponse {
     use crate::services::platform;
 
     let config_dir = platform::get_config_dir();
-    let current_config = persistence::load_config(&config_dir);
+    // Use in-memory config (always current) instead of disk read (can be stale)
+    let current_config = super::config::get_config_snapshot();
     let is_dashboard = current_config.window.expanded;
 
     // Mode-aware: don't overwrite dashboard size when in orb mode

@@ -8,7 +8,7 @@
   import { shortcutsStore, setActionHandler, setReleaseHandler, setupInAppShortcuts } from './lib/stores/shortcuts.svelte.js';
   import { initStartupGreeting } from './lib/voice-greeting.js';
   import { listen } from '@tauri-apps/api/event';
-  import { writeUserMessage, aiPtyInput, pttPress, pttRelease, configurePttKey, configureDictationKey, injectText, saveWindowBounds, showWindow, minimizeWindow } from './lib/api.js';
+  import { writeUserMessage, aiPtyInput, pttPress, pttRelease, configurePttKey, configureDictationKey, injectText, showWindow, minimizeWindow } from './lib/api.js';
   import { chatStore } from './lib/stores/chat.svelte.js';
 
   import TitleBar from './components/shared/TitleBar.svelte';
@@ -172,11 +172,9 @@
     return cleanup;
   });
 
-  // Save state and clean up on window close
+  // Clean up on window close (bounds are saved by Rust's CloseRequested handler)
   $effect(() => {
     const handleBeforeUnload = () => {
-      // Save window position + size to config
-      saveWindowBounds().catch(() => {});
       shortcutsStore.destroy();
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
