@@ -219,6 +219,29 @@ pub fn chat_delete(id: String) -> IpcResponse {
     IpcResponse::ok(serde_json::json!({ "id": id }))
 }
 
+/// Export a chat to a user-chosen file path.
+///
+/// Writes the provided content string to the given path. Used with the
+/// frontend's native Save As dialog (`@tauri-apps/plugin-dialog`).
+#[tauri::command]
+pub fn export_chat_to_file(path: String, content: String) -> IpcResponse {
+    let file_path = Path::new(&path);
+
+    // Ensure parent directory exists
+    if let Some(parent) = file_path.parent() {
+        if !parent.exists() {
+            if let Err(e) = fs::create_dir_all(parent) {
+                return IpcResponse::err(format!("Failed to create directory: {}", e));
+            }
+        }
+    }
+
+    match fs::write(file_path, &content) {
+        Ok(()) => IpcResponse::ok(serde_json::json!({ "path": path })),
+        Err(e) => IpcResponse::err(format!("Failed to write file: {}", e)),
+    }
+}
+
 /// Rename a chat by ID.
 ///
 /// Reads the chat file, updates the `name` field and `updatedAt` timestamp,

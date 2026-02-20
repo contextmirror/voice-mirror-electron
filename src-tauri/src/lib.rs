@@ -33,6 +33,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {
             // If user tries to launch a second instance, focus the existing window
             info!("Second instance detected, focusing existing window");
@@ -98,6 +99,7 @@ pub fn run() {
             chat_cmds::chat_save,
             chat_cmds::chat_delete,
             chat_cmds::chat_rename,
+            chat_cmds::export_chat_to_file,
             // CLI tool detection
             tools_cmds::scan_cli_tools,
             tools_cmds::check_npm_versions,

@@ -8,7 +8,8 @@
    */
   import { chatStore } from '../../lib/stores/chat.svelte.js';
   import { voiceStore } from '../../lib/stores/voice.svelte.js';
-  import { chatSave, takeScreenshot } from '../../lib/api.js';
+  import { takeScreenshot, exportChatToFile } from '../../lib/api.js';
+  import { save } from '@tauri-apps/plugin-dialog';
   import MessageGroup from './MessageGroup.svelte';
   import ChatInput from './ChatInput.svelte';
 
@@ -81,28 +82,36 @@
     chatStore.clearMessages();
   }
 
-  /** Explicitly save the current chat to disk. */
+  /** Export the current chat via a native Save As dialog. */
   async function handleSave() {
-    const activeId = chatStore.activeChatId;
-    if (!activeId || chatStore.messages.length === 0) return;
+    if (chatStore.messages.length === 0) return;
 
-    const toSave = {
-      id: activeId,
-      updatedAt: Date.now(),
-      messages: chatStore.messages.map(m => ({
-        id: m.id,
-        role: m.role,
-        content: m.text,
-        timestamp: m.timestamp,
-      })),
-    };
+    // Format messages as Markdown
+    const lines = chatStore.messages.map(m => {
+      const role = m.role === 'user' ? 'You' : m.role === 'assistant' ? 'Assistant' : m.role;
+      return `**${role}:**\n${m.text}`;
+    });
+    const markdown = lines.join('\n\n---\n\n') + '\n';
 
     try {
-      await chatSave(toSave);
+      const filePath = await save({
+        title: 'Export Chat',
+        defaultPath: `chat-${Date.now()}.md`,
+        filters: [
+          { name: 'Markdown', extensions: ['md'] },
+          { name: 'Text', extensions: ['txt'] },
+          { name: 'All Files', extensions: ['*'] },
+        ],
+      });
+
+      // User cancelled the dialog
+      if (!filePath) return;
+
+      await exportChatToFile(filePath, markdown);
       saveFlash = true;
       setTimeout(() => { saveFlash = false; }, 1200);
     } catch (err) {
-      console.error('[ChatPanel] Save failed:', err);
+      console.error('[ChatPanel] Export failed:', err);
     }
   }
 

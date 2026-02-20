@@ -91,6 +91,7 @@ describe('api.js -- critical Tauri command names', () => {
     'chat_save',
     'chat_delete',
     'chat_rename',
+    'export_chat_to_file',
     // Tools
     'scan_cli_tools',
     'check_npm_versions',
@@ -165,6 +166,7 @@ describe('api.js -- exported async functions', () => {
     'chatSave',
     'chatDelete',
     'chatRename',
+    'exportChatToFile',
     // Screenshot
     'takeScreenshot',
     // Tools
