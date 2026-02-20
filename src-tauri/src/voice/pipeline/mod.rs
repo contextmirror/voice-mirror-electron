@@ -11,12 +11,14 @@
 //! - STT engine (Whisper stub) for transcription
 //! - TTS engine (Edge/Kokoro stub) for speech synthesis
 
+mod playback;
+mod ring_buffer;
+
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use rodio::{OutputStream, Sink};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
@@ -24,6 +26,8 @@ use super::stt::{self, SttAdapter};
 use super::tts::{self, TtsEngine};
 use super::vad::VadProcessor;
 use super::{VoiceEngineConfig, VoiceMode, VoiceState};
+
+use ring_buffer::{create_ring_buffer, RingConsumer, RingProducer};
 
 // ── Constants ───────────────────────────────────────────────────────
 
@@ -108,20 +112,20 @@ pub struct VoicePipeline {
 }
 
 /// Shared state between the pipeline and its background threads.
-struct PipelineShared {
+pub(crate) struct PipelineShared {
     /// Current voice state (atomic for lock-free reads).
-    state: AtomicU8,
+    pub(crate) state: AtomicU8,
     /// Current voice mode.
-    mode: std::sync::Mutex<VoiceMode>,
+    pub(crate) mode: std::sync::Mutex<VoiceMode>,
     /// Whether the pipeline is running.
-    running: AtomicBool,
+    pub(crate) running: AtomicBool,
     /// Cancellation flag for TTS playback.
-    tts_cancel: AtomicBool,
+    pub(crate) tts_cancel: AtomicBool,
     /// Force-stop recording flag (PTT release / Toggle stop).
-    /// When set, the processing loop immediately transitions Recording → Processing.
+    /// When set, the processing loop immediately transitions Recording -> Processing.
     force_stop_recording: AtomicBool,
     /// Tauri app handle for emitting events.
-    app_handle: AppHandle,
+    pub(crate) app_handle: AppHandle,
     /// Audio ring buffer: producer side (written by capture callback).
     ring_producer: Mutex<Option<RingProducer>>,
     /// Audio ring buffer: consumer side (read by processing thread).
@@ -131,101 +135,14 @@ struct PipelineShared {
     /// STT engine.
     stt_engine: Mutex<Option<SttAdapter>>,
     /// TTS engine for speech synthesis output.
-    tts_engine: Mutex<Option<Box<dyn TtsEngine>>>,
+    pub(crate) tts_engine: Mutex<Option<Box<dyn TtsEngine>>>,
     /// Pipeline configuration.
-    config: VoiceEngineConfig,
-}
-
-/// Simple ring buffer producer (wraps a Vec with write position).
-struct RingProducer {
-    buffer: Arc<Mutex<RingBuffer>>,
-}
-
-/// Simple ring buffer consumer (reads from shared buffer).
-struct RingConsumer {
-    buffer: Arc<Mutex<RingBuffer>>,
-}
-
-/// Lock-based ring buffer for audio samples.
-///
-/// Uses a simple Vec-based circular buffer with mutex protection.
-/// Not lock-free like the voice-core ringbuf implementation, but
-/// sufficient for the Tauri integration where we have more flexibility
-/// in thread scheduling.
-struct RingBuffer {
-    data: Vec<f32>,
-    write_pos: usize,
-    read_pos: usize,
-    count: usize,
-    capacity: usize,
-}
-
-impl RingBuffer {
-    fn new(capacity: usize) -> Self {
-        Self {
-            data: vec![0.0; capacity],
-            write_pos: 0,
-            read_pos: 0,
-            count: 0,
-            capacity,
-        }
-    }
-
-    fn push_slice(&mut self, samples: &[f32]) -> usize {
-        let mut written = 0;
-        for &sample in samples {
-            if self.count >= self.capacity {
-                // Overwrite oldest data
-                self.read_pos = (self.read_pos + 1) % self.capacity;
-                self.count -= 1;
-            }
-            self.data[self.write_pos] = sample;
-            self.write_pos = (self.write_pos + 1) % self.capacity;
-            self.count += 1;
-            written += 1;
-        }
-        written
-    }
-
-    fn pop_slice(&mut self, buf: &mut [f32]) -> usize {
-        let to_read = buf.len().min(self.count);
-        for item in buf.iter_mut().take(to_read) {
-            *item = self.data[self.read_pos];
-            self.read_pos = (self.read_pos + 1) % self.capacity;
-            self.count -= 1;
-        }
-        to_read
-    }
-
-    #[allow(dead_code)]
-    fn available(&self) -> usize {
-        self.count
-    }
-
-    fn drain_all(&mut self) -> Vec<f32> {
-        let n = self.count;
-        if n == 0 {
-            return Vec::new();
-        }
-        let mut buf = vec![0.0f32; n];
-        self.pop_slice(&mut buf);
-        buf
-    }
-}
-
-fn create_ring_buffer(capacity: usize) -> (RingProducer, RingConsumer) {
-    let buffer = Arc::new(Mutex::new(RingBuffer::new(capacity)));
-    (
-        RingProducer {
-            buffer: Arc::clone(&buffer),
-        },
-        RingConsumer { buffer },
-    )
+    pub(crate) config: VoiceEngineConfig,
 }
 
 // ── State helpers ───────────────────────────────────────────────────
 
-fn state_from_u8(v: u8) -> VoiceState {
+pub(crate) fn state_from_u8(v: u8) -> VoiceState {
     match v {
         0 => VoiceState::Idle,
         1 => VoiceState::Listening,
@@ -236,7 +153,7 @@ fn state_from_u8(v: u8) -> VoiceState {
     }
 }
 
-fn state_to_u8(s: VoiceState) -> u8 {
+pub(crate) fn state_to_u8(s: VoiceState) -> u8 {
     match s {
         VoiceState::Idle => 0,
         VoiceState::Listening => 1,
@@ -418,8 +335,8 @@ impl VoicePipeline {
 
     /// Set the voice activation mode and update the pipeline state accordingly.
     ///
-    /// When switching from WakeWord → PTT/Toggle, transitions Listening → Idle.
-    /// When switching from PTT/Toggle → WakeWord, transitions Idle → Listening.
+    /// When switching from WakeWord -> PTT/Toggle, transitions Listening -> Idle.
+    /// When switching from PTT/Toggle -> WakeWord, transitions Idle -> Listening.
     pub fn set_mode(&self, mode: VoiceMode) {
         match self.shared.mode.lock() {
             Ok(mut current) => {
@@ -457,7 +374,7 @@ impl VoicePipeline {
 
     /// Start recording (for PTT press / Toggle start).
     ///
-    /// Transitions Idle/Listening → Recording. Also supports "barge-in":
+    /// Transitions Idle/Listening -> Recording. Also supports "barge-in":
     /// if TTS is currently speaking, it cancels playback and starts recording.
     pub fn start_recording(&self) {
         let current = state_from_u8(self.shared.state.load(Ordering::Acquire));
@@ -526,14 +443,14 @@ impl VoicePipeline {
     /// This is the main entry point for TTS playback from external callers
     /// (e.g. Tauri commands, AI provider responses).
     pub async fn speak(&self, text: &str) -> Result<(), String> {
-        speak(&self.shared, text).await
+        playback::speak(&self.shared, text).await
     }
 
     /// Convenience method: spawn `speak()` on the tokio runtime (non-blocking).
     pub fn speak_blocking(&self, text: String) {
         let shared = Arc::clone(&self.shared);
         tauri::async_runtime::spawn(async move {
-            if let Err(e) = speak(&shared, &text).await {
+            if let Err(e) = playback::speak(&shared, &text).await {
                 tracing::error!("speak_blocking failed: {}", e);
             }
         });
@@ -714,8 +631,6 @@ async fn audio_processing_loop(shared: Arc<PipelineShared>) {
         match current_state {
             VoiceState::Listening => {
                 // In listening mode, run VAD to detect speech onset.
-                // TODO: For wake-word mode, also run a wake word detector here.
-                // Currently wake word mode uses VAD-triggered recording.
                 let is_speech = vad.process_frame(chunk);
 
                 let mode = match shared.mode.lock() {
@@ -828,8 +743,8 @@ async fn audio_processing_loop(shared: Arc<PipelineShared>) {
                     run_stt_and_emit(&shared, audio_for_stt).await;
 
                     // Return to appropriate state based on mode:
-                    // - WakeWord → Listening (auto-detect next utterance)
-                    // - PTT / Toggle → Idle (wait for next key press)
+                    // - WakeWord -> Listening (auto-detect next utterance)
+                    // - PTT / Toggle -> Idle (wait for next key press)
                     let mode = shared.mode.lock().map(|g| *g).unwrap_or(VoiceMode::PushToTalk);
                     let next_state = match mode {
                         VoiceMode::WakeWord => VoiceState::Listening,
@@ -959,451 +874,6 @@ async fn run_stt_and_emit(shared: &Arc<PipelineShared>, audio: Vec<f32>) {
     }
 }
 
-// ── TTS Playback ────────────────────────────────────────────────────
-
-/// Transition to Speaking state and emit events.
-fn set_speaking_state(shared: &Arc<PipelineShared>, text: &str) {
-    shared
-        .state
-        .store(state_to_u8(VoiceState::Speaking), Ordering::Release);
-    let _ = shared.app_handle.emit(
-        "voice-event",
-        VoiceEvent::StateChange {
-            state: "speaking".into(),
-        },
-    );
-    let _ = shared.app_handle.emit(
-        "voice-event",
-        VoiceEvent::SpeakingStart {
-            text: text.to_string(),
-        },
-    );
-}
-
-/// Take the TTS engine from shared state. Returns None if unavailable.
-fn take_tts_engine(shared: &Arc<PipelineShared>) -> Option<Box<dyn TtsEngine>> {
-    match shared.tts_engine.lock() {
-        Ok(mut guard) => guard.take(),
-        Err(e) => {
-            tracing::error!("Failed to lock tts_engine: {}", e);
-            None
-        }
-    }
-}
-
-/// Speak text using streaming synthesis for low first-audio latency.
-///
-/// Splits text into phrases, synthesizes each one individually, and streams
-/// audio chunks to a rodio Sink via an async channel. First audio plays
-/// within ~400ms instead of waiting for full synthesis.
-///
-/// Falls back to single-shot synthesis for short text (1 phrase).
-async fn speak(shared: &Arc<PipelineShared>, text: &str) -> Result<(), String> {
-    if text.trim().is_empty() {
-        return Ok(());
-    }
-
-    // If already speaking, cancel current playback and wait for the TTS engine
-    // to be restored before starting new synthesis (prevents overlapping audio).
-    let current = state_from_u8(shared.state.load(Ordering::Acquire));
-    if current == VoiceState::Speaking {
-        tracing::info!("Cancelling previous TTS for new speech request");
-        shared.tts_cancel.store(true, Ordering::SeqCst);
-        // Wait up to 1 second for the engine to be returned
-        for _ in 0..20 {
-            tokio::time::sleep(Duration::from_millis(50)).await;
-            if shared.tts_engine.lock().map(|g| g.is_some()).unwrap_or(false) {
-                break;
-            }
-        }
-    }
-
-    // Reset cancellation flag for the new request
-    shared.tts_cancel.store(false, Ordering::SeqCst);
-
-    // Set state to Speaking + emit events
-    set_speaking_state(shared, text);
-
-    // Take the TTS engine
-    let engine = match take_tts_engine(shared) {
-        Some(e) => e,
-        None => {
-            tracing::warn!("No TTS engine available, skipping speech");
-            let _ = shared.app_handle.emit(
-                "voice-event",
-                VoiceEvent::Error {
-                    message: "No TTS engine available".into(),
-                },
-            );
-            finish_speaking(shared);
-            return Err("No TTS engine available".into());
-        }
-    };
-
-    // Check cancellation before synthesis
-    if shared.tts_cancel.load(Ordering::SeqCst) {
-        tracing::info!("TTS cancelled before synthesis");
-        restore_tts_engine(shared, engine);
-        finish_speaking(shared);
-        return Ok(());
-    }
-
-    let sample_rate = engine.sample_rate();
-    let volume = shared.config.tts_volume;
-    let output_device = shared.config.output_device.clone();
-
-    // Split into phrases for streaming
-    let phrases = tts::split_into_phrases(text);
-
-    if phrases.is_empty() {
-        restore_tts_engine(shared, engine);
-        finish_speaking(shared);
-        return Ok(());
-    }
-
-    // For single phrase, use simpler non-streaming path (less overhead)
-    if phrases.len() <= 1 {
-        let result = speak_oneshot(shared, engine, &phrases[0], sample_rate, volume, output_device).await;
-        finish_speaking(shared);
-        return result;
-    }
-
-    // Streaming: synthesize phrase by phrase, queue in rodio Sink
-    tracing::info!(
-        phrases = phrases.len(),
-        "Starting streaming TTS ({} phrases)",
-        phrases.len()
-    );
-
-    let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel::<Vec<f32>>(4);
-    let shared_for_playback = Arc::clone(shared);
-
-    // Spawn playback thread: creates Sink, receives chunks via channel
-    let playback_handle = tokio::task::spawn_blocking(move || {
-        play_chunks_rodio(
-            chunk_rx,
-            sample_rate,
-            volume,
-            output_device.as_deref(),
-            &shared_for_playback.tts_cancel,
-        )
-    });
-
-    // Synthesize phrases and send to playback
-    for (i, phrase) in phrases.iter().enumerate() {
-        if shared.tts_cancel.load(Ordering::SeqCst) {
-            tracing::info!("TTS cancelled during streaming synthesis");
-            break;
-        }
-
-        match engine.synthesize(phrase).await {
-            Ok(samples) if !samples.is_empty() => {
-                tracing::debug!(
-                    phrase = i + 1,
-                    samples = samples.len(),
-                    duration_secs = format!("{:.2}", samples.len() as f64 / sample_rate as f64),
-                    "Phrase synthesized"
-                );
-                if chunk_tx.send(samples).await.is_err() {
-                    tracing::warn!("Playback channel closed, stopping synthesis");
-                    break;
-                }
-            }
-            Ok(_) => {
-                tracing::debug!(phrase = i + 1, "Phrase produced no audio, skipping");
-            }
-            Err(e) => {
-                tracing::warn!(phrase = i + 1, error = %e, "Phrase synthesis failed, skipping");
-                // Continue with remaining phrases
-            }
-        }
-    }
-
-    // Drop sender to signal playback thread that no more chunks are coming
-    drop(chunk_tx);
-
-    // Wait for playback to finish
-    restore_tts_engine(shared, engine);
-
-    match playback_handle.await {
-        Ok(Ok(())) => {
-            tracing::info!("Streaming TTS playback complete");
-        }
-        Ok(Err(e)) => {
-            tracing::error!("Streaming TTS playback error: {}", e);
-            let _ = shared.app_handle.emit(
-                "voice-event",
-                VoiceEvent::Error {
-                    message: format!("TTS playback error: {}", e),
-                },
-            );
-        }
-        Err(e) => {
-            tracing::error!("Streaming TTS playback task panicked: {}", e);
-        }
-    }
-
-    finish_speaking(shared);
-    Ok(())
-}
-
-/// Single-shot (non-streaming) synthesis + playback for short text.
-async fn speak_oneshot(
-    shared: &Arc<PipelineShared>,
-    engine: Box<dyn TtsEngine>,
-    text: &str,
-    sample_rate: u32,
-    volume: f32,
-    output_device: Option<String>,
-) -> Result<(), String> {
-    let synthesize_result = engine.synthesize(text).await;
-
-    match synthesize_result {
-        Ok(samples) => {
-            if samples.is_empty() {
-                tracing::debug!("TTS produced no audio samples");
-                restore_tts_engine(shared, engine);
-                return Ok(());
-            }
-
-            tracing::info!(
-                samples = samples.len(),
-                sample_rate,
-                duration_secs = format!("{:.2}", samples.len() as f64 / sample_rate as f64),
-                "TTS synthesis complete, starting playback"
-            );
-
-            if shared.tts_cancel.load(Ordering::SeqCst) {
-                tracing::info!("TTS cancelled after synthesis");
-                restore_tts_engine(shared, engine);
-                return Ok(());
-            }
-
-            let shared_for_playback = Arc::clone(shared);
-            let playback_result = tokio::task::spawn_blocking(move || {
-                play_samples_rodio(
-                    samples,
-                    sample_rate,
-                    volume,
-                    output_device.as_deref(),
-                    &shared_for_playback.tts_cancel,
-                )
-            })
-            .await;
-
-            restore_tts_engine(shared, engine);
-
-            match playback_result {
-                Ok(Ok(())) => tracing::info!("TTS playback complete"),
-                Ok(Err(e)) => {
-                    tracing::error!("TTS playback error: {}", e);
-                    let _ = shared.app_handle.emit(
-                        "voice-event",
-                        VoiceEvent::Error {
-                            message: format!("TTS playback error: {}", e),
-                        },
-                    );
-                }
-                Err(e) => tracing::error!("TTS playback task panicked: {}", e),
-            }
-        }
-        Err(e) => {
-            tracing::error!("TTS synthesis failed: {}", e);
-            restore_tts_engine(shared, engine);
-            let _ = shared.app_handle.emit(
-                "voice-event",
-                VoiceEvent::Error {
-                    message: format!("TTS synthesis failed: {}", e),
-                },
-            );
-        }
-    }
-
-    Ok(())
-}
-
-/// Restore the TTS engine into shared state after use.
-fn restore_tts_engine(shared: &Arc<PipelineShared>, engine: Box<dyn TtsEngine>) {
-    match shared.tts_engine.lock() {
-        Ok(mut guard) => {
-            *guard = Some(engine);
-        }
-        Err(e) => {
-            tracing::error!("Failed to lock tts_engine to restore: {}", e);
-        }
-    }
-}
-
-/// Transition the pipeline out of Speaking state.
-///
-/// Uses compare-and-swap: only transitions if still in Speaking state.
-/// If a barge-in already moved the state to Recording, this is a no-op
-/// (the SpeakingEnd event is still emitted for the frontend).
-///
-/// WakeWord → Listening (resume auto-detection).
-/// PTT / Toggle → Idle (wait for key press).
-fn finish_speaking(shared: &Arc<PipelineShared>) {
-    let mode = shared.mode.lock().map(|g| *g).unwrap_or(VoiceMode::PushToTalk);
-    let next_state = match mode {
-        VoiceMode::WakeWord => VoiceState::Listening,
-        VoiceMode::PushToTalk | VoiceMode::Toggle => VoiceState::Idle,
-    };
-
-    // Only transition if we're still in Speaking state.
-    // If barge-in already moved us to Recording, don't overwrite.
-    let swapped = shared.state.compare_exchange(
-        state_to_u8(VoiceState::Speaking),
-        state_to_u8(next_state),
-        Ordering::SeqCst,
-        Ordering::Relaxed,
-    );
-
-    // Always emit SpeakingEnd so the frontend knows TTS is done
-    let _ = shared
-        .app_handle
-        .emit("voice-event", VoiceEvent::SpeakingEnd {});
-
-    if swapped.is_ok() {
-        let _ = shared.app_handle.emit(
-            "voice-event",
-            VoiceEvent::StateChange {
-                state: next_state.to_string(),
-            },
-        );
-    } else {
-        tracing::debug!("finish_speaking: state already changed (barge-in?), skipping state transition");
-    }
-}
-
-/// Open the audio output stream for a named or default device.
-fn open_output_stream(
-    output_device_name: Option<&str>,
-) -> Result<(OutputStream, rodio::OutputStreamHandle), String> {
-    if let Some(name) = output_device_name {
-        let host = cpal::default_host();
-        let device = host
-            .output_devices()
-            .map_err(|e| format!("Failed to enumerate output devices: {}", e))?
-            .find(|d| d.name().map(|n| n == name).unwrap_or(false));
-
-        match device {
-            Some(dev) => {
-                tracing::info!(device = %name, "Using configured output device");
-                OutputStream::try_from_device(&dev)
-                    .map_err(|e| format!("Failed to open output device '{}': {}", name, e))
-            }
-            None => {
-                tracing::warn!(
-                    device = %name,
-                    "Configured output device not found, falling back to default"
-                );
-                OutputStream::try_default()
-                    .map_err(|e| format!("No audio output device available: {}", e))
-            }
-        }
-    } else {
-        OutputStream::try_default()
-            .map_err(|e| format!("No audio output device available: {}", e))
-    }
-}
-
-/// Play f32 PCM samples through the audio output device using rodio.
-///
-/// This runs on a blocking thread. It creates a rodio `OutputStream` and
-/// `Sink`, loads the samples as a buffer source, and blocks until playback
-/// finishes or cancellation is requested.
-fn play_samples_rodio(
-    samples: Vec<f32>,
-    sample_rate: u32,
-    volume: f32,
-    output_device_name: Option<&str>,
-    cancel: &AtomicBool,
-) -> Result<(), String> {
-    let (_stream, stream_handle) = open_output_stream(output_device_name)?;
-
-    let sink = Sink::try_new(&stream_handle)
-        .map_err(|e| format!("Failed to create audio sink: {}", e))?;
-
-    // Set volume (rodio volume: 1.0 = normal)
-    sink.set_volume(volume.clamp(0.0, 2.0));
-
-    // Create a rodio source from the f32 samples (mono, engine sample rate)
-    let source = rodio::buffer::SamplesBuffer::new(1, sample_rate, samples);
-    sink.append(source);
-
-    // Poll for completion or cancellation
-    while !sink.empty() {
-        if cancel.load(Ordering::SeqCst) {
-            tracing::info!("TTS playback cancelled");
-            sink.stop();
-            return Ok(());
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-
-    // Wait for any remaining buffered audio
-    sink.sleep_until_end();
-
-    Ok(())
-}
-
-/// Play audio chunks received from an async channel via rodio Sink.
-///
-/// This runs on a blocking thread. It receives synthesized audio chunks
-/// from the streaming TTS pipeline and appends each to the Sink for
-/// gapless playback. First audio plays as soon as the first chunk arrives.
-fn play_chunks_rodio(
-    rx: tokio::sync::mpsc::Receiver<Vec<f32>>,
-    sample_rate: u32,
-    volume: f32,
-    output_device_name: Option<&str>,
-    cancel: &AtomicBool,
-) -> Result<(), String> {
-    let (_stream, stream_handle) = open_output_stream(output_device_name)?;
-
-    let sink = Sink::try_new(&stream_handle)
-        .map_err(|e| format!("Failed to create audio sink: {}", e))?;
-
-    sink.set_volume(volume.clamp(0.0, 2.0));
-
-    // Use the current tokio runtime handle to block_on channel receives
-    let rt = tokio::runtime::Handle::current();
-    let mut rx = rx;
-
-    // Receive and play chunks as they arrive
-    loop {
-        if cancel.load(Ordering::SeqCst) {
-            tracing::info!("Streaming TTS playback cancelled");
-            sink.stop();
-            return Ok(());
-        }
-
-        match rt.block_on(rx.recv()) {
-            Some(samples) => {
-                let source = rodio::buffer::SamplesBuffer::new(1, sample_rate, samples);
-                sink.append(source);
-            }
-            None => {
-                // Channel closed — all chunks sent, wait for playback to finish
-                break;
-            }
-        }
-    }
-
-    // Wait for all queued audio to finish playing
-    while !sink.empty() {
-        if cancel.load(Ordering::SeqCst) {
-            tracing::info!("Streaming TTS playback cancelled during drain");
-            sink.stop();
-            return Ok(());
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    sink.sleep_until_end();
-
-    Ok(())
-}
-
 // ── Audio Device Listing ────────────────────────────────────────────
 
 /// List available audio input devices.
@@ -1447,49 +917,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_ring_buffer_basic() {
-        let mut rb = RingBuffer::new(10);
-        assert_eq!(rb.available(), 0);
-
-        rb.push_slice(&[1.0, 2.0, 3.0]);
-        assert_eq!(rb.available(), 3);
-
-        let mut buf = [0.0f32; 2];
-        let read = rb.pop_slice(&mut buf);
-        assert_eq!(read, 2);
-        assert_eq!(buf, [1.0, 2.0]);
-        assert_eq!(rb.available(), 1);
-    }
-
-    #[test]
-    fn test_ring_buffer_overflow() {
-        let mut rb = RingBuffer::new(4);
-        // Write 6 samples into a buffer of size 4
-        rb.push_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
-        assert_eq!(rb.available(), 4);
-
-        // Should have the last 4 samples (overflow drops oldest)
-        let all = rb.drain_all();
-        assert_eq!(all, vec![3.0, 4.0, 5.0, 6.0]);
-    }
-
-    #[test]
-    fn test_ring_buffer_drain_all() {
-        let mut rb = RingBuffer::new(100);
-        rb.push_slice(&[1.0, 2.0, 3.0, 4.0]);
-        let all = rb.drain_all();
-        assert_eq!(all, vec![1.0, 2.0, 3.0, 4.0]);
-        assert_eq!(rb.available(), 0);
-    }
-
-    #[test]
-    fn test_ring_buffer_empty_drain() {
-        let mut rb = RingBuffer::new(100);
-        let all = rb.drain_all();
-        assert!(all.is_empty());
-    }
-
-    #[test]
     fn test_resample_same_rate() {
         let input = vec![1.0, 2.0, 3.0];
         let output = resample_linear(&input, 16000, 16000);
@@ -1525,7 +952,6 @@ mod tests {
         // This just tests that the function doesn't panic.
         // On CI without audio hardware, it may return an empty list.
         let devices = list_input_devices();
-        // No assertion on count -- hardware-dependent
         let _ = devices;
     }
 

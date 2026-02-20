@@ -7,6 +7,9 @@
 //! Configured keys are **suppressed** at the OS level (keyboard hooks only),
 //! preventing "44444" in text fields when holding a mouse side button for PTT.
 
+// FFI type names match Win32 API conventions (HHOOK, POINT, MSG, etc.)
+#![allow(clippy::upper_case_acronyms)]
+
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use tauri::AppHandle;
 #[cfg(target_os = "windows")]
@@ -260,12 +263,10 @@ fn handle_binding_event(
                     warn!("Input hook: failed to emit {}: {}", event_pressed, e);
                 }
             }
-        } else {
-            if binding.active.swap(false, Ordering::Relaxed) {
-                info!("Input hook: emitting {}", event_released);
-                if let Err(e) = app.emit(event_released, ()) {
-                    warn!("Input hook: failed to emit {}: {}", event_released, e);
-                }
+        } else if binding.active.swap(false, Ordering::Relaxed) {
+            info!("Input hook: emitting {}", event_released);
+            if let Err(e) = app.emit(event_released, ()) {
+                warn!("Input hook: failed to emit {}: {}", event_released, e);
             }
         }
     }

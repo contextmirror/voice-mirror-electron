@@ -1,76 +1,24 @@
 <script>
   /**
-   * AISettings.svelte -- AI provider + Tool configuration panel.
+   * AISettings.svelte -- AI provider configuration panel.
    *
    * Provider selection, model input, auto-detect toggle,
-   * provider scanning, status display, API keys,
-   * and tool profiles with group toggles.
+   * provider scanning, status display, system prompt, and API keys.
+   * Tool profiles are managed by ToolSettings.svelte (rendered by SettingsPanel).
    */
   import { configStore, updateConfig } from '../../lib/stores/config.svelte.js';
   import { toastStore } from '../../lib/stores/toast.svelte.js';
   import { switchProvider } from '../../lib/stores/ai-status.svelte.js';
   import { navigationStore } from '../../lib/stores/navigation.svelte.js';
   import { scanProviders as apiScanProviders, listModels as apiListModels } from '../../lib/api.js';
+  import {
+    PROVIDER_NAMES, PROVIDER_ICONS, PROVIDER_GROUPS,
+    CLI_PROVIDERS, LOCAL_PROVIDERS, MCP_PROVIDERS, DEFAULT_ENDPOINTS,
+  } from '../../lib/providers.js';
   import Select from '../shared/Select.svelte';
   import Toggle from '../shared/Toggle.svelte';
   import TextInput from '../shared/TextInput.svelte';
   import Button from '../shared/Button.svelte';
-
-  // ---- Provider icon imports (Vite resolves these) ----
-  import claudeIcon from '../../assets/icons/providers/claude.webp';
-  import ollamaIcon from '../../assets/icons/providers/ollama.svg';
-  import lmstudioIcon from '../../assets/icons/providers/lmstudio.svg';
-  import janIcon from '../../assets/icons/providers/jan.svg';
-  import opencodeIcon from '../../assets/icons/providers/opencode.svg';
-
-  // ---- Provider metadata ----
-
-  const PROVIDER_NAMES = {
-    claude: 'Claude Code',
-    opencode: 'OpenCode',
-    ollama: 'Ollama',
-    lmstudio: 'LM Studio',
-    jan: 'Jan',
-  };
-
-  const PROVIDER_ICONS = {
-    claude: { type: 'cover', src: claudeIcon },
-    opencode: { type: 'inner', src: opencodeIcon, bg: 'linear-gradient(135deg, #1a1717, #131010)' },
-    ollama: { type: 'inner', src: ollamaIcon, bg: 'linear-gradient(135deg, #f0f0f0, #d0d0d0)' },
-    lmstudio: { type: 'inner', src: lmstudioIcon, bg: 'linear-gradient(135deg, #3b82f6, #1d4ed8)' },
-    jan: { type: 'inner', src: janIcon, bg: 'linear-gradient(135deg, #a855f7, #7c3aed)' },
-  };
-
-  const CLI_PROVIDERS = ['claude', 'opencode'];
-  const LOCAL_PROVIDERS = ['ollama', 'lmstudio', 'jan'];
-
-  const MCP_PROVIDERS = ['claude', 'opencode'];
-
-  const DEFAULT_ENDPOINTS = {
-    ollama: 'http://127.0.0.1:11434',
-    lmstudio: 'http://127.0.0.1:1234',
-    jan: 'http://127.0.0.1:1337',
-  };
-
-  const PROVIDER_GROUPS = [
-    {
-      label: 'CLI Agents',
-      badge: 'Terminal Access',
-      providers: [
-        { value: 'claude', label: 'Claude Code' },
-        { value: 'opencode', label: 'OpenCode' },
-      ],
-    },
-    {
-      label: 'Local LLM Servers',
-      badge: null,
-      providers: [
-        { value: 'ollama', label: 'Ollama' },
-        { value: 'lmstudio', label: 'LM Studio' },
-        { value: 'jan', label: 'Jan' },
-      ],
-    },
-  ];
 
   // ---- Context length options ----
 
@@ -97,32 +45,6 @@
     { key: 'kimi', label: 'Kimi' },
   ];
 
-  // ---- Tool group definitions (mirrors mcp-server/tool-groups.js) ----
-
-  // Only show the 7 user-facing groups (matches Electron's settings-ai.html).
-  // Facade groups (memory-facade, n8n-facade, browser-facade) and diagnostic
-  // are internal — they're selected automatically via tool profiles, not manually.
-  const TOOL_GROUPS = [
-    { id: 'core', name: 'core', description: 'Voice I/O', toolCount: 4, alwaysLoaded: true },
-    { id: 'meta', name: 'meta', description: 'Dynamic loading', toolCount: 3, alwaysLoaded: true },
-    { id: 'screen', name: 'screen', description: 'Screenshots', toolCount: 1, alwaysLoaded: false },
-    { id: 'memory', name: 'memory', description: 'Persistent memory', toolCount: 5, alwaysLoaded: false },
-    { id: 'voice-clone', name: 'voice-clone', description: 'Voice cloning', toolCount: 3, alwaysLoaded: false },
-    { id: 'browser', name: 'browser', description: 'Browser automation', toolCount: 14, alwaysLoaded: false },
-    { id: 'n8n', name: 'n8n', description: 'Workflow automation', toolCount: 22, alwaysLoaded: false },
-  ];
-
-  // ---- Default tool profiles ----
-
-  const DEFAULT_PROFILES = {
-    'voice-assistant': { label: 'Voice Assistant', groups: ['core', 'meta', 'screen', 'memory', 'browser'] },
-    'voice-assistant-lite': { label: 'Voice Assistant (Lite)', groups: ['core', 'meta', 'screen', 'memory-facade', 'browser-facade'] },
-    'n8n-workflows': { label: 'n8n Workflows', groups: ['core', 'meta', 'n8n'] },
-    'web-browser': { label: 'Web Browser', groups: ['core', 'meta', 'screen', 'browser'] },
-    'full-toolbox': { label: 'Full Toolbox', groups: ['core', 'meta', 'screen', 'memory', 'voice-clone', 'browser', 'n8n'] },
-    'minimal': { label: 'Minimal', groups: ['core', 'meta'] },
-  };
-
   // ---- Local state ----
 
   let provider = $state('claude');
@@ -148,10 +70,6 @@
   let availableModels = $state([]);
   let loadingModels = $state(false);
 
-  // Tool profile state
-  let activeProfile = $state('voice-assistant');
-  let enabledGroups = $state(new Set(['core', 'meta', 'screen', 'memory', 'browser']));
-
   // ---- Derived ----
 
   const isCLI = $derived(CLI_PROVIDERS.includes(provider));
@@ -169,20 +87,6 @@
         model: found?.model || null,
       };
     })
-  );
-
-  // Tool profile derived values
-  const profileOptions = $derived(
-    Object.entries(DEFAULT_PROFILES).map(([key, profile]) => ({
-      value: key,
-      label: profile.label,
-    }))
-  );
-
-  const totalToolCount = $derived(
-    TOOL_GROUPS
-      .filter(g => enabledGroups.has(g.id))
-      .reduce((sum, g) => sum + g.toolCount, 0)
   );
 
   // ---- Sync from config (one-way, only on config load/change) ----
@@ -204,15 +108,6 @@
     // Use cfgProvider (not local `provider`) to avoid circular dependency
     const ep = cfg.ai?.endpoints || {};
     endpoint = ep[cfgProvider] || DEFAULT_ENDPOINTS[cfgProvider] || '';
-
-    // Tool profile sync — use config value directly, not local `activeProfile`
-    const cfgProfile = cfg.ai?.toolProfile || 'voice-assistant';
-    activeProfile = cfgProfile;
-    const profiles = cfg.ai?.toolProfiles || {};
-    const profile = profiles[cfgProfile];
-    if (profile?.groups) {
-      enabledGroups = new Set(profile.groups);
-    }
   });
 
   // ---- Click-outside handler for provider dropdown ----
@@ -341,37 +236,6 @@
     }
   }
 
-  // ---- Tool profile handlers ----
-
-  function handleProfileChange(profileId) {
-    activeProfile = profileId;
-    const profile = DEFAULT_PROFILES[profileId];
-    if (profile) {
-      enabledGroups = new Set(profile.groups);
-    }
-  }
-
-  function handleGroupToggle(groupId, enabled) {
-    const next = new Set(enabledGroups);
-    if (enabled) {
-      next.add(groupId);
-    } else {
-      next.delete(groupId);
-    }
-    enabledGroups = next;
-    activeProfile = detectMatchingProfile(next) || activeProfile;
-  }
-
-  function detectMatchingProfile(groups) {
-    for (const [key, profile] of Object.entries(DEFAULT_PROFILES)) {
-      const profileSet = new Set(profile.groups);
-      if (profileSet.size === groups.size && [...groups].every(g => profileSet.has(g))) {
-        return key;
-      }
-    }
-    return null;
-  }
-
   // ---- Save ----
 
   async function saveAISettings() {
@@ -384,10 +248,6 @@
           autoDetect,
           contextLength: Number(contextLength),
           systemPrompt: systemPrompt || null,
-          toolProfile: activeProfile,
-          toolProfiles: {
-            [activeProfile]: { groups: [...enabledGroups] },
-          },
         },
       };
 
@@ -424,10 +284,10 @@
         navigationStore.setView('chat');
       }
 
-      toastStore.addToast({ message: 'AI & Tools settings saved', severity: 'success' });
+      toastStore.addToast({ message: 'AI settings saved', severity: 'success' });
     } catch (err) {
       console.error('[AISettings] Save failed:', err);
-      toastStore.addToast({ message: 'Failed to save AI & Tools settings', severity: 'error' });
+      toastStore.addToast({ message: 'Failed to save AI settings', severity: 'error' });
     } finally {
       saving = false;
     }
@@ -647,51 +507,10 @@
     </section>
   {/if}
 
-  <!-- Tool Profiles (only for CLI/MCP providers) -->
-  {#if isCLI}
-  <section class="settings-section">
-    <h3>Tool Profile</h3>
-    <div class="settings-group">
-      <Select
-        label="Active Profile"
-        value={activeProfile}
-        options={profileOptions}
-        onChange={handleProfileChange}
-      />
-      <div class="tool-count-badge">
-        <span class="tool-count-label">Total tools:</span>
-        <span class="tool-count-value">{totalToolCount}</span>
-      </div>
-    </div>
-  </section>
-
-  <!-- Tool Groups -->
-  <section class="settings-section">
-    <h3>Tool Groups</h3>
-    <div class="settings-group">
-      {#each TOOL_GROUPS as group}
-        <label class="tool-group-item">
-          <input
-            type="checkbox"
-            checked={enabledGroups.has(group.id)}
-            disabled={group.alwaysLoaded}
-            onchange={(e) => handleGroupToggle(group.id, e.target.checked)}
-          />
-          <span class="tool-group-name">{group.name} <span class="tool-group-count">({group.toolCount})</span></span>
-          <span class="tool-group-desc">{group.description}</span>
-          {#if group.alwaysLoaded}
-            <span class="tool-group-badge">always on</span>
-          {/if}
-        </label>
-      {/each}
-    </div>
-  </section>
-  {/if}
-
   <!-- Save -->
   <div class="settings-actions">
     <Button variant="primary" onClick={saveAISettings} disabled={saving}>
-      {saving ? 'Saving...' : 'Save AI & Tools'}
+      {saving ? 'Saving...' : 'Save AI Settings'}
     </Button>
   </div>
 </div>
@@ -810,26 +629,6 @@
     color: var(--muted);
   }
 
-  .tool-count-badge {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px;
-    gap: 8px;
-  }
-
-  .tool-count-label {
-    color: var(--muted);
-    font-size: 13px;
-  }
-
-  .tool-count-value {
-    color: var(--accent);
-    font-size: 14px;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-
   /* ---- Model dropdown (local LLM providers) ---- */
 
   .model-select-row {
@@ -900,57 +699,6 @@
     padding: 16px 0;
     border-top: 1px solid var(--border);
     margin-top: 8px;
-  }
-
-  /* Tool group checkbox items (matches Electron's settings-ai.html) */
-  .tool-group-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 12px;
-    cursor: pointer;
-    border-radius: var(--radius-sm);
-    transition: background 0.15s ease;
-  }
-
-  .tool-group-item:hover {
-    background: var(--accent-subtle);
-  }
-
-  .tool-group-item input[type="checkbox"] {
-    accent-color: var(--accent);
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-  }
-
-  .tool-group-name {
-    font-size: 13px;
-    color: var(--text);
-    font-weight: 500;
-  }
-
-  .tool-group-count {
-    color: var(--muted);
-    font-weight: 400;
-  }
-
-  .tool-group-desc {
-    color: var(--muted);
-    font-size: 12px;
-    margin-left: auto;
-  }
-
-  .tool-group-badge {
-    font-size: 9px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-    padding: 2px 6px;
-    border-radius: var(--radius-sm);
-    background: var(--accent-subtle);
-    color: var(--accent);
-    white-space: nowrap;
   }
 
   /* ---- Custom provider selector ---- */

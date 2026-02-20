@@ -4,223 +4,20 @@
    *
    * Activation mode, TTS engine/voice, STT model, audio devices,
    * wake word, and announcement toggles.
+   *
+   * Delegates keybind recording to KeybindRecorder and TTS config to TTSConfig.
    */
   import { configStore, updateConfig } from '../../lib/stores/config.svelte.js';
   import { toastStore } from '../../lib/stores/toast.svelte.js';
   import { listAudioDevices, setVoiceMode, registerShortcut, unregisterShortcut, configurePttKey, configureDictationKey } from '../../lib/api.js';
+  import { STT_REGISTRY } from '../../lib/voice-adapters.js';
+  import KeybindRecorder from './KeybindRecorder.svelte';
+  import TTSConfig from './TTSConfig.svelte';
   import Select from '../shared/Select.svelte';
   import Toggle from '../shared/Toggle.svelte';
   import TextInput from '../shared/TextInput.svelte';
   import Slider from '../shared/Slider.svelte';
   import Button from '../shared/Button.svelte';
-
-  // ---- TTS Adapter Registry ----
-
-  const ADAPTER_REGISTRY = {
-    kokoro: {
-      label: 'Kokoro (Local, fast, ~100MB)',
-      category: 'local',
-      voices: [
-        { value: 'af_bella', label: 'Bella (Female)' },
-        { value: 'af_nicole', label: 'Nicole (Female)' },
-        { value: 'af_sarah', label: 'Sarah (Female)' },
-        { value: 'af_sky', label: 'Sky (Female)' },
-        { value: 'am_adam', label: 'Adam (Male)' },
-        { value: 'am_michael', label: 'Michael (Male)' },
-        { value: 'bf_emma', label: 'Emma (British Female)' },
-        { value: 'bf_isabella', label: 'Isabella (British Female)' },
-        { value: 'bm_george', label: 'George (British Male)' },
-        { value: 'bm_lewis', label: 'Lewis (British Male)' },
-      ],
-      showModelSize: false,
-      showApiKey: false,
-      showEndpoint: false,
-      showModelPath: false,
-    },
-    qwen: {
-      label: 'Qwen3-TTS (Local, voice cloning, ~3-7GB)',
-      category: 'local',
-      voices: [
-        { value: 'Ryan', label: 'Ryan (Male)' },
-        { value: 'Vivian', label: 'Vivian (Female)' },
-        { value: 'Serena', label: 'Serena (Female)' },
-        { value: 'Dylan', label: 'Dylan (Male)' },
-        { value: 'Eric', label: 'Eric (Male)' },
-        { value: 'Aiden', label: 'Aiden (Male)' },
-        { value: 'Uncle_Fu', label: 'Uncle Fu (Male)' },
-        { value: 'Ono_Anna', label: 'Ono Anna (Female, Japanese)' },
-        { value: 'Sohee', label: 'Sohee (Female, Korean)' },
-      ],
-      showModelSize: true,
-      modelSizes: [
-        { value: '0.6B', label: '0.6B (~1.5GB disk, ~2GB VRAM)' },
-        { value: '1.7B', label: '1.7B (~3.5GB disk, ~4GB VRAM)' },
-      ],
-      showApiKey: false,
-      showEndpoint: false,
-      showModelPath: false,
-    },
-    piper: {
-      label: 'Piper (Local, lightweight, ~50MB)',
-      category: 'local',
-      voices: [
-        { value: 'en_US-amy-medium', label: 'Amy (US Female)' },
-        { value: 'en_US-lessac-medium', label: 'Lessac (US Male)' },
-        { value: 'en_US-libritts_r-medium', label: 'LibriTTS (US)' },
-        { value: 'en_GB-cori-medium', label: 'Cori (British Female)' },
-        { value: 'en_GB-alan-medium', label: 'Alan (British Male)' },
-      ],
-      showModelSize: false,
-      showApiKey: false,
-      showEndpoint: false,
-      showModelPath: true,
-    },
-    edge: {
-      label: 'Edge TTS (Free cloud, Microsoft)',
-      category: 'cloud-free',
-      voices: [
-        { value: 'en-US-AriaNeural', label: 'Aria (US Female)' },
-        { value: 'en-US-GuyNeural', label: 'Guy (US Male)' },
-        { value: 'en-US-JennyNeural', label: 'Jenny (US Female)' },
-        { value: 'en-GB-SoniaNeural', label: 'Sonia (British Female)' },
-        { value: 'en-GB-RyanNeural', label: 'Ryan (British Male)' },
-        { value: 'en-AU-NatashaNeural', label: 'Natasha (Australian Female)' },
-      ],
-      showModelSize: false,
-      showApiKey: false,
-      showEndpoint: false,
-      showModelPath: false,
-    },
-    'openai-tts': {
-      label: 'OpenAI TTS (Cloud, API key required)',
-      category: 'cloud-paid',
-      voices: [
-        { value: 'alloy', label: 'Alloy' },
-        { value: 'echo', label: 'Echo' },
-        { value: 'fable', label: 'Fable' },
-        { value: 'onyx', label: 'Onyx' },
-        { value: 'nova', label: 'Nova' },
-        { value: 'shimmer', label: 'Shimmer' },
-      ],
-      showModelSize: false,
-      showApiKey: true,
-      showEndpoint: false,
-      showModelPath: false,
-    },
-    elevenlabs: {
-      label: 'ElevenLabs (Cloud, premium)',
-      category: 'cloud-paid',
-      voices: [
-        { value: 'Rachel', label: 'Rachel' },
-        { value: 'Domi', label: 'Domi' },
-        { value: 'Bella', label: 'Bella' },
-        { value: 'Antoni', label: 'Antoni' },
-        { value: 'Josh', label: 'Josh' },
-        { value: 'Adam', label: 'Adam' },
-      ],
-      showModelSize: false,
-      showApiKey: true,
-      showEndpoint: false,
-      showModelPath: false,
-    },
-    'custom-api': {
-      label: 'Custom API (OpenAI-compatible)',
-      category: 'cloud-custom',
-      voices: [
-        { value: 'default', label: 'Default' },
-      ],
-      showModelSize: false,
-      showApiKey: true,
-      showEndpoint: true,
-      showModelPath: false,
-    },
-  };
-
-  // ---- STT Adapter Registry ----
-
-  const STT_REGISTRY = {
-    'whisper-local': {
-      label: 'Whisper (Local, default)',
-      showModelSize: true,
-      modelSizes: [
-        { value: 'tiny', label: 'tiny.en (~77MB, fastest)' },
-        { value: 'base', label: 'base.en (~148MB, recommended)' },
-        { value: 'small', label: 'small.en (~488MB, most accurate)' },
-      ],
-      showModelName: false,
-      showApiKey: false,
-      showEndpoint: false,
-    },
-    'openai-whisper-api': {
-      label: 'OpenAI Whisper API',
-      showModelSize: false,
-      showModelName: false,
-      showApiKey: true,
-      showEndpoint: false,
-    },
-    'custom-api-stt': {
-      label: 'Custom API (OpenAI-compatible)',
-      showModelSize: false,
-      showModelName: true,
-      showApiKey: true,
-      showEndpoint: true,
-    },
-  };
-
-  // ---- Keybind display helpers ----
-
-  // Virtual key code → display name (matches Windows VK_ codes)
-  const VKEY_NAMES = {
-    8: 'Backspace', 9: 'Tab', 13: 'Enter', 19: 'Pause', 20: 'CapsLock',
-    27: 'Escape', 32: 'Space', 33: 'PageUp', 34: 'PageDown', 35: 'End',
-    36: 'Home', 37: 'Left', 38: 'Up', 39: 'Right', 40: 'Down',
-    44: 'PrintScreen', 45: 'Insert', 46: 'Delete',
-    48: '0', 49: '1', 50: '2', 51: '3', 52: '4', 53: '5', 54: '6', 55: '7', 56: '8', 57: '9',
-    65: 'A', 66: 'B', 67: 'C', 68: 'D', 69: 'E', 70: 'F', 71: 'G', 72: 'H', 73: 'I',
-    74: 'J', 75: 'K', 76: 'L', 77: 'M', 78: 'N', 79: 'O', 80: 'P', 81: 'Q', 82: 'R',
-    83: 'S', 84: 'T', 85: 'U', 86: 'V', 87: 'W', 88: 'X', 89: 'Y', 90: 'Z',
-    96: 'Numpad 0', 97: 'Numpad 1', 98: 'Numpad 2', 99: 'Numpad 3',
-    100: 'Numpad 4', 101: 'Numpad 5', 102: 'Numpad 6', 103: 'Numpad 7',
-    104: 'Numpad 8', 105: 'Numpad 9',
-    106: 'Numpad *', 107: 'Numpad +', 109: 'Numpad -', 110: 'Numpad .', 111: 'Numpad /',
-    112: 'F1', 113: 'F2', 114: 'F3', 115: 'F4', 116: 'F5', 117: 'F6',
-    118: 'F7', 119: 'F8', 120: 'F9', 121: 'F10', 122: 'F11', 123: 'F12',
-    186: ';', 187: '=', 188: ',', 189: '-', 190: '.', 191: '/', 192: '`',
-    219: '[', 220: '\\', 221: ']', 222: "'",
-  };
-
-  const MOUSE_BUTTON_NAMES = { 3: 'Mouse Middle', 4: 'Mouse Back', 5: 'Mouse Forward' };
-
-  // Legacy names (for old configs that haven't been re-saved yet)
-  const LEGACY_MOUSE_NAMES = {
-    MouseButton3: 'Mouse Middle',
-    MouseButton4: 'Mouse Back',
-    MouseButton5: 'Mouse Forward',
-  };
-
-  function formatKeybind(keybind) {
-    // New format: "kb:VKEY" (native input hook)
-    const kbMatch = keybind.match(/^kb:(\d+)$/);
-    if (kbMatch) {
-      const vkey = parseInt(kbMatch[1], 10);
-      return VKEY_NAMES[vkey] || `Key ${vkey}`;
-    }
-    // New format: "mouse:ID" (native input hook)
-    const mouseMatch = keybind.match(/^mouse:(\d+)$/);
-    if (mouseMatch) {
-      const id = parseInt(mouseMatch[1], 10);
-      return MOUSE_BUTTON_NAMES[id] || `Mouse Button ${id}`;
-    }
-    // Legacy format: "MouseButtonN"
-    if (LEGACY_MOUSE_NAMES[keybind]) return LEGACY_MOUSE_NAMES[keybind];
-    const m = keybind.match(/^MouseButton(\d+)$/);
-    if (m) return `Mouse Button ${m[1]}`;
-    // Keyboard combo format (Ctrl+Shift+V) for global shortcuts
-    return keybind
-      .replace('CommandOrControl', 'Ctrl')
-      .replace('Control', 'Ctrl')
-      .replace(/\+/g, ' + ');
-  }
 
   // ---- Local state ----
 
@@ -254,10 +51,6 @@
   let saving = $state(false);
   let devicesLoaded = $state(false);
 
-  // ---- Keybind recording state ----
-
-  let recordingKeybind = $state(null); // which keybind is being recorded: 'toggle' | 'ptt' | 'dictation' | 'stats'
-
   // ---- Load audio devices on mount ----
 
   $effect(() => {
@@ -274,121 +67,9 @@
     });
   });
 
-  // ---- Keybind recording handlers ----
-
-  function startRecording(name) {
-    recordingKeybind = name;
-  }
-
-  function cancelRecording() {
-    recordingKeybind = null;
-  }
-
-  function setKeybindValue(name, rawKey) {
-    if (name === 'toggle') hotkeyToggle = rawKey;
-    else if (name === 'ptt') pttKey = rawKey;
-    else if (name === 'dictation') dictationKey = rawKey;
-    else if (name === 'stats') statsHotkey = rawKey;
-  }
-
-  function handleKeybindKeydown(e) {
-    if (recordingKeybind === null) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    // Escape cancels recording
-    if (e.key === 'Escape') {
-      cancelRecording();
-      return;
-    }
-
-    // PTT and dictation use the native input hook — store as "kb:VKEY"
-    // (single key, no modifier combos — the hook suppresses the key at OS level)
-    if (recordingKeybind === 'ptt' || recordingKeybind === 'dictation') {
-      // Ignore modifier-only presses
-      if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
-      setKeybindValue(recordingKeybind, `kb:${e.keyCode}`);
-      recordingKeybind = null;
-      return;
-    }
-
-    // Other keybinds (toggle overlay, stats) use Tauri global shortcuts — combo format
-    const parts = [];
-    if (e.ctrlKey) parts.push('Ctrl');
-    if (e.altKey) parts.push('Alt');
-    if (e.shiftKey) parts.push('Shift');
-    if (e.metaKey) parts.push('Meta');
-
-    const key = e.key;
-    if (!['Control', 'Alt', 'Shift', 'Meta'].includes(key)) {
-      parts.push(key.length === 1 ? key.toUpperCase() : key);
-    }
-
-    if (parts.length > 0 && !['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
-      const rawKey = parts.join('+');
-      setKeybindValue(recordingKeybind, rawKey);
-      recordingKeybind = null;
-    }
-  }
-
-  function handleKeybindMousedown(e) {
-    if (recordingKeybind === null) return;
-
-    // Skip left (0) and right (2) -- those are for UI interaction
-    if (e.button === 0 || e.button === 2) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    // Browser button IDs → our mouse button IDs
-    // Browser: 1=middle, 3=back, 4=forward
-    // Ours: 3=middle, 4=back (XBUTTON1), 5=forward (XBUTTON2)
-    const buttonMap = { 1: 3, 3: 4, 4: 5 };
-    const buttonId = buttonMap[e.button] || (e.button + 1);
-
-    // PTT and dictation use the native input hook — store as "mouse:ID"
-    if (recordingKeybind === 'ptt' || recordingKeybind === 'dictation') {
-      setKeybindValue(recordingKeybind, `mouse:${buttonId}`);
-      recordingKeybind = null;
-      return;
-    }
-
-    // Other keybinds: legacy format for display
-    const legacyNames = { 1: 'MouseButton3', 3: 'MouseButton4', 4: 'MouseButton5' };
-    const rawKey = legacyNames[e.button] || `MouseButton${e.button + 1}`;
-    setKeybindValue(recordingKeybind, rawKey);
-    recordingKeybind = null;
-  }
-
-  function handleClickOutside(e) {
-    if (recordingKeybind !== null && !e.target.closest('.keybind-input')) {
-      cancelRecording();
-    }
-  }
-
   // ---- Derived values ----
 
-  const currentTTSAdapter = $derived(ADAPTER_REGISTRY[ttsAdapter] || ADAPTER_REGISTRY.kokoro);
   const currentSTTAdapter = $derived(STT_REGISTRY[sttAdapter] || STT_REGISTRY['whisper-local']);
-
-  const ttsAdapterOptions = $derived(
-    Object.entries(ADAPTER_REGISTRY).map(([key, reg]) => ({
-      value: key,
-      label: reg.label,
-      group: reg.category === 'local' ? 'Local' : reg.category === 'cloud-free' ? 'Cloud (free)' : 'Cloud (paid)',
-    }))
-  );
-
-  const ttsVoiceOptions = $derived(
-    currentTTSAdapter.voices.map(v => ({ value: v.value, label: v.label }))
-  );
-
-  const ttsModelSizeOptions = $derived(
-    currentTTSAdapter.showModelSize && currentTTSAdapter.modelSizes
-      ? currentTTSAdapter.modelSizes.map(s => ({ value: s.value, label: s.label }))
-      : []
-  );
 
   const sttAdapterOptions = $derived(
     Object.entries(STT_REGISTRY).map(([key, reg]) => ({
@@ -452,17 +133,6 @@
     announceStartup = cfg.voice?.announceStartup !== false;
     announceProvider = cfg.voice?.announceProviderSwitch !== false;
   });
-
-  // ---- When TTS adapter changes, reset voice to first available ----
-
-  function handleTTSAdapterChange(newAdapter) {
-    ttsAdapter = newAdapter;
-    const reg = ADAPTER_REGISTRY[newAdapter] || ADAPTER_REGISTRY.kokoro;
-    const voiceExists = reg.voices.some(v => v.value === ttsVoice);
-    if (!voiceExists) {
-      ttsVoice = reg.voices[0]?.value || '';
-    }
-  }
 
   // ---- Save handler ----
 
@@ -544,13 +214,7 @@
   }
 </script>
 
-<div
-  class="voice-settings"
-  role="application"
-  onkeydown={handleKeybindKeydown}
-  onmousedown={handleKeybindMousedown}
-  onclick={handleClickOutside}
->
+<div class="voice-settings">
   <!-- Activation Mode (radio buttons) -->
   <section class="settings-section">
     <h3>Activation Mode</h3>
@@ -591,127 +255,30 @@
     </div>
   </section>
 
-  <!-- Keybinds -->
+  <!-- Keybinds (delegated to KeybindRecorder) -->
   <section class="settings-section">
     <h3>Keybinds</h3>
     <div class="settings-group">
-      <div class="keybind-row">
-        <span class="keybind-label">Toggle Overlay</span>
-        <button
-          class="keybind-input"
-          class:recording={recordingKeybind === 'toggle'}
-          onclick={(e) => { e.stopPropagation(); startRecording('toggle'); }}
-        >
-          {recordingKeybind === 'toggle' ? 'Press key...' : formatKeybind(hotkeyToggle)}
-        </button>
-      </div>
-      <div class="keybind-row">
-        <span class="keybind-label">Push-to-Talk</span>
-        <button
-          class="keybind-input"
-          class:recording={recordingKeybind === 'ptt'}
-          onclick={(e) => { e.stopPropagation(); startRecording('ptt'); }}
-        >
-          {recordingKeybind === 'ptt' ? 'Press key...' : formatKeybind(pttKey)}
-        </button>
-      </div>
-      <div class="keybind-row">
-        <span class="keybind-label">Dictation</span>
-        <button
-          class="keybind-input"
-          class:recording={recordingKeybind === 'dictation'}
-          onclick={(e) => { e.stopPropagation(); startRecording('dictation'); }}
-        >
-          {recordingKeybind === 'dictation' ? 'Press key...' : formatKeybind(dictationKey)}
-        </button>
-      </div>
-      <div class="keybind-row">
-        <span class="keybind-label">Stats Dashboard</span>
-        <button
-          class="keybind-input"
-          class:recording={recordingKeybind === 'stats'}
-          onclick={(e) => { e.stopPropagation(); startRecording('stats'); }}
-        >
-          {recordingKeybind === 'stats' ? 'Press key...' : formatKeybind(statsHotkey)}
-        </button>
-      </div>
+      <KeybindRecorder
+        bind:hotkeyToggle
+        bind:pttKey
+        bind:dictationKey
+        bind:statsHotkey
+      />
     </div>
   </section>
 
-  <!-- Text-to-Speech -->
-  <section class="settings-section">
-    <h3>Text-to-Speech</h3>
-    <div class="settings-group">
-      <Select
-        label="TTS Engine"
-        value={ttsAdapter}
-        options={ttsAdapterOptions}
-        onChange={handleTTSAdapterChange}
-      />
-      <Select
-        label="Voice"
-        value={ttsVoice}
-        options={ttsVoiceOptions}
-        onChange={(v) => (ttsVoice = v)}
-      />
-
-      {#if currentTTSAdapter.showModelSize && ttsModelSizeOptions.length > 0}
-        <Select
-          label="Model Size"
-          value={ttsModelSize}
-          options={ttsModelSizeOptions}
-          onChange={(v) => (ttsModelSize = v)}
-        />
-      {/if}
-
-      <Slider
-        label="Speed"
-        value={ttsSpeed}
-        min={0.5}
-        max={2.0}
-        step={0.1}
-        onChange={(v) => (ttsSpeed = v)}
-        formatValue={(v) => v.toFixed(1) + 'x'}
-      />
-      <Slider
-        label="Volume"
-        value={ttsVolume}
-        min={0.1}
-        max={2.0}
-        step={0.1}
-        onChange={(v) => (ttsVolume = v)}
-        formatValue={(v) => Math.round(v * 100) + '%'}
-      />
-
-      {#if currentTTSAdapter.showApiKey}
-        <TextInput
-          label="API Key"
-          value={ttsApiKey}
-          type="password"
-          placeholder="API key..."
-          onChange={(v) => (ttsApiKey = v)}
-        />
-      {/if}
-
-      {#if currentTTSAdapter.showEndpoint}
-        <TextInput
-          label="Endpoint"
-          value={ttsEndpoint}
-          placeholder="https://your-server.com/v1"
-          onChange={(v) => (ttsEndpoint = v)}
-        />
-      {/if}
-
-      {#if currentTTSAdapter.showModelPath}
-        <TextInput
-          label="Model Path"
-          value={ttsModelPath}
-          placeholder="Optional: path to custom .onnx voice file"
-          onChange={(v) => (ttsModelPath = v)}
-        />
-      {/if}
-    </div>
-  </section>
+  <!-- Text-to-Speech (delegated to TTSConfig) -->
+  <TTSConfig
+    bind:ttsAdapter
+    bind:ttsVoice
+    bind:ttsModelSize
+    bind:ttsSpeed
+    bind:ttsVolume
+    bind:ttsApiKey
+    bind:ttsEndpoint
+    bind:ttsModelPath
+  />
 
   <!-- Speech Recognition -->
   <section class="settings-section">

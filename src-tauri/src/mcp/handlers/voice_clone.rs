@@ -91,27 +91,6 @@ fn validate_audio_url(url_str: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Validate an audio file path to prevent path traversal.
-#[allow(dead_code)]
-fn validate_audio_path(file_path: &str) -> Result<(), String> {
-    let resolved = std::path::Path::new(file_path)
-        .canonicalize()
-        .map_err(|e| format!("Invalid path: {}", e))?;
-
-    let data_dir = get_mcp_data_dir();
-    let home_dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-
-    let resolved_str = resolved.to_string_lossy();
-
-    if resolved_str.starts_with(data_dir.to_string_lossy().as_ref())
-        || resolved_str.starts_with(home_dir.to_string_lossy().as_ref())
-    {
-        Ok(())
-    } else {
-        Err("Path not allowed: must be within user home directory or app data directory".into())
-    }
-}
-
 /// Validate voice name to prevent path traversal in constructed file paths.
 fn validate_voice_name(name: &str) -> Result<(), String> {
     if name.is_empty() {

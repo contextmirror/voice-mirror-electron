@@ -11,9 +11,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const SETTINGS_DIR = path.join(__dirname, '../../src/components/settings');
+const LIB_DIR = path.join(__dirname, '../../src/lib');
 
 function readComponent(name) {
   return fs.readFileSync(path.join(SETTINGS_DIR, name), 'utf-8');
+}
+
+function readLib(name) {
+  return fs.readFileSync(path.join(LIB_DIR, name), 'utf-8');
 }
 
 // ---- SettingsPanel.svelte ----
@@ -27,6 +32,11 @@ describe('SettingsPanel.svelte', () => {
 
   it('imports AISettings', () => {
     assert.ok(src.includes("import AISettings from './AISettings.svelte'"), 'Should import AISettings');
+  });
+
+  it('imports ToolSettings for CLI providers', () => {
+    assert.ok(src.includes("import ToolSettings from './ToolSettings.svelte'"), 'Should import ToolSettings');
+    assert.ok(src.includes('<ToolSettings'), 'Should render ToolSettings');
   });
 
   it('imports VoiceSettings', () => {
@@ -132,31 +142,26 @@ describe('AISettings.svelte', () => {
     assert.ok(src.includes("import Button from '../shared/Button.svelte'"), 'Should import Button');
   });
 
-  it('defines PROVIDER_NAMES mapping', () => {
-    assert.ok(src.includes('const PROVIDER_NAMES'), 'Should define PROVIDER_NAMES');
+  it('uses PROVIDER_NAMES from shared providers module', () => {
+    assert.ok(src.includes('PROVIDER_NAMES'), 'Should use PROVIDER_NAMES');
+    assert.ok(src.includes("from '../../lib/providers.js'"), 'Should import from providers.js');
   });
 
-  it('supports Claude Code provider', () => {
-    assert.ok(src.includes("claude: 'Claude Code'"), 'Should have Claude Code provider');
+  it('uses PROVIDER_ICONS from shared providers module', () => {
+    assert.ok(src.includes('PROVIDER_ICONS'), 'Should use PROVIDER_ICONS');
   });
 
-  it('supports Ollama provider', () => {
-    assert.ok(src.includes("ollama: 'Ollama'"), 'Should have Ollama provider');
+  it('uses PROVIDER_GROUPS from shared providers module', () => {
+    assert.ok(src.includes('PROVIDER_GROUPS'), 'Should use PROVIDER_GROUPS');
   });
 
-  it('supports LM Studio provider', () => {
-    assert.ok(src.includes("lmstudio: 'LM Studio'"), 'Should have LM Studio provider');
+  it('uses CLI_PROVIDERS and LOCAL_PROVIDERS from shared providers module', () => {
+    assert.ok(src.includes('CLI_PROVIDERS'), 'Should use CLI_PROVIDERS');
+    assert.ok(src.includes('LOCAL_PROVIDERS'), 'Should use LOCAL_PROVIDERS');
   });
 
-  it('has provider groups (CLI Agents, Local LLM Servers)', () => {
-    assert.ok(src.includes("label: 'CLI Agents'"), 'Should have CLI Agents group');
-    assert.ok(src.includes("label: 'Local LLM Servers'"), 'Should have Local LLM Servers group');
-  });
-
-  it('has DEFAULT_ENDPOINTS for local providers', () => {
-    assert.ok(src.includes('const DEFAULT_ENDPOINTS'), 'Should define DEFAULT_ENDPOINTS');
-    assert.ok(src.includes("'http://127.0.0.1:11434'"), 'Should have Ollama endpoint');
-    assert.ok(src.includes("'http://127.0.0.1:1234'"), 'Should have LM Studio endpoint');
+  it('uses DEFAULT_ENDPOINTS from shared providers module', () => {
+    assert.ok(src.includes('DEFAULT_ENDPOINTS'), 'Should use DEFAULT_ENDPOINTS');
   });
 
   it('has model input for non-CLI providers', () => {
@@ -171,14 +176,10 @@ describe('AISettings.svelte', () => {
     assert.ok(src.includes('CONTEXT_LENGTH_OPTIONS'), 'Should define context length options');
   });
 
-  it('has tool profiles', () => {
-    assert.ok(src.includes('DEFAULT_PROFILES'), 'Should define DEFAULT_PROFILES');
-    assert.ok(src.includes("'voice-assistant'"), 'Should have voice-assistant profile');
-    assert.ok(src.includes("'minimal'"), 'Should have minimal profile');
-  });
-
-  it('has TOOL_GROUPS definition', () => {
-    assert.ok(src.includes('const TOOL_GROUPS'), 'Should define TOOL_GROUPS');
+  it('delegates tool management to ToolSettings (via SettingsPanel)', () => {
+    // Tool profiles and groups are managed by ToolSettings.svelte
+    assert.ok(!src.includes('const TOOL_GROUPS'), 'Should NOT define TOOL_GROUPS (handled by ToolSettings)');
+    assert.ok(!src.includes('const DEFAULT_PROFILES'), 'Should NOT define DEFAULT_PROFILES (handled by ToolSettings)');
   });
 
   it('has scan providers functionality', () => {
@@ -197,6 +198,61 @@ describe('AISettings.svelte', () => {
   it('has system prompt textarea', () => {
     assert.ok(src.includes('system-prompt-input'), 'Should have system prompt textarea');
     assert.ok(src.includes('systemPrompt'), 'Should have systemPrompt state');
+  });
+});
+
+// ---- providers.js (shared provider metadata) ----
+
+describe('providers.js', () => {
+  const src = readLib('providers.js');
+
+  it('exports PROVIDER_NAMES mapping', () => {
+    assert.ok(src.includes('export const PROVIDER_NAMES'), 'Should export PROVIDER_NAMES');
+  });
+
+  it('supports Claude Code provider', () => {
+    assert.ok(src.includes("claude: 'Claude Code'"), 'Should have Claude Code provider');
+  });
+
+  it('supports Ollama provider', () => {
+    assert.ok(src.includes("ollama: 'Ollama'"), 'Should have Ollama provider');
+  });
+
+  it('supports LM Studio provider', () => {
+    assert.ok(src.includes("lmstudio: 'LM Studio'"), 'Should have LM Studio provider');
+  });
+
+  it('exports PROVIDER_ICONS mapping', () => {
+    assert.ok(src.includes('export const PROVIDER_ICONS'), 'Should export PROVIDER_ICONS');
+  });
+
+  it('exports PROVIDER_GROUPS with CLI Agents and Local LLM Servers', () => {
+    assert.ok(src.includes('export const PROVIDER_GROUPS'), 'Should export PROVIDER_GROUPS');
+    assert.ok(src.includes("label: 'CLI Agents'"), 'Should have CLI Agents group');
+    assert.ok(src.includes("label: 'Local LLM Servers'"), 'Should have Local LLM Servers group');
+  });
+
+  it('exports DEFAULT_ENDPOINTS for local providers', () => {
+    assert.ok(src.includes('export const DEFAULT_ENDPOINTS'), 'Should export DEFAULT_ENDPOINTS');
+    assert.ok(src.includes("'http://127.0.0.1:11434'"), 'Should have Ollama endpoint');
+    assert.ok(src.includes("'http://127.0.0.1:1234'"), 'Should have LM Studio endpoint');
+  });
+
+  it('exports CLI_PROVIDERS and LOCAL_PROVIDERS', () => {
+    assert.ok(src.includes('export const CLI_PROVIDERS'), 'Should export CLI_PROVIDERS');
+    assert.ok(src.includes('export const LOCAL_PROVIDERS'), 'Should export LOCAL_PROVIDERS');
+  });
+
+  it('exports MCP_PROVIDERS', () => {
+    assert.ok(src.includes('export const MCP_PROVIDERS'), 'Should export MCP_PROVIDERS');
+  });
+
+  it('exports getProviderIcon helper', () => {
+    assert.ok(src.includes('export function getProviderIcon'), 'Should export getProviderIcon');
+  });
+
+  it('exports getProviderName helper', () => {
+    assert.ok(src.includes('export function getProviderName'), 'Should export getProviderName');
   });
 });
 
@@ -235,49 +291,28 @@ describe('VoiceSettings.svelte', () => {
     assert.ok(src.includes('Wake Word'), 'Should show Wake Word');
   });
 
-  it('has TTS adapter registry', () => {
-    assert.ok(src.includes('ADAPTER_REGISTRY'), 'Should define TTS ADAPTER_REGISTRY');
-  });
-
-  it('supports kokoro TTS', () => {
-    assert.ok(src.includes("kokoro:"), 'Should support kokoro TTS');
-  });
-
-  it('supports edge TTS', () => {
-    assert.ok(src.includes("edge:"), 'Should support edge TTS');
-  });
-
-  it('supports piper TTS', () => {
-    assert.ok(src.includes("piper:"), 'Should support piper TTS');
-  });
-
-  it('has STT adapter registry', () => {
-    assert.ok(src.includes('STT_REGISTRY'), 'Should define STT_REGISTRY');
+  it('uses STT_REGISTRY from voice-adapters', () => {
+    assert.ok(src.includes('STT_REGISTRY'), 'Should use STT_REGISTRY');
+    assert.ok(src.includes("from '../../lib/voice-adapters.js'"), 'Should import from voice-adapters.js');
   });
 
   it('supports whisper-local STT', () => {
     assert.ok(src.includes("'whisper-local'"), 'Should support whisper-local STT');
   });
 
-  it('has keybind configuration', () => {
-    assert.ok(src.includes('keybind'), 'Should have keybind support');
-    assert.ok(src.includes('Toggle Overlay'), 'Should have toggle overlay keybind');
-    assert.ok(src.includes('Push-to-Talk'), 'Should have PTT keybind');
-    assert.ok(src.includes('Dictation'), 'Should have dictation keybind');
+  it('delegates keybind recording to KeybindRecorder', () => {
+    assert.ok(src.includes("import KeybindRecorder from './KeybindRecorder.svelte'"), 'Should import KeybindRecorder');
+    assert.ok(src.includes('<KeybindRecorder'), 'Should render KeybindRecorder');
   });
 
-  it('has keybind recording state', () => {
-    assert.ok(src.includes('recordingKeybind'), 'Should track which keybind is being recorded');
+  it('delegates TTS configuration to TTSConfig', () => {
+    assert.ok(src.includes("import TTSConfig from './TTSConfig.svelte'"), 'Should import TTSConfig');
+    assert.ok(src.includes('<TTSConfig'), 'Should render TTSConfig');
   });
 
-  it('has TTS speed slider', () => {
+  it('has TTS state variables', () => {
     assert.ok(src.includes('ttsSpeed'), 'Should have ttsSpeed state');
-    assert.ok(src.includes("label=\"Speed\""), 'Should have Speed label');
-  });
-
-  it('has TTS volume slider', () => {
     assert.ok(src.includes('ttsVolume'), 'Should have ttsVolume state');
-    assert.ok(src.includes("label=\"Volume\""), 'Should have Volume label');
   });
 
   it('has audio device selection', () => {
@@ -292,6 +327,125 @@ describe('VoiceSettings.svelte', () => {
 
   it('has save handler', () => {
     assert.ok(src.includes('saveVoiceSettings'), 'Should have saveVoiceSettings function');
+  });
+});
+
+// ---- KeybindRecorder.svelte ----
+
+describe('KeybindRecorder.svelte', () => {
+  const src = readComponent('KeybindRecorder.svelte');
+
+  it('imports formatKeybind from voice-adapters', () => {
+    assert.ok(src.includes("import { formatKeybind } from '../../lib/voice-adapters.js'"), 'Should import formatKeybind');
+  });
+
+  it('has keybind recording state', () => {
+    assert.ok(src.includes('recordingKeybind'), 'Should track which keybind is being recorded');
+  });
+
+  it('has Toggle Overlay keybind', () => {
+    assert.ok(src.includes('Toggle Overlay'), 'Should have toggle overlay keybind');
+  });
+
+  it('has Push-to-Talk keybind', () => {
+    assert.ok(src.includes('Push-to-Talk'), 'Should have PTT keybind');
+  });
+
+  it('has Dictation keybind', () => {
+    assert.ok(src.includes('Dictation'), 'Should have dictation keybind');
+  });
+
+  it('has Stats Dashboard keybind', () => {
+    assert.ok(src.includes('Stats Dashboard'), 'Should have stats keybind');
+  });
+
+  it('uses $props for bindable keybind values', () => {
+    assert.ok(src.includes('$props()'), 'Should use $props');
+    assert.ok(src.includes('$bindable'), 'Should use $bindable for two-way binding');
+  });
+
+  it('handles keyboard and mouse events', () => {
+    assert.ok(src.includes('handleKeybindKeydown'), 'Should handle keyboard events');
+    assert.ok(src.includes('handleKeybindMousedown'), 'Should handle mouse events');
+  });
+});
+
+// ---- TTSConfig.svelte ----
+
+describe('TTSConfig.svelte', () => {
+  const src = readComponent('TTSConfig.svelte');
+
+  it('imports ADAPTER_REGISTRY from voice-adapters', () => {
+    assert.ok(src.includes("import { ADAPTER_REGISTRY } from '../../lib/voice-adapters.js'"), 'Should import ADAPTER_REGISTRY');
+  });
+
+  it('has TTS speed slider', () => {
+    assert.ok(src.includes('ttsSpeed'), 'Should have ttsSpeed prop');
+    assert.ok(src.includes("label=\"Speed\""), 'Should have Speed label');
+  });
+
+  it('has TTS volume slider', () => {
+    assert.ok(src.includes('ttsVolume'), 'Should have ttsVolume prop');
+    assert.ok(src.includes("label=\"Volume\""), 'Should have Volume label');
+  });
+
+  it('has TTS engine selector', () => {
+    assert.ok(src.includes("label=\"TTS Engine\""), 'Should have TTS Engine label');
+  });
+
+  it('has voice selector', () => {
+    assert.ok(src.includes("label=\"Voice\""), 'Should have Voice label');
+  });
+
+  it('uses $props for bindable TTS values', () => {
+    assert.ok(src.includes('$props()'), 'Should use $props');
+    assert.ok(src.includes('$bindable'), 'Should use $bindable for two-way binding');
+  });
+});
+
+// ---- voice-adapters.js (shared voice adapter registries) ----
+
+describe('voice-adapters.js', () => {
+  const src = readLib('voice-adapters.js');
+
+  it('exports ADAPTER_REGISTRY', () => {
+    assert.ok(src.includes('export const ADAPTER_REGISTRY'), 'Should export ADAPTER_REGISTRY');
+  });
+
+  it('supports kokoro TTS', () => {
+    assert.ok(src.includes("kokoro:"), 'Should support kokoro TTS');
+  });
+
+  it('supports edge TTS', () => {
+    assert.ok(src.includes("edge:"), 'Should support edge TTS');
+  });
+
+  it('supports piper TTS', () => {
+    assert.ok(src.includes("piper:"), 'Should support piper TTS');
+  });
+
+  it('exports STT_REGISTRY', () => {
+    assert.ok(src.includes('export const STT_REGISTRY'), 'Should export STT_REGISTRY');
+  });
+
+  it('supports whisper-local STT', () => {
+    assert.ok(src.includes("'whisper-local'"), 'Should support whisper-local STT');
+  });
+
+  it('exports VKEY_NAMES', () => {
+    assert.ok(src.includes('export const VKEY_NAMES'), 'Should export VKEY_NAMES');
+  });
+
+  it('exports formatKeybind helper', () => {
+    assert.ok(src.includes('export function formatKeybind'), 'Should export formatKeybind');
+  });
+
+  it('exports getVoicesForAdapter helper', () => {
+    assert.ok(src.includes('export function getVoicesForAdapter'), 'Should export getVoicesForAdapter');
+  });
+
+  it('exports getModelsForAdapter helper', () => {
+    assert.ok(src.includes('export function getModelsForAdapter'), 'Should export getModelsForAdapter');
   });
 });
 

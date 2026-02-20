@@ -2,22 +2,8 @@
   import { navigationStore } from '../../lib/stores/navigation.svelte.js';
   import { aiStatusStore } from '../../lib/stores/ai-status.svelte.js';
   import { voiceStore } from '../../lib/stores/voice.svelte.js';
+  import { PROVIDER_ICONS } from '../../lib/providers.js';
   import ChatList from './ChatList.svelte';
-
-  // Provider icons (same assets as AISettings)
-  import claudeIcon from '../../assets/icons/providers/claude.webp';
-  import ollamaIcon from '../../assets/icons/providers/ollama.svg';
-  import lmstudioIcon from '../../assets/icons/providers/lmstudio.svg';
-  import janIcon from '../../assets/icons/providers/jan.svg';
-  import opencodeIcon from '../../assets/icons/providers/opencode.svg';
-
-  const PROVIDER_ICONS = {
-    claude: { type: 'cover', src: claudeIcon },
-    opencode: { type: 'inner', src: opencodeIcon, bg: 'linear-gradient(135deg, #1a1717, #131010)' },
-    ollama: { type: 'inner', src: ollamaIcon, bg: 'linear-gradient(135deg, #f0f0f0, #d0d0d0)' },
-    lmstudio: { type: 'inner', src: lmstudioIcon, bg: 'linear-gradient(135deg, #3b82f6, #1d4ed8)' },
-    jan: { type: 'inner', src: janIcon, bg: 'linear-gradient(135deg, #a855f7, #7c3aed)' },
-  };
 
   let aiDisplayName = $derived(aiStatusStore.displayName || 'AI Provider');
   let aiRunning = $derived(aiStatusStore.running);

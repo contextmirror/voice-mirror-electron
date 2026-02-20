@@ -11,9 +11,11 @@
    *   - Dependencies (hidden behind advanced.showDependencies flag)
    */
   import { configStore } from '../../lib/stores/config.svelte.js';
+  import { CLI_PROVIDERS } from '../../lib/providers.js';
   import BehaviorSettings from './BehaviorSettings.svelte';
   import VoiceSettings from './VoiceSettings.svelte';
   import AISettings from './AISettings.svelte';
+  import ToolSettings from './ToolSettings.svelte';
   import AppearanceSettings from './AppearanceSettings.svelte';
   import DependencySettings from './DependencySettings.svelte';
 
@@ -28,6 +30,7 @@
   let activeTab = $state('general');
 
   const showDependencies = $derived(configStore.value?.advanced?.showDependencies === true);
+  const isCLI = $derived(CLI_PROVIDERS.includes(configStore.value?.ai?.provider || 'claude'));
 
   const visibleTabs = $derived(
     TABS.filter(tab => {
@@ -69,6 +72,9 @@
         role="tabpanel"
       >
         <AISettings />
+        {#if isCLI}
+          <ToolSettings />
+        {/if}
       </div>
     {:else if activeTab === 'voice'}
       <div
