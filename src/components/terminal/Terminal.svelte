@@ -157,8 +157,6 @@
 
       if (cancelled) return;
 
-      initialized = true;
-
       // Create ghostty-web Terminal instance
       const ghosttyTerm = new Terminal({
         cursorBlink: false,
@@ -230,7 +228,7 @@
 
       // Listen for AI output events from Tauri backend
       const unlisten = await listen('ai-output', (event) => {
-        if (!term) return;
+        if (!term || !initialized) return;
         const data = event.payload;
 
         switch (data.type) {
@@ -238,6 +236,8 @@
             term.write('\x1b[2J\x1b[3J\x1b[H');
             break;
           case 'start':
+            // Clear stale content from previous provider before writing new info
+            term.clear();
             if (data.text) {
               term.writeln(`\x1b[34m${data.text}\x1b[0m`);
             }
@@ -277,6 +277,14 @@
         resizeTimeout = setTimeout(() => {
           fitTerminal();
           resizePtyIfChanged();
+          // Force a full canvas redraw on the next frame to prevent artifacts
+          // after resize. The resize changes canvas dimensions but the render
+          // loop may not mark all rows dirty -- writing a no-op ensures it does.
+          if (term) {
+            requestAnimationFrame(() => {
+              term.write('');
+            });
+          }
         }, 150);
       });
       observer.observe(containerEl);
@@ -287,6 +295,8 @@
         requestAnimationFrame(() => {
           fitTerminal();
           resizePtyIfChanged();
+          // Gate: terminal is now fully initialized and ready for ai-output events
+          initialized = true;
         });
       });
     }
@@ -298,6 +308,8 @@
     // Cleanup on unmount
     return () => {
       cancelled = true;
+      // Immediately gate off event handlers before tearing down resources
+      initialized = false;
       if (resizeTimeout) clearTimeout(resizeTimeout);
       if (resizeObserver) {
         resizeObserver.disconnect();
@@ -314,7 +326,6 @@
       fitAddon = null;
       lastPtyCols = 0;
       lastPtyRows = 0;
-      initialized = false;
     };
   });
 
