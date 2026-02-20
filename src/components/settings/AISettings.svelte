@@ -767,8 +767,9 @@
 
   /* Provider icon base */
   .provider-icon {
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
+    padding: 3px;
     border-radius: 5px;
     display: flex;
     align-items: center;
@@ -778,9 +779,10 @@
   }
 
   .provider-icon-inner {
-    width: 65%;
-    height: 65%;
+    width: 100%;
+    height: 100%;
     object-fit: contain;
+    display: block;
   }
 
   /* Dropdown menu */
