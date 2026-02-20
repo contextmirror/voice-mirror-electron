@@ -5,7 +5,6 @@
 
   /** Chat entries from backend */
   let chats = $state([]);
-  let activeChatId = $state(null);
   let loading = $state(false);
 
   /** Context menu state */
@@ -15,6 +14,10 @@
   let renamingId = $state(null);
   let renameValue = $state('');
 
+  /** Track message count for auto-save debouncing */
+  let lastSavedMessageCount = $state(0);
+  let saveTimeout = null;
+
   /**
    * Load the chat list from the backend.
    */
@@ -23,9 +26,9 @@
     try {
       const result = await chatList();
       const data = result?.data || result || [];
-      // Sort by most recent
+      // Sort by most recent (backend returns updatedAt as u64 ms)
       chats = Array.isArray(data)
-        ? data.sort((a, b) => new Date(b.updated) - new Date(a.updated))
+        ? data.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
         : [];
     } catch (err) {
       console.error('[ChatList] Failed to load chats:', err);
@@ -35,29 +38,124 @@
     }
   }
 
-  /** Load on mount */
+  /** Load on mount + auto-create first chat if none exist */
   $effect(() => {
-    loadChats();
+    loadChats().then(() => {
+      if (chats.length === 0) {
+        handleNewChat();
+      } else if (!chatStore.activeChatId) {
+        // Select the most recent chat
+        handleSelectChat(chats[0].id);
+      }
+    });
   });
+
+  /**
+   * Auto-save: when messages change, persist them to the active chat file.
+   * Debounced to avoid excessive writes.
+   */
+  $effect(() => {
+    const msgCount = chatStore.messages.length;
+    const activeId = chatStore.activeChatId;
+    if (!activeId || msgCount === 0) return;
+
+    // Only save when message count changes (new message added)
+    if (msgCount === lastSavedMessageCount) return;
+
+    if (saveTimeout) clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(() => {
+      saveActiveChat();
+      lastSavedMessageCount = msgCount;
+    }, 500);
+  });
+
+  /**
+   * Auto-title: when the first user message arrives in a "New Chat",
+   * generate a title from the message text.
+   */
+  $effect(() => {
+    const activeId = chatStore.activeChatId;
+    const msgs = chatStore.messages;
+    if (!activeId || msgs.length === 0) return;
+
+    const chat = chats.find(c => c.id === activeId);
+    if (!chat || chat.name !== 'New Chat') return;
+
+    const firstUserMsg = msgs.find(m => m.role === 'user');
+    if (!firstUserMsg) return;
+
+    const title = generateTitle(firstUserMsg.text);
+    if (title) {
+      // Update local state immediately for responsiveness
+      chat.name = title;
+      chatRename(activeId, title).catch(err => {
+        console.error('[ChatList] Auto-title failed:', err);
+      });
+    }
+  });
+
+  /**
+   * Generate a short title from message text.
+   * Takes first ~50 characters, trims at word boundary.
+   */
+  function generateTitle(text) {
+    const cleaned = text.replace(/\s+/g, ' ').trim();
+    if (!cleaned) return null;
+    if (cleaned.length <= 50) return cleaned;
+    const cut = cleaned.slice(0, 50);
+    const lastSpace = cut.lastIndexOf(' ');
+    return (lastSpace > 20 ? cut.slice(0, lastSpace) : cut) + '...';
+  }
+
+  /**
+   * Save the current messages to the active chat file.
+   */
+  async function saveActiveChat() {
+    const activeId = chatStore.activeChatId;
+    if (!activeId) return;
+
+    const chat = chats.find(c => c.id === activeId);
+    if (!chat) return;
+
+    const toSave = {
+      id: activeId,
+      name: chat.name || 'New Chat',
+      createdAt: chat.createdAt || Date.now(),
+      updatedAt: Date.now(),
+      messages: chatStore.messages.map(m => ({
+        id: m.id,
+        role: m.role,
+        content: m.text,
+        timestamp: m.timestamp,
+      })),
+    };
+
+    try {
+      await chatSave(toSave);
+    } catch (err) {
+      console.error('[ChatList] Auto-save failed:', err);
+    }
+  }
 
   /**
    * Create a new chat.
    */
   async function handleNewChat() {
     const id = uid();
-    const now = new Date().toISOString();
+    const now = Date.now();
     const chat = {
       id,
       name: 'New Chat',
-      created: now,
-      updated: now,
+      createdAt: now,
+      updatedAt: now,
       messages: [],
     };
 
     try {
       await chatSave(chat);
-      activeChatId = id;
+      chatStore.setActiveChatId(id);
       chatStore.clearMessages();
+      lastSavedMessageCount = 0;
       await loadChats();
     } catch (err) {
       console.error('[ChatList] Failed to create chat:', err);
@@ -68,21 +166,23 @@
    * Switch to a chat by id.
    */
   async function handleSelectChat(id) {
-    if (id === activeChatId) return;
+    if (id === chatStore.activeChatId) return;
 
     try {
       const result = await chatLoad(id);
       const chat = result?.success !== false ? (result?.data || result) : null;
       if (!chat) return;
 
-      activeChatId = chat.id;
+      chatStore.setActiveChatId(chat.id);
       chatStore.clearMessages();
 
       if (chat.messages && chat.messages.length > 0) {
         for (const msg of chat.messages) {
-          chatStore.addMessage(msg.role, msg.text, msg.metadata || {});
+          // Backend stores 'content', frontend uses 'text'
+          chatStore.addMessage(msg.role, msg.content || msg.text, msg.metadata || {});
         }
       }
+      lastSavedMessageCount = chatStore.messages.length;
     } catch (err) {
       console.error('[ChatList] Failed to load chat:', err);
     }
@@ -95,18 +195,17 @@
     try {
       await chatDelete(id);
 
-      if (id === activeChatId) {
-        activeChatId = null;
+      if (id === chatStore.activeChatId) {
+        chatStore.setActiveChatId(null);
         chatStore.clearMessages();
+        lastSavedMessageCount = 0;
       }
 
       await loadChats();
 
       // If current chat was deleted and others exist, switch to first
-      if (id === activeChatId || activeChatId === null) {
-        if (chats.length > 0) {
-          await handleSelectChat(chats[0].id);
-        }
+      if (!chatStore.activeChatId && chats.length > 0) {
+        await handleSelectChat(chats[0].id);
       }
     } catch (err) {
       console.error('[ChatList] Failed to delete chat:', err);
@@ -185,12 +284,12 @@
   }
 
   /**
-   * Format relative time from ISO date string.
+   * Format relative time from a timestamp (u64 ms or ISO string).
    */
-  function formatRelativeTime(dateString) {
-    if (!dateString) return '';
+  function formatRelativeTime(ts) {
+    if (!ts) return '';
     const now = Date.now();
-    const then = new Date(dateString).getTime();
+    const then = typeof ts === 'number' ? ts : new Date(ts).getTime();
     const diffMs = now - then;
     if (isNaN(diffMs) || diffMs < 0) return '';
 
@@ -204,7 +303,7 @@
     if (days === 1) return '1d';
     if (days < 7) return `${days}d`;
 
-    return new Date(dateString).toLocaleDateString('en-GB', {
+    return new Date(then).toLocaleDateString('en-GB', {
       day: 'numeric',
       month: 'short',
     });
@@ -252,12 +351,12 @@
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <li
         class="chat-entry"
-        class:active={chat.id === activeChatId}
+        class:active={chat.id === chatStore.activeChatId}
         onclick={() => handleSelectChat(chat.id)}
         onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleSelectChat(chat.id); }}
         oncontextmenu={(e) => handleContextMenu(e, chat.id)}
         role="option"
-        aria-selected={chat.id === activeChatId}
+        aria-selected={chat.id === chatStore.activeChatId}
         tabindex="0"
       >
         {#if renamingId === chat.id}
@@ -273,7 +372,7 @@
           <span class="chat-name" title={chat.name || 'New Chat'}>
             {chat.name || 'New Chat'}
           </span>
-          <span class="chat-time">{formatRelativeTime(chat.updated)}</span>
+          <span class="chat-time">{formatRelativeTime(chat.updatedAt)}</span>
           <button
             class="chat-delete-btn"
             onclick={(e) => { e.stopPropagation(); handleDeleteChat(chat.id); }}

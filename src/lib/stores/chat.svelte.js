@@ -20,10 +20,13 @@ import { uid } from '../utils.js';
 function createChatStore() {
   let messages = $state([]);
   let isStreaming = $state(false);
+  let activeChatId = $state(null);
 
   return {
     get messages() { return messages; },
     get isStreaming() { return isStreaming; },
+    get activeChatId() { return activeChatId; },
+    setActiveChatId(id) { activeChatId = id; },
 
     /**
      * Add a complete message.

@@ -266,7 +266,7 @@ export async function chatLoad(id) {
 }
 
 export async function chatSave(chat) {
-  return invoke('chat_save', { chat });
+  return invoke('chat_save', { chat: JSON.stringify(chat) });
 }
 
 export async function chatDelete(id) {
