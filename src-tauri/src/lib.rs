@@ -287,7 +287,60 @@ pub fn run() {
                 }
             }
 
+            // Restore saved window size from config on startup.
+            // The tauri.conf.json uses a default size; this overrides it with the
+            // user's last-used size so the window reopens where they left it.
+            if let Some(window) = app.get_webview_window("main") {
+                let cfg = commands::config::get_config_snapshot();
+                let pw = cfg.appearance.panel_width;
+                let ph = cfg.appearance.panel_height;
+                // Only restore if saved size differs from defaults and looks valid
+                if pw >= 300 && ph >= 300 {
+                    let size = tauri::PhysicalSize::new(pw, ph);
+                    let _ = window.set_size(tauri::Size::Physical(size));
+                    info!("Restored window size: {}x{}", pw, ph);
+                }
+                // Restore saved position if available
+                if let (Some(x), Some(y)) = (cfg.window.orb_x, cfg.window.orb_y) {
+                    let pos = tauri::PhysicalPosition::new(x as i32, y as i32);
+                    let _ = window.set_position(tauri::Position::Physical(pos));
+                    info!("Restored window position: ({}, {})", x, y);
+                }
+            }
+
             Ok(())
+        })
+        .on_window_event(|_window, event| {
+            // Save window bounds when the window is about to close.
+            // This runs synchronously in Rust — much more reliable than
+            // the frontend's beforeunload handler for async invoke calls.
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                use crate::config::persistence;
+                use crate::services::platform;
+
+                if let Ok(pos) = _window.outer_position() {
+                    if let Ok(size) = _window.outer_size() {
+                        let config_dir = platform::get_config_dir();
+                        let current_config = persistence::load_config(&config_dir);
+                        let current_val = serde_json::to_value(&current_config).unwrap_or_default();
+                        let patch = serde_json::json!({
+                            "window": {
+                                "orbX": pos.x as f64,
+                                "orbY": pos.y as f64,
+                            },
+                            "appearance": {
+                                "panelWidth": size.width,
+                                "panelHeight": size.height,
+                            }
+                        });
+                        let merged = persistence::deep_merge(current_val, patch);
+                        if let Ok(updated) = serde_json::from_value::<crate::config::schema::AppConfig>(merged) {
+                            let _ = persistence::save_config(&config_dir, &updated);
+                            info!("Saved window bounds on close: pos=({},{}) size={}x{}", pos.x, pos.y, size.width, size.height);
+                        }
+                    }
+                }
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running Voice Mirror");
