@@ -56,13 +56,17 @@ describe('lens: $state reactivity', () => {
     assert.ok(/let\s+webviewReady\s*=\s*\$state\(/.test(src), 'Should use $state for webviewReady');
   });
 
+  it('uses $state for hidden', () => {
+    assert.ok(/let\s+hidden\s*=\s*\$state\(/.test(src), 'Should use $state for hidden');
+  });
+
   it('uses $state for pageTitle', () => {
     assert.ok(/let\s+pageTitle\s*=\s*\$state\(/.test(src), 'Should use $state for pageTitle');
   });
 });
 
 describe('lens: store getters', () => {
-  const getters = ['url', 'inputUrl', 'loading', 'canGoBack', 'canGoForward', 'webviewReady', 'pageTitle'];
+  const getters = ['url', 'inputUrl', 'loading', 'canGoBack', 'canGoForward', 'webviewReady', 'hidden', 'pageTitle'];
 
   for (const getter of getters) {
     it(`has getter "${getter}"`, () => {
@@ -72,7 +76,7 @@ describe('lens: store getters', () => {
 });
 
 describe('lens: store setters', () => {
-  const setters = ['setUrl', 'setInputUrl', 'setLoading', 'setCanGoBack', 'setCanGoForward', 'setWebviewReady', 'setPageTitle'];
+  const setters = ['setUrl', 'setInputUrl', 'setLoading', 'setCanGoBack', 'setCanGoForward', 'setWebviewReady', 'setHidden', 'setPageTitle'];
 
   for (const setter of setters) {
     it(`has setter "${setter}"`, () => {

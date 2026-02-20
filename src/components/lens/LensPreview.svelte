@@ -25,6 +25,18 @@
     lensResizeWebview(bounds.x, bounds.y, bounds.width, bounds.height).catch(() => {});
   }
 
+  // Hide/show webview when lensStore.hidden changes (e.g. screenshot picker overlay)
+  $effect(() => {
+    if (!lensStore.webviewReady) return;
+    if (lensStore.hidden) {
+      // Move webview off-screen so DOM overlays can render above it
+      lensResizeWebview(-9999, -9999, 0, 0).catch(() => {});
+    } else {
+      // Restore correct bounds
+      syncBounds();
+    }
+  });
+
   $effect(() => {
     if (!containerEl) return;
 

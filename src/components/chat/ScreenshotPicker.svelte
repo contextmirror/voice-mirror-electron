@@ -8,6 +8,7 @@
    */
   import { fade, fly } from 'svelte/transition';
   import { listMonitors, listWindows, captureMonitor, captureWindow } from '../../lib/api.js';
+  import { lensStore } from '../../lib/stores/lens.svelte.js';
 
   let {
     onCapture = () => {},
@@ -112,6 +113,12 @@
   function handleOverlayClick(e) {
     if (e.target === e.currentTarget) onClose();
   }
+
+  // Hide the native webview so this modal renders above it
+  $effect(() => {
+    lensStore.setHidden(true);
+    return () => lensStore.setHidden(false);
+  });
 
   // Load monitors on mount (default tab)
   $effect(() => {

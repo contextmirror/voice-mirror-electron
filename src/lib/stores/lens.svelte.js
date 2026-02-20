@@ -15,6 +15,7 @@ function createLensStore() {
   let canGoBack = $state(false);
   let canGoForward = $state(false);
   let webviewReady = $state(false);
+  let hidden = $state(false);
   let pageTitle = $state('');
 
   return {
@@ -24,6 +25,7 @@ function createLensStore() {
     get canGoBack() { return canGoBack; },
     get canGoForward() { return canGoForward; },
     get webviewReady() { return webviewReady; },
+    get hidden() { return hidden; },
     get pageTitle() { return pageTitle; },
 
     setUrl(newUrl) { url = newUrl; },
@@ -32,6 +34,7 @@ function createLensStore() {
     setCanGoBack(val) { canGoBack = val; },
     setCanGoForward(val) { canGoForward = val; },
     setWebviewReady(val) { webviewReady = val; },
+    setHidden(val) { hidden = val; },
     setPageTitle(title) { pageTitle = title; },
 
     async navigate(rawUrl) {
@@ -76,6 +79,7 @@ function createLensStore() {
       canGoBack = false;
       canGoForward = false;
       webviewReady = false;
+      hidden = false;
       pageTitle = '';
     },
   };
