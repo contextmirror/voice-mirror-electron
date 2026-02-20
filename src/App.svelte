@@ -37,10 +37,12 @@
       if (collapsed !== undefined) {
         navigationStore.initSidebarState(collapsed);
       }
-      // Restore overlay (orb) mode if user was in compact mode last session
+      // Restore overlay (orb) mode if user was in compact mode last session.
+      // After restore, reveal the UI (body starts opacity:0 to prevent flash).
       if (!overlayRestored) {
         overlayRestored = true;
         overlayStore.restoreFromConfig(configStore.value);
+        document.body.classList.add('app-ready');
       }
     }
   });

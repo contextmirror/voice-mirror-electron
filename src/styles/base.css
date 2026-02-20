@@ -23,6 +23,14 @@ body {
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Hidden until frontend determines mode (dashboard vs orb).
+     Prevents brief flash of wrong layout on startup.
+     Removed by App.svelte after restoreFromConfig runs. */
+  opacity: 0;
+}
+
+body.app-ready {
+  opacity: 1;
 }
 
 #app {
