@@ -178,17 +178,45 @@ describe('voice: transcription routing to AI', () => {
     );
   });
 
-  it('uses aiPtyInput for API providers', () => {
+  it('uses aiPtyInput with imagePath for API providers', () => {
     assert.ok(
-      src.includes('aiPtyInput(text)'),
-      'Should call aiPtyInput for API providers'
+      src.includes('aiPtyInput(text, imagePath)'),
+      'Should call aiPtyInput with imagePath for API providers'
     );
   });
 
-  it('uses writeUserMessage for CLI providers', () => {
+  it('uses writeUserMessage with imagePath for CLI providers', () => {
     assert.ok(
-      src.includes('writeUserMessage(text)'),
-      'Should call writeUserMessage for CLI/MCP providers'
+      src.includes('writeUserMessage(text, null, null, imagePath)'),
+      'Should call writeUserMessage with imagePath for CLI/MCP providers'
+    );
+  });
+
+  it('imports attachmentsStore for pending attachments', () => {
+    assert.ok(
+      src.includes("import { attachmentsStore } from './attachments.svelte.js'"),
+      'Should import attachmentsStore'
+    );
+  });
+
+  it('takes pending attachments via attachmentsStore.take()', () => {
+    assert.ok(
+      src.includes('attachmentsStore.take()'),
+      'Should take pending attachments from shared store'
+    );
+  });
+
+  it('includes attachments in chat message metadata', () => {
+    assert.ok(
+      src.includes('meta.attachments = attachments'),
+      'Should include attachments in message metadata'
+    );
+  });
+
+  it('extracts imagePath from first attachment', () => {
+    assert.ok(
+      src.includes('attachments[0].path'),
+      'Should extract imagePath from first attachment'
     );
   });
 });

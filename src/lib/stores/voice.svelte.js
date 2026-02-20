@@ -9,6 +9,7 @@ import { startVoice, stopVoice, getVoiceStatus, speakText, setVoiceMode, aiPtyIn
 import { configStore } from './config.svelte.js';
 import { chatStore } from './chat.svelte.js';
 import { aiStatusStore } from './ai-status.svelte.js';
+import { attachmentsStore } from './attachments.svelte.js';
 
 function createVoiceStore() {
   let state = $state('idle');           // idle | listening | recording | processing | speaking
@@ -112,16 +113,26 @@ export const voiceStore = createVoiceStore();
  * Adds the text as a user chat message and sends it via the appropriate channel.
  */
 function routeTranscriptionToAI(text) {
-  // Add as user message in chat
-  chatStore.addMessage('user', text, { source: 'voice' });
+  // Take any pending attachments (screenshot thumbnails queued from the picker)
+  const attachments = attachmentsStore.take();
+  const meta = { source: 'voice' };
+  if (attachments.length > 0) {
+    meta.attachments = attachments;
+  }
+
+  // Add as user message in chat (with attachments if any)
+  chatStore.addMessage('user', text, meta);
+
+  // Extract image path for the AI provider
+  const imagePath = attachments.length > 0 ? attachments[0].path : null;
 
   // Route to appropriate provider
   if (aiStatusStore.isApiProvider) {
-    aiPtyInput(text).catch((err) => {
+    aiPtyInput(text, imagePath).catch((err) => {
       console.warn('[voice] Failed to send transcription to API provider:', err);
     });
   } else {
-    writeUserMessage(text).catch((err) => {
+    writeUserMessage(text, null, null, imagePath).catch((err) => {
       console.warn('[voice] Failed to send transcription to MCP inbox:', err);
     });
   }

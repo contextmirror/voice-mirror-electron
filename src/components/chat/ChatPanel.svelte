@@ -8,6 +8,7 @@
    */
   import { chatStore } from '../../lib/stores/chat.svelte.js';
   import { voiceStore } from '../../lib/stores/voice.svelte.js';
+  import { attachmentsStore } from '../../lib/stores/attachments.svelte.js';
   import { exportChatToFile } from '../../lib/api.js';
   import { save } from '@tauri-apps/plugin-dialog';
   import MessageGroup from './MessageGroup.svelte';
@@ -23,7 +24,7 @@
   let saveFlash = $state(false);
   let showScreenshotPicker = $state(false);
 
-  let pendingAttachments = $state([]);
+  let pendingAttachments = $derived(attachmentsStore.pending);
   let scrollContainer = $state(null);
 
   /** Distance from bottom (in px) within which we auto-scroll */
@@ -126,17 +127,17 @@
   /** Called when a screenshot is captured from the picker. */
   function handleScreenshotCapture(path, dataUrl) {
     showScreenshotPicker = false;
-    pendingAttachments = [...pendingAttachments, { path, dataUrl, type: 'image/png', name: 'Screenshot' }];
+    attachmentsStore.add({ path, dataUrl, type: 'image/png', name: 'Screenshot' });
   }
 
   /** Remove an attachment by index from the pending list. */
   function handleRemoveAttachment(index) {
-    pendingAttachments = pendingAttachments.filter((_, i) => i !== index);
+    attachmentsStore.remove(index);
   }
 
   /** Clear all pending attachments. */
   function handleClearAttachments() {
-    pendingAttachments = [];
+    attachmentsStore.clear();
   }
 
   /** Called when the screenshot picker is closed without capturing. */

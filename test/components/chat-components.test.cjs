@@ -290,12 +290,15 @@ describe('ChatPanel.svelte', () => {
     assert.ok(src.includes('<ScreenshotPicker'), 'Should render ScreenshotPicker component');
   });
 
-  it('has pendingAttachments state for screenshot attachments', () => {
-    assert.ok(src.includes('pendingAttachments'), 'Should have pendingAttachments state');
+  it('imports attachmentsStore for shared attachment state', () => {
+    assert.ok(src.includes("import { attachmentsStore } from '../../lib/stores/attachments.svelte.js'"), 'Should import attachmentsStore');
   });
 
-  it('handleScreenshotCapture adds to pendingAttachments (not chat store)', () => {
-    // Should NOT add system message — should add to pending attachments instead
+  it('derives pendingAttachments from attachmentsStore', () => {
+    assert.ok(src.includes('attachmentsStore.pending'), 'Should derive from attachmentsStore.pending');
+  });
+
+  it('handleScreenshotCapture uses attachmentsStore.add (not chat store)', () => {
     const captureBlock = src.slice(src.indexOf('function handleScreenshotCapture'));
     const captureEnd = captureBlock.indexOf('}');
     const captureBody = captureBlock.slice(0, captureEnd);
@@ -304,17 +307,17 @@ describe('ChatPanel.svelte', () => {
       'handleScreenshotCapture should NOT add system message to chatStore'
     );
     assert.ok(
-      captureBody.includes('pendingAttachments'),
-      'handleScreenshotCapture should update pendingAttachments'
+      captureBody.includes('attachmentsStore.add'),
+      'handleScreenshotCapture should add to attachmentsStore'
     );
   });
 
-  it('has handleRemoveAttachment function', () => {
-    assert.ok(src.includes('handleRemoveAttachment'), 'Should have handleRemoveAttachment');
+  it('handleRemoveAttachment calls attachmentsStore.remove', () => {
+    assert.ok(src.includes('attachmentsStore.remove'), 'Should call attachmentsStore.remove');
   });
 
-  it('has handleClearAttachments function', () => {
-    assert.ok(src.includes('handleClearAttachments'), 'Should have handleClearAttachments');
+  it('handleClearAttachments calls attachmentsStore.clear', () => {
+    assert.ok(src.includes('attachmentsStore.clear'), 'Should call attachmentsStore.clear');
   });
 
   it('passes attachment props to ChatInput', () => {
