@@ -87,6 +87,19 @@ pub trait Provider: Send {
 
     /// Interrupt the current operation (Ctrl+C for PTY, abort for API).
     fn interrupt(&mut self);
+
+    /// Send the voice listen loop command.
+    ///
+    /// Default: sends the voice loop prompt via `send_input`.
+    /// CLI providers may override this to handle provider-specific setup
+    /// (e.g., OpenCode needs `/new` first to refresh MCP tools).
+    fn send_voice_loop(&mut self, sender_name: &str) {
+        let prompt = format!(
+            "Use voice_listen to wait for voice input from {}, then reply with voice_send. Loop forever.\n",
+            sender_name
+        );
+        self.send_input(&prompt);
+    }
 }
 
 /// Create a provider instance based on the provider type.

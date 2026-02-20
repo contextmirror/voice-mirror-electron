@@ -3,10 +3,14 @@
 //! Uses `portable-pty` to create a pseudo-terminal and spawn CLI-based AI tools
 //! (Claude Code, OpenCode, Codex, Gemini CLI, Kimi CLI).
 //!
-//! For Claude Code specifically, this module also:
-//! - Writes MCP server configuration so Claude has access to Voice Mirror tools
-//! - Passes `--append-system-prompt` with voice workflow instructions
+//! For MCP-capable providers (Claude Code, OpenCode), this module also:
+//! - Writes MCP server configuration so the provider has access to Voice Mirror tools
+//!   (Claude Code: `~/.claude/settings.json`, OpenCode: `~/.config/opencode/opencode.json`)
 //! - Injects the voice listen loop command after ready detection
+//!
+//! Additionally, for Claude Code only:
+//! - Passes `--append-system-prompt` with voice workflow instructions
+//! - Configures claude-pulse status line
 //!
 //! Ready detection works by scanning PTY output for configurable patterns,
 //! then firing queued "send when ready" callbacks.
@@ -245,12 +249,13 @@ fn find_project_root() -> Option<PathBuf> {
     None
 }
 
-/// Write MCP server configuration so Claude Code can discover
-/// the Voice Mirror MCP server and its tools.
+/// Write MCP server configuration for CLI providers that support MCP.
 ///
-/// Merges the `voice-mirror` entry into `~/.claude/settings.json`
-/// (the file Claude Code actually reads for user-level MCP servers),
-/// and also writes `{project_root}/.mcp.json` as a project-level fallback.
+/// For **Claude Code**: merges into `~/.claude/settings.json` and writes
+/// `{project_root}/.mcp.json` as a project-level fallback.
+///
+/// For **OpenCode**: merges into `~/.config/opencode/opencode.json` using
+/// OpenCode's `mcp` config format (type: "local", command array, environment).
 ///
 /// The `enabled_groups` parameter comes from the user's configured tool profile.
 fn write_mcp_config(project_root: &std::path::Path, enabled_groups: &str) -> Result<(), String> {
@@ -326,6 +331,84 @@ fn write_mcp_config(project_root: &std::path::Path, enabled_groups: &str) -> Res
             Err(e) => warn!("Failed to write {}: {}", project_mcp_path.display(), e),
         },
         Err(e) => warn!("Failed to serialize .mcp.json: {}", e),
+    }
+
+    // --- 3. Merge into OpenCode config (~/.config/opencode/opencode.json) ---
+    //
+    // OpenCode (anomalyco/opencode) uses xdg-basedir which resolves to
+    // `$HOME/.config/opencode/` on ALL platforms (including Windows).
+    // This is NOT the same as `dirs::config_dir()` on Windows (AppData\Roaming).
+    //
+    // MCP format (schema is strict — no extra properties allowed):
+    //   { "mcp": { "voice-mirror": { "type": "local", "command": ["path"], "environment": {...} } } }
+    //
+    // We merge non-destructively — only the voice-mirror key is touched.
+    if let Some(home) = dirs::home_dir() {
+        let opencode_dir = home.join(".config").join("opencode");
+        if !opencode_dir.exists() {
+            let _ = std::fs::create_dir_all(&opencode_dir);
+        }
+
+        // OpenCode checks opencode.jsonc, opencode.json, config.json (in that order).
+        // We read from existing opencode.json or opencode.jsonc, write to opencode.json.
+        let opencode_config_path = opencode_dir.join("opencode.json");
+        let existing_path = if opencode_config_path.exists() {
+            Some(opencode_config_path.clone())
+        } else {
+            let jsonc_path = opencode_dir.join("opencode.jsonc");
+            let config_path = opencode_dir.join("config.json");
+            if jsonc_path.exists() {
+                Some(jsonc_path)
+            } else if config_path.exists() {
+                Some(config_path)
+            } else {
+                None
+            }
+        };
+
+        // Read existing OpenCode config (or start fresh)
+        let mut oc_config: serde_json::Value = if let Some(ref path) = existing_path {
+            let raw = std::fs::read_to_string(path)
+                .unwrap_or_else(|_| "{}".to_string());
+            // Strip JSONC line comments (// ...) for basic compatibility
+            let stripped: String = raw.lines()
+                .map(|line| {
+                    if let Some(idx) = line.find("//") {
+                        // Only strip if // is outside a string (simple heuristic: before any quote)
+                        let before = &line[..idx];
+                        if before.chars().filter(|&c| c == '"').count() % 2 == 0 {
+                            return before;
+                        }
+                    }
+                    line
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            serde_json::from_str(&stripped).unwrap_or(serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
+
+        // Build OpenCode-format MCP entry (strict schema: only type, command, environment)
+        let oc_voice_mirror = serde_json::json!({
+            "type": "local",
+            "command": [binary_path_str],
+            "environment": env_vars
+        });
+
+        // Ensure mcp object exists, then upsert voice-mirror
+        if !oc_config["mcp"].is_object() {
+            oc_config["mcp"] = serde_json::json!({});
+        }
+        oc_config["mcp"]["voice-mirror"] = oc_voice_mirror;
+
+        match serde_json::to_string_pretty(&oc_config) {
+            Ok(s) => match std::fs::write(&opencode_config_path, &s) {
+                Ok(()) => info!("Merged MCP config into {}", opencode_config_path.display()),
+                Err(e) => warn!("Failed to write {}: {}", opencode_config_path.display(), e),
+            },
+            Err(e) => warn!("Failed to serialize opencode.json: {}", e),
+        }
     }
 
     Ok(())
@@ -646,11 +729,13 @@ impl Provider for CliProvider {
             .or_else(|| project_root.clone())
             .or_else(dirs::home_dir);
 
-        // Claude-specific setup: MCP config + system prompt + voice loop
+        // MCP-capable providers: Claude Code and OpenCode both support MCP tools
         let is_claude = self.provider_type_id == "claude";
+        let is_opencode = self.provider_type_id == "opencode";
+        let supports_mcp = is_claude || is_opencode;
         let mut dynamic_args: Vec<String> = Vec::new();
 
-        if is_claude {
+        if supports_mcp {
             // Read config for user name and tool profile
             let config = crate::commands::config::get_config_snapshot();
             let user_name = config.user.name
@@ -669,23 +754,29 @@ impl Provider for CliProvider {
                 }
             };
 
-            // Write MCP config files + configure claude-pulse status line
+            // Write MCP config files for all supported providers
             if let Some(ref root) = project_root {
                 if let Err(e) = write_mcp_config(root, &enabled_groups) {
                     warn!("Failed to write MCP config: {}", e);
                 }
-                configure_status_line(root);
+                // Claude-only: configure status line (claude-pulse)
+                if is_claude {
+                    configure_status_line(root);
+                }
             } else {
                 warn!(
-                    "No project root found — MCP tools will NOT be available to Claude. \
-                     Set VOICE_MIRROR_ROOT env var to the project directory."
+                    "No project root found — MCP tools will NOT be available to {}. \
+                     Set VOICE_MIRROR_ROOT env var to the project directory.",
+                    self.cli_config.display_name
                 );
             }
 
-            // Build and add system prompt
-            let instructions = build_claude_instructions(user_name);
-            dynamic_args.push("--append-system-prompt".to_string());
-            dynamic_args.push(instructions);
+            // Claude-only: append system prompt with voice mode instructions
+            if is_claude {
+                let instructions = build_claude_instructions(user_name);
+                dynamic_args.push("--append-system-prompt".to_string());
+                dynamic_args.push(instructions);
+            }
 
             // Queue voice loop command — injected after the TUI signals ready.
             // The voice pipeline auto-starts in App.svelte, so voice_listen
@@ -728,7 +819,7 @@ impl Provider for CliProvider {
         // Set environment variables for proper terminal rendering
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
-        if is_claude {
+        if supports_mcp {
             cmd.env("VOICE_MIRROR_SESSION", "true");
         }
 
@@ -973,5 +1064,51 @@ impl Provider for CliProvider {
     fn interrupt(&mut self) {
         // Send Ctrl+C to the PTY
         self.send_raw_input(b"\x03");
+    }
+
+    fn send_voice_loop(&mut self, sender_name: &str) {
+        let prompt = format!(
+            "Use voice_listen to wait for voice input from {}, then reply with voice_send. Loop forever.\n",
+            sender_name
+        );
+
+        if self.provider_type_id == "opencode" {
+            // OpenCode: send /new first to create a fresh session.
+            // After model switches, MCP tools can become unavailable in the
+            // current session. A new session forces tool re-discovery.
+            if let Some(ref writer) = self.pty_writer {
+                let writer = writer.clone();
+                let voice_prompt = prompt.trim_end_matches(['\r', '\n']).to_string();
+                std::thread::spawn(move || {
+                    // Step 1: Send /new to create fresh session
+                    if let Ok(mut w) = writer.lock() {
+                        let _ = w.write_all(b"/new");
+                        let _ = w.flush();
+                    }
+                    std::thread::sleep(Duration::from_millis(200));
+                    if let Ok(mut w) = writer.lock() {
+                        let _ = w.write_all(b"\r");
+                        let _ = w.flush();
+                    }
+
+                    // Step 2: Wait for new session to initialize + MCP tools to re-list
+                    std::thread::sleep(Duration::from_millis(2000));
+
+                    // Step 3: Send the voice loop command
+                    if let Ok(mut w) = writer.lock() {
+                        let _ = w.write_all(voice_prompt.as_bytes());
+                        let _ = w.flush();
+                    }
+                    std::thread::sleep(Duration::from_millis(200));
+                    if let Ok(mut w) = writer.lock() {
+                        let _ = w.write_all(b"\r");
+                        let _ = w.flush();
+                    }
+                });
+            }
+        } else {
+            // All other providers: just send the voice loop command
+            self.send_input(&prompt);
+        }
     }
 }

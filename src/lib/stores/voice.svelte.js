@@ -177,7 +177,7 @@ export async function initVoiceListeners() {
       }
     }
 
-    if (payload.kind === 'claude_message') {
+    if (payload.kind === 'ai_message') {
       // AI response — add to chat and speak it
       chatStore.addMessage('assistant', payload.text, {
         from: payload.from,

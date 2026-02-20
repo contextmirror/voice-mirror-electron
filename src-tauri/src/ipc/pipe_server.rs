@@ -13,7 +13,7 @@ use tauri::{AppHandle, Emitter};
 use tracing::{error, info, warn};
 
 use super::protocol::{self, AppToMcp, McpToApp};
-use crate::services::inbox_watcher::{classify_sender_pub, InboxEvent};
+use crate::services::inbox_watcher::InboxEvent;
 
 // ---------------------------------------------------------------------------
 // Pipe name generation
@@ -188,9 +188,11 @@ fn dispatch_message(msg: McpToApp, app_handle: &AppHandle) {
             message_id,
             timestamp,
         } => {
-            let kind = classify_sender_pub(&from);
+            // voice_send is always called by an AI provider, never a user.
+            // Use "ai_message" regardless of instance_id so all providers
+            // (Claude Code, OpenCode, etc.) trigger TTS + chat card.
             let event = InboxEvent {
-                kind: kind.to_string(),
+                kind: "ai_message".to_string(),
                 text: message,
                 from,
                 id: message_id,

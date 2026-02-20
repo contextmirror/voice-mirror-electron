@@ -218,16 +218,13 @@ impl AiManager {
 
     /// Send the voice listen loop command to CLI agents.
     ///
-    /// For CLI providers that support MCP, this sends a prompt instructing
-    /// the agent to listen for voice input and respond in a loop.
+    /// Delegates to the provider's `send_voice_loop` implementation,
+    /// which handles provider-specific setup (e.g., OpenCode sends `/new`
+    /// first to refresh MCP tools after model switches).
     pub fn send_voice_loop(&mut self, sender_name: &str) {
         if let Some(ref mut provider) = self.provider {
             if provider.is_running() && is_cli_provider(provider.provider_type()) {
-                let prompt = format!(
-                    "Use voice_listen to wait for voice input from {}, then reply with voice_send. Loop forever.\n",
-                    sender_name
-                );
-                provider.send_input(&prompt);
+                provider.send_voice_loop(sender_name);
             }
         }
     }

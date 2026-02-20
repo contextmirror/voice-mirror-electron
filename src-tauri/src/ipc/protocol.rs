@@ -135,7 +135,7 @@ mod tests {
     fn test_app_to_mcp_roundtrip() {
         let msg = AppToMcp::UserMessage {
             id: "u-1".into(),
-            from: "Nathan".into(),
+            from: "user".into(),
             message: "Hi there".into(),
             thread_id: None,
             timestamp: "2025-01-01T00:00:00.000Z".into(),
@@ -144,7 +144,7 @@ mod tests {
         let parsed: AppToMcp = serde_json::from_str(&json).unwrap();
         match parsed {
             AppToMcp::UserMessage { from, message, .. } => {
-                assert_eq!(from, "Nathan");
+                assert_eq!(from, "user");
                 assert_eq!(message, "Hi there");
             }
             _ => panic!("wrong variant"),

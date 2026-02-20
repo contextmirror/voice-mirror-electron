@@ -45,7 +45,7 @@ pub struct InboxMessage {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InboxEvent {
-    /// Message type: "claude_message", "user_message", "status_update"
+    /// Message type: "ai_message", "user_message", "status_update"
     pub kind: String,
     /// The message text
     pub text: String,
@@ -149,16 +149,15 @@ fn read_inbox(path: &std::path::Path) -> Option<InboxData> {
     }
 }
 
-/// Classify a message sender (public wrapper for use by pipe_server).
-pub fn classify_sender_pub(from: &str) -> &'static str {
-    classify_sender(from)
-}
-
-/// Classify a message sender.
+/// Classify a message sender as AI or user.
+///
+/// Messages from AI providers (voice_send) use instance IDs like
+/// "voice-claude", "voice-mirror", "voice-opencode", etc.
+/// Messages from users use their configured name (e.g. "some-user").
 fn classify_sender(from: &str) -> &'static str {
     let lower = from.to_lowercase();
-    if lower.contains("claude") || lower == "voice-claude" {
-        "claude_message"
+    if lower.starts_with("voice-") || lower.contains("claude") {
+        "ai_message"
     } else {
         "user_message"
     }
@@ -444,10 +443,15 @@ mod tests {
 
     #[test]
     fn test_classify_sender() {
-        assert_eq!(classify_sender("voice-claude"), "claude_message");
-        assert_eq!(classify_sender("Claude"), "claude_message");
+        // AI instance IDs (voice-* prefix or contains "claude")
+        assert_eq!(classify_sender("voice-claude"), "ai_message");
+        assert_eq!(classify_sender("voice-mirror"), "ai_message");
+        assert_eq!(classify_sender("voice-opencode"), "ai_message");
+        assert_eq!(classify_sender("Claude"), "ai_message");
+        // User names (from config) — any string without voice-* prefix
         assert_eq!(classify_sender("user"), "user_message");
-        assert_eq!(classify_sender("georg"), "user_message");
+        assert_eq!(classify_sender("jane"), "user_message");
+        assert_eq!(classify_sender("my-name"), "user_message");
     }
 
     #[test]
