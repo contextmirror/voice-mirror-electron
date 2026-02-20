@@ -261,11 +261,10 @@
    * so the agent picks it up via voice_listen.
    */
   function handleChatSend(text) {
-    // In dictation-only mode, inject typed text into the focused app
+    // In dictation-only mode, there's no AI to route to.
+    // The message is already added to the chat store by ChatInput.
+    // (Voice transcriptions are injected via injectText in voice.svelte.js)
     if (aiStatusStore.isDictationProvider) {
-      injectText(text).catch((err) => {
-        console.warn('[chat] Failed to inject text:', err);
-      });
       return;
     }
 
