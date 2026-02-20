@@ -457,6 +457,7 @@ public class WinAPI {{
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
     [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
@@ -469,10 +470,12 @@ $results = [System.Collections.ArrayList]::new()
 $cb = {{
     param($hWnd, $lParam)
     if (-not [WinAPI]::IsWindowVisible($hWnd)) {{ return $true }}
+    if ([WinAPI]::IsIconic($hWnd)) {{ return $true }}
     $sb = New-Object System.Text.StringBuilder 256
     [void][WinAPI]::GetWindowText($hWnd, $sb, 256)
     $title = $sb.ToString()
     if ([string]::IsNullOrWhiteSpace($title)) {{ return $true }}
+    if ($title -eq 'Voice Mirror') {{ return $true }}
     $cloaked = 0
     [void][WinAPI]::DwmGetWindowAttribute($hWnd, 14, [ref]$cloaked, 4)
     if ($cloaked -ne 0) {{ return $true }}
