@@ -171,14 +171,14 @@ export const PRESETS = {
   gray: {
     name: 'Claude Gray',
     colors: {
-      bg: '#191919', bgElevated: '#232323',
-      text: '#d4cfc7', textStrong: '#f5f0e8', muted: '#8a8580',
-      accent: '#d4873e',
+      bg: '#292724', bgElevated: '#353330',
+      text: '#cecaba', textStrong: '#ece8df', muted: '#8b8579',
+      accent: '#c96442',
       ok: '#6bba6b', warn: '#e0a832', danger: '#d45b5b',
       orbCore: '#3d2e1f',
     },
     fonts: {
-      fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
+      fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
       fontMono: "'Cascadia Code', 'Fira Code', monospace",
     },
   },
