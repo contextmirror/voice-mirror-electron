@@ -11,12 +11,17 @@ import { chatStore } from './chat.svelte.js';
 import { aiStatusStore } from './ai-status.svelte.js';
 import { attachmentsStore } from './attachments.svelte.js';
 
+/** Dedup window (ms) — ignore duplicate transcription text within this period. */
+const TRANSCRIPTION_DEDUP_MS = 3000;
+
 function createVoiceStore() {
   let state = $state('idle');           // idle | listening | recording | processing | speaking
   let running = $state(false);
   let lastTranscription = $state('');
   let error = $state(null);
   let isDictating = $state(false);     // true when recording for dictation (not AI)
+  let lastRoutedText = '';
+  let lastRoutedTime = 0;
 
   return {
     get state() { return state; },
@@ -59,6 +64,16 @@ function createVoiceStore() {
         case 'transcription':
           if (data.text) {
             lastTranscription = data.text;
+
+            // Dedup: the voice pipeline can fire multiple transcription events
+            // for the same audio segment. Skip if same text within the dedup window.
+            const now = Date.now();
+            if (data.text === lastRoutedText && (now - lastRoutedTime) < TRANSCRIPTION_DEDUP_MS) {
+              break;
+            }
+            lastRoutedText = data.text;
+            lastRoutedTime = now;
+
             if (isDictating || aiStatusStore.isDictationProvider) {
               if (isDictating) isDictating = false;
               injectText(data.text).catch((err) => {

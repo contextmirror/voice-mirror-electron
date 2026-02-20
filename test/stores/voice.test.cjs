@@ -221,6 +221,33 @@ describe('voice: transcription routing to AI', () => {
   });
 });
 
+// ============ Transcription deduplication ============
+
+describe('voice: transcription deduplication', () => {
+  it('defines TRANSCRIPTION_DEDUP_MS constant', () => {
+    assert.ok(src.includes('TRANSCRIPTION_DEDUP_MS'), 'Should define dedup window constant');
+  });
+
+  it('tracks lastRoutedText for dedup comparison', () => {
+    assert.ok(src.includes('lastRoutedText'), 'Should track last routed text');
+  });
+
+  it('tracks lastRoutedTime for dedup window', () => {
+    assert.ok(src.includes('lastRoutedTime'), 'Should track last routed timestamp');
+  });
+
+  it('skips duplicate transcription within dedup window', () => {
+    assert.ok(
+      src.includes('data.text === lastRoutedText'),
+      'Should compare against last routed text'
+    );
+    assert.ok(
+      src.includes('lastRoutedTime) < TRANSCRIPTION_DEDUP_MS'),
+      'Should check time window for dedup'
+    );
+  });
+});
+
 // ============ Message deduplication ============
 
 describe('voice: message deduplication', () => {
