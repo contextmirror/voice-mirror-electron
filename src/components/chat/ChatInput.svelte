@@ -9,8 +9,11 @@
 
   let {
     onSend = () => {},
+    onClear = () => {},
+    onSave = () => {},
     isRecording = false,
     disabled = false,
+    saveFlash = false,
   } = $props();
 
   let text = $state('');
@@ -64,6 +67,7 @@
   }
 
   const sendDisabled = $derived(disabled || text.trim().length === 0);
+  const hasMessages = $derived(chatStore.messages.length > 0);
 </script>
 
 <div class="chat-input-bar" class:recording={isRecording}>
@@ -97,6 +101,45 @@
         <line x1="22" y1="2" x2="11" y2="13"/>
         <polygon points="22 2 15 22 11 13 2 9 22 2"/>
       </svg>
+    </button>
+  </div>
+
+  <div class="toolbar-row" class:hidden-input={isRecording}>
+    <button
+      class="toolbar-btn"
+      onclick={onClear}
+      disabled={!hasMessages}
+      title="Clear chat"
+      aria-label="Clear chat"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12">
+        <path d="M3 6h18"/>
+        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+      </svg>
+      Clear
+    </button>
+    <button
+      class="toolbar-btn"
+      class:saved={saveFlash}
+      onclick={onSave}
+      disabled={!hasMessages}
+      title="Save chat"
+      aria-label="Save chat"
+    >
+      {#if saveFlash}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        Saved
+      {:else}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/>
+          <polyline points="7 3 7 8 15 8"/>
+        </svg>
+        Save
+      {/if}
     </button>
   </div>
 </div>
@@ -185,6 +228,44 @@
     cursor: not-allowed;
   }
 
+  /* Toolbar row (Clear, Save) */
+  .toolbar-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding-top: 4px;
+  }
+
+  .toolbar-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--font-family);
+    font-size: 11px;
+    cursor: pointer;
+    transition: color var(--duration-fast) var(--ease-out),
+                background var(--duration-fast) var(--ease-out);
+  }
+
+  .toolbar-btn:hover:not(:disabled) {
+    color: var(--text);
+    background: var(--bg-hover);
+  }
+
+  .toolbar-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .toolbar-btn.saved {
+    color: var(--ok);
+  }
+
   /* Recording indicator */
   .recording-indicator {
     display: flex;
@@ -225,6 +306,10 @@
 
     .send-btn:active:not(:disabled) {
       transform: none;
+    }
+
+    .toolbar-btn {
+      transition: none;
     }
   }
 </style>
