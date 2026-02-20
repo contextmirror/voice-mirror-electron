@@ -287,24 +287,49 @@ pub fn run() {
                 }
             }
 
-            // Restore saved window size from config on startup.
+            // Restore saved window size and position from config on startup.
             // The tauri.conf.json uses a default size; this overrides it with the
             // user's last-used size so the window reopens where they left it.
             if let Some(window) = app.get_webview_window("main") {
                 let cfg = commands::config::get_config_snapshot();
                 let pw = cfg.appearance.panel_width;
                 let ph = cfg.appearance.panel_height;
-                // Only restore if saved size differs from defaults and looks valid
+
+                // Always restore size if it looks valid
                 if pw >= 300 && ph >= 300 {
                     let size = tauri::PhysicalSize::new(pw, ph);
                     let _ = window.set_size(tauri::Size::Physical(size));
                     info!("Restored window size: {}x{}", pw, ph);
                 }
-                // Restore saved position if available
+
+                // Restore position only if it fits within a single monitor.
+                // If it would span across screens or be off-screen, center instead.
                 if let (Some(x), Some(y)) = (cfg.window.orb_x, cfg.window.orb_y) {
-                    let pos = tauri::PhysicalPosition::new(x as i32, y as i32);
-                    let _ = window.set_position(tauri::Position::Physical(pos));
-                    info!("Restored window position: ({}, {})", x, y);
+                    let win_w = if pw >= 300 { pw } else { 900 };
+                    let win_h = if ph >= 300 { ph } else { 800 };
+                    let ix = x as i32;
+                    let iy = y as i32;
+
+                    let fits = window.available_monitors().unwrap_or_default().iter().any(|m| {
+                        let mp = m.position();
+                        let ms = m.size();
+                        let mx = mp.x;
+                        let my = mp.y;
+                        let mw = ms.width as i32;
+                        let mh = ms.height as i32;
+                        ix >= mx && iy >= my
+                            && ix + win_w as i32 <= mx + mw
+                            && iy + win_h as i32 <= my + mh
+                    });
+
+                    if fits {
+                        let pos = tauri::PhysicalPosition::new(ix, iy);
+                        let _ = window.set_position(tauri::Position::Physical(pos));
+                        info!("Restored window position: ({}, {})", x, y);
+                    } else {
+                        let _ = window.center();
+                        info!("Saved position ({},{}) doesn't fit any monitor, centering", x, y);
+                    }
                 }
             }
 
