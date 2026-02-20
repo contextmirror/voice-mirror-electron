@@ -111,6 +111,18 @@ function createOverlayStore() {
     },
 
     /**
+     * Restore overlay mode from saved config on startup.
+     * If the config says the user was in compact/orb mode, switch to it.
+     */
+    async restoreFromConfig(cfg) {
+      const wasExpanded = cfg?.window?.expanded;
+      // expanded=false (or undefined) means orb mode; expanded=true means dashboard
+      if (wasExpanded === false && !isOverlayMode) {
+        await this.toggleOverlay(); // enter compact orb mode
+      }
+    },
+
+    /**
      * Enter expanded mode (from overlay). Does nothing if already expanded.
      */
     async expand() {

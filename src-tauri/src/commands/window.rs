@@ -55,11 +55,16 @@ pub fn save_window_bounds(app: AppHandle) -> IpcResponse {
         Err(e) => return IpcResponse::err(format!("Failed to get size: {}", e)),
     };
 
-    // Build a config patch for the window section
+    // Build a config patch: save position + size
+    // Position goes to window.orbX/orbY, size goes to appearance.panelWidth/panelHeight
     let patch = serde_json::json!({
         "window": {
             "orbX": position.x as f64,
             "orbY": position.y as f64,
+        },
+        "appearance": {
+            "panelWidth": size.width,
+            "panelHeight": size.height,
         }
     });
 

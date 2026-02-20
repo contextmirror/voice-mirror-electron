@@ -8,7 +8,8 @@
   import { shortcutsStore, setActionHandler, setReleaseHandler, setupInAppShortcuts } from './lib/stores/shortcuts.svelte.js';
   import { initStartupGreeting } from './lib/voice-greeting.js';
   import { listen } from '@tauri-apps/api/event';
-  import { writeUserMessage, aiPtyInput, pttPress, pttRelease, configurePttKey, configureDictationKey, injectText } from './lib/api.js';
+  import { writeUserMessage, aiPtyInput, pttPress, pttRelease, configurePttKey, configureDictationKey, injectText, saveWindowBounds } from './lib/api.js';
+  import { chatStore } from './lib/stores/chat.svelte.js';
 
   import TitleBar from './components/shared/TitleBar.svelte';
   import Sidebar from './components/sidebar/Sidebar.svelte';
@@ -28,12 +29,18 @@
     return () => overlayStore.destroyEventListeners();
   });
 
-  // Initialize sidebar state from config once loaded
+  // Initialize sidebar state and restore overlay mode from config once loaded
+  let overlayRestored = $state(false);
   $effect(() => {
     if (configStore.loaded) {
       const collapsed = configStore.value?.sidebar?.collapsed;
       if (collapsed !== undefined) {
         navigationStore.initSidebarState(collapsed);
+      }
+      // Restore overlay (orb) mode if user was in compact mode last session
+      if (!overlayRestored) {
+        overlayRestored = true;
+        overlayStore.restoreFromConfig(configStore.value);
       }
     }
   });
@@ -156,9 +163,11 @@
     return cleanup;
   });
 
-  // Clean up global shortcuts on window close
+  // Save state and clean up on window close
   $effect(() => {
     const handleBeforeUnload = () => {
+      // Save window position + size to config
+      saveWindowBounds().catch(() => {});
       shortcutsStore.destroy();
     };
     window.addEventListener('beforeunload', handleBeforeUnload);

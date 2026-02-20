@@ -57,7 +57,7 @@
   $effect(() => {
     const msgCount = chatStore.messages.length;
     const activeId = chatStore.activeChatId;
-    if (!activeId || msgCount === 0) return;
+    if (!activeId) return;
 
     // Only save when message count changes (new message added)
     if (msgCount === lastSavedMessageCount) return;

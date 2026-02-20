@@ -235,8 +235,12 @@ pub struct WindowConfig {
     pub orb_x: Option<f64>,
     #[serde(default)]
     pub orb_y: Option<f64>,
-    #[serde(default)]
+    #[serde(default = "default_expanded")]
     pub expanded: bool,
+}
+
+fn default_expanded() -> bool {
+    true
 }
 
 /// Overlay display settings.
