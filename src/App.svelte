@@ -8,7 +8,7 @@
   import { shortcutsStore, setActionHandler, setReleaseHandler, setupInAppShortcuts } from './lib/stores/shortcuts.svelte.js';
   import { initStartupGreeting } from './lib/voice-greeting.js';
   import { listen } from '@tauri-apps/api/event';
-  import { writeUserMessage, aiPtyInput, pttPress, pttRelease, configurePttKey, configureDictationKey } from './lib/api.js';
+  import { writeUserMessage, aiPtyInput, pttPress, pttRelease, configurePttKey, configureDictationKey, injectText } from './lib/api.js';
 
   import TitleBar from './components/shared/TitleBar.svelte';
   import Sidebar from './components/sidebar/Sidebar.svelte';
@@ -62,6 +62,21 @@
   // ---- Voice activation handlers (shared by keyboard shortcuts + mouse buttons) ----
 
   function handleVoicePress() {
+    // In dictation-only mode, all voice input goes to text injection
+    if (aiStatusStore.isDictationProvider) {
+      const mode = configStore.value?.behavior?.activationMode;
+      if (voiceStore.isRecording) {
+        // Already recording → stop (for toggle mode or repeated press)
+        pttRelease();
+      } else {
+        // Start dictation recording
+        voiceStore.startDictation();
+        overlayStore.setDictatingMode(true);
+        pttPress();
+      }
+      return;
+    }
+
     const mode = configStore.value?.behavior?.activationMode;
     if (mode === 'pushToTalk' || mode === 'wakeWord') {
       // PTT + Wake Word: start recording (backend handles barge-in if TTS is speaking)
@@ -77,6 +92,15 @@
   }
 
   function handleVoiceRelease() {
+    // In dictation-only mode, release stops recording for PTT mode
+    if (aiStatusStore.isDictationProvider) {
+      const mode = configStore.value?.behavior?.activationMode;
+      if (mode === 'pushToTalk' && voiceStore.isRecording) {
+        pttRelease();
+      }
+      return;
+    }
+
     const mode = configStore.value?.behavior?.activationMode;
     if (mode === 'pushToTalk') {
       pttRelease();
@@ -237,6 +261,14 @@
    * so the agent picks it up via voice_listen.
    */
   function handleChatSend(text) {
+    // In dictation-only mode, inject typed text into the focused app
+    if (aiStatusStore.isDictationProvider) {
+      injectText(text).catch((err) => {
+        console.warn('[chat] Failed to inject text:', err);
+      });
+      return;
+    }
+
     if (aiStatusStore.isApiProvider) {
       aiPtyInput(text).catch((err) => {
         console.warn('[chat] Failed to send message to API provider:', err);

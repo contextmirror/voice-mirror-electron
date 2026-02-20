@@ -74,8 +74,9 @@
 
   const isCLI = $derived(CLI_PROVIDERS.includes(provider));
   const isLocal = $derived(LOCAL_PROVIDERS.includes(provider));
-  const showModel = $derived(!isCLI);
-  const showEndpoint = $derived(isLocal);
+  const isDictation = $derived(provider === 'dictation');
+  const showModel = $derived(!isCLI && !isDictation);
+  const showEndpoint = $derived(isLocal && !isDictation);
 
   const providerStatusItems = $derived(
     ['ollama', 'lmstudio', 'jan'].map(type => {
@@ -151,6 +152,11 @@
   function handleProviderChange(newProvider) {
     provider = newProvider;
     providerDropdownOpen = false;
+
+    if (newProvider === 'dictation') {
+      availableModels = [];
+      return;
+    }
 
     // Load saved endpoint for this provider, or fall back to default
     const cfg = configStore.value;
@@ -277,8 +283,10 @@
         systemPrompt: systemPrompt || undefined,
       });
 
-      // 3. Auto-switch view: Terminal for CLI providers, Chat for API providers
-      if (CLI_PROVIDERS.includes(provider)) {
+      // 3. Auto-switch view: Terminal for CLI, Chat for API, stay for dictation
+      if (isDictation) {
+        // Dictation-only: stay on current view
+      } else if (CLI_PROVIDERS.includes(provider)) {
         navigationStore.setView('terminal');
       } else {
         navigationStore.setView('chat');
@@ -336,7 +344,7 @@
                   <div class="provider-group-label">
                     {group.label}
                     {#if group.badge}
-                      <span class="group-badge cli-badge">{group.badge}</span>
+                      <span class="group-badge" class:cli-badge={group.label === 'CLI Agents'} class:voice-badge={group.label === 'Voice Input'}>{group.badge}</span>
                     {/if}
                   </div>
                   {#each group.providers as opt}
@@ -372,6 +380,13 @@
         <div class="info-box cli-warning">
           CLI providers use their own terminal process. Model selection and
           configuration happen inside the CLI tool, not here.
+        </div>
+      {/if}
+
+      {#if isDictation}
+        <div class="info-box dictation-info">
+          Voice-to-text only — speak and text will be typed into the focused
+          application. No AI model needed.
         </div>
       {/if}
 
@@ -422,7 +437,7 @@
         />
       {/if}
 
-      {#if isLocal}
+      {#if isLocal && !isDictation}
         <Select
           label="Context Length"
           value={String(contextLength)}
@@ -434,6 +449,7 @@
   </section>
 
   <!-- Auto-Detection -->
+  {#if !isDictation}
   <section class="settings-section">
     <h3>Detection</h3>
     <div class="settings-group">
@@ -455,9 +471,10 @@
       </div>
     </div>
   </section>
+  {/if}
 
   <!-- Provider Status -->
-  {#if detectedProviders.length > 0}
+  {#if detectedProviders.length > 0 && !isDictation}
     <section class="settings-section">
       <h3>Local LLM Servers</h3>
       <div class="detection-status">
@@ -477,6 +494,7 @@
   {/if}
 
   <!-- System Prompt -->
+  {#if !isDictation}
   <section class="settings-section">
     <h3>System Prompt</h3>
     <div class="settings-group">
@@ -490,9 +508,10 @@
       </div>
     </div>
   </section>
+  {/if}
 
   <!-- API Key (only for cloud providers that require authentication) -->
-  {#if !isCLI && !isLocal}
+  {#if !isCLI && !isLocal && !isDictation}
     <section class="settings-section">
       <h3>API Key</h3>
       <div class="settings-group">
@@ -553,6 +572,11 @@
   .cli-warning {
     background: var(--warn-subtle);
     border-left: 3px solid var(--warn);
+  }
+
+  .dictation-info {
+    background: var(--ok-subtle, rgba(34, 197, 94, 0.1));
+    border-left: 3px solid var(--ok);
   }
 
   .scan-row {
@@ -838,6 +862,11 @@
   .group-badge.cli-badge {
     background: var(--warn-subtle);
     color: var(--warn);
+  }
+
+  .group-badge.voice-badge {
+    background: var(--ok-subtle, rgba(34, 197, 94, 0.1));
+    color: var(--ok);
   }
 
   .provider-option {

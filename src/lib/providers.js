@@ -11,6 +11,7 @@ import ollamaIcon from '../assets/icons/providers/ollama.svg';
 import lmstudioIcon from '../assets/icons/providers/lmstudio.svg';
 import janIcon from '../assets/icons/providers/jan.svg';
 import opencodeIcon from '../assets/icons/providers/opencode.svg';
+import dictationIcon from '../assets/icons/providers/dictation.svg';
 
 // ---- Provider display names ----
 
@@ -20,6 +21,7 @@ export const PROVIDER_NAMES = {
   ollama: 'Ollama',
   lmstudio: 'LM Studio',
   jan: 'Jan',
+  dictation: 'Dictation Only',
 };
 
 // ---- Provider icon metadata ----
@@ -30,6 +32,7 @@ export const PROVIDER_ICONS = {
   ollama: { type: 'inner', src: ollamaIcon, bg: 'linear-gradient(135deg, #f0f0f0, #d0d0d0)' },
   lmstudio: { type: 'inner', src: lmstudioIcon, bg: 'linear-gradient(135deg, #3b82f6, #1d4ed8)' },
   jan: { type: 'inner', src: janIcon, bg: 'linear-gradient(135deg, #a855f7, #7c3aed)' },
+  dictation: { type: 'inner', src: dictationIcon, bg: 'linear-gradient(135deg, #10b981, #059669)' },
 };
 
 // ---- Provider classification ----
@@ -37,6 +40,7 @@ export const PROVIDER_ICONS = {
 export const CLI_PROVIDERS = ['claude', 'opencode'];
 export const LOCAL_PROVIDERS = ['ollama', 'lmstudio', 'jan'];
 export const MCP_PROVIDERS = ['claude', 'opencode'];
+export const DICTATION_PROVIDERS = ['dictation'];
 
 // ---- Default endpoints for local providers ----
 
@@ -64,6 +68,13 @@ export const PROVIDER_GROUPS = [
       { value: 'ollama', label: 'Ollama' },
       { value: 'lmstudio', label: 'LM Studio' },
       { value: 'jan', label: 'Jan' },
+    ],
+  },
+  {
+    label: 'Voice Input',
+    badge: 'No AI',
+    providers: [
+      { value: 'dictation', label: 'Dictation Only' },
     ],
   },
 ];

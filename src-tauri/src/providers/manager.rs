@@ -205,10 +205,12 @@ impl AiManager {
         self.provider.as_ref().map(|p| p.display_name())
     }
 
-    /// Get the mode of the current provider (pty or api).
+    /// Get the mode of the current provider (pty, api, or dictation).
     pub fn mode(&self) -> Option<&str> {
         self.provider.as_ref().map(|p| {
-            if is_cli_provider(p.provider_type()) {
+            if p.provider_type() == "dictation" {
+                "dictation"
+            } else if is_cli_provider(p.provider_type()) {
                 "pty"
             } else {
                 "api"

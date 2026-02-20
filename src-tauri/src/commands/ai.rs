@@ -61,7 +61,7 @@ pub fn start_ai(
     match manager.start(&provider_type, cols, rows, config) {
         Ok(()) => IpcResponse::ok(serde_json::json!({
             "provider": provider_type,
-            "mode": if is_cli_provider(&provider_type) { "pty" } else { "api" },
+            "mode": if provider_type == "dictation" { "dictation" } else if is_cli_provider(&provider_type) { "pty" } else { "api" },
         })),
         Err(e) => IpcResponse::err(e),
     }
@@ -331,7 +331,7 @@ pub fn set_provider(
     match manager.switch(&provider_id, cols, rows, config) {
         Ok(()) => IpcResponse::ok(serde_json::json!({
             "provider": provider_id,
-            "mode": if is_cli_provider(&provider_id) { "pty" } else { "api" },
+            "mode": if provider_id == "dictation" { "dictation" } else if is_cli_provider(&provider_id) { "pty" } else { "api" },
         })),
         Err(e) => IpcResponse::err(e),
     }

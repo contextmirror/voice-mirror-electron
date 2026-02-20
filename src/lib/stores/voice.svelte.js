@@ -58,8 +58,8 @@ function createVoiceStore() {
         case 'transcription':
           if (data.text) {
             lastTranscription = data.text;
-            if (isDictating) {
-              isDictating = false;
+            if (isDictating || aiStatusStore.isDictationProvider) {
+              if (isDictating) isDictating = false;
               injectText(data.text).catch((err) => {
                 console.warn('[voice] Failed to inject dictation text:', err);
               });

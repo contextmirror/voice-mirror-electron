@@ -1,5 +1,6 @@
 pub mod api;
 pub mod cli;
+pub mod dictation;
 pub mod manager;
 pub mod tool_calling;
 
@@ -115,7 +116,9 @@ pub fn create_provider(
     event_tx: tokio::sync::mpsc::UnboundedSender<ProviderEvent>,
     config: ProviderConfig,
 ) -> Box<dyn Provider> {
-    if is_cli_provider(provider_type) {
+    if provider_type == "dictation" {
+        Box::new(dictation::DictationProvider::new(provider_type, event_tx, config))
+    } else if is_cli_provider(provider_type) {
         Box::new(cli::CliProvider::new(provider_type, event_tx, config))
     } else {
         Box::new(api::ApiProvider::new(provider_type, event_tx, config))

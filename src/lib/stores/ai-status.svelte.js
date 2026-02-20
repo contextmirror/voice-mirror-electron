@@ -27,6 +27,7 @@ const PROVIDER_NAMES = {
   jan: 'Jan',
   openai: 'OpenAI',
   groq: 'Groq',
+  dictation: 'Dictation Only',
 };
 
 /** CLI providers that use a PTY terminal (not HTTP API). */
@@ -53,7 +54,10 @@ function createAiStatusStore() {
     get isCliProvider() { return CLI_PROVIDERS.includes(providerType); },
 
     /** Whether the current provider is an API (HTTP) provider. */
-    get isApiProvider() { return !!providerType && !CLI_PROVIDERS.includes(providerType); },
+    get isApiProvider() { return !!providerType && !CLI_PROVIDERS.includes(providerType) && providerType !== 'dictation'; },
+
+    /** Whether the current provider is the dictation-only pseudo-provider. */
+    get isDictationProvider() { return providerType === 'dictation'; },
 
     /** Update status from an event or poll. */
     _setStatus(isRunning, provider, name) {
@@ -100,7 +104,7 @@ export async function startProvider(opts = {}) {
     // system prompt if no custom prompt is configured. CLI providers have
     // their own prompt systems (--append-system-prompt, AGENTS.md, etc.)
     let systemPrompt = opts.systemPrompt || cfg?.ai?.systemPrompt;
-    if (!systemPrompt && isApi) {
+    if (!systemPrompt && isApi && provider !== 'dictation') {
       systemPrompt = buildLocalLlmInstructions({
         userName: cfg?.user?.name || 'User',
         modelName: opts.model || cfg?.ai?.model,
@@ -158,7 +162,7 @@ export async function switchProvider(providerId, opts = {}) {
 
     // Inject local LLM instructions for API providers without a custom prompt
     let systemPrompt = opts.systemPrompt;
-    if (!systemPrompt && isApi) {
+    if (!systemPrompt && isApi && providerId !== 'dictation') {
       systemPrompt = buildLocalLlmInstructions({
         userName: cfg?.user?.name || 'User',
         modelName: opts.model,
