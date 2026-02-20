@@ -8,7 +8,6 @@
    */
   import { chatStore } from '../../lib/stores/chat.svelte.js';
   import { voiceStore } from '../../lib/stores/voice.svelte.js';
-  import { chatSave } from '../../lib/api.js';
   import MessageGroup from './MessageGroup.svelte';
   import ChatInput from './ChatInput.svelte';
 
@@ -18,7 +17,6 @@
   } = $props();
 
   let isRecording = $derived(voiceStore.isRecording);
-  let saveFlash = $state(false);
 
   let scrollContainer = $state(null);
 
@@ -76,37 +74,6 @@
     });
   }
 
-  /** Clear all messages from the current chat. */
-  function handleClear() {
-    chatStore.clearMessages();
-  }
-
-  /** Explicitly save the current chat to disk. */
-  async function handleSave() {
-    const activeId = chatStore.activeChatId;
-    if (!activeId || chatStore.messages.length === 0) return;
-
-    const toSave = {
-      id: activeId,
-      updatedAt: Date.now(),
-      messages: chatStore.messages.map(m => ({
-        id: m.id,
-        role: m.role,
-        content: m.text,
-        timestamp: m.timestamp,
-      })),
-    };
-
-    try {
-      await chatSave(toSave);
-      // Brief visual feedback
-      saveFlash = true;
-      setTimeout(() => { saveFlash = false; }, 1200);
-    } catch (err) {
-      console.error('[ChatPanel] Save failed:', err);
-    }
-  }
-
   // Auto-scroll whenever messages change or streaming updates
   $effect(() => {
     // Track messages length and streaming state to trigger this effect
@@ -147,11 +114,8 @@
 
   <ChatInput
     {onSend}
-    onClear={handleClear}
-    onSave={handleSave}
     {isRecording}
     disabled={inputDisabled}
-    {saveFlash}
   />
 </div>
 
