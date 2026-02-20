@@ -63,35 +63,10 @@
       toolCount: 22,
       alwaysLoaded: false,
     },
-    {
-      id: 'diagnostic',
-      name: 'Diagnostic',
-      description: 'Pipeline tracing and debugging',
-      toolCount: 1,
-      alwaysLoaded: false,
-    },
-    {
-      id: 'memory-facade',
-      name: 'Memory (Lite)',
-      description: 'Single-tool memory for voice mode',
-      toolCount: 1,
-      alwaysLoaded: false,
-    },
-    {
-      id: 'n8n-facade',
-      name: 'n8n (Lite)',
-      description: 'Single-tool n8n for voice mode',
-      toolCount: 1,
-      alwaysLoaded: false,
-    },
-    {
-      id: 'browser-facade',
-      name: 'Browser (Lite)',
-      description: 'Single-tool browser for voice mode',
-      toolCount: 1,
-      alwaysLoaded: false,
-    },
   ];
+
+  // Note: facade groups (memory-facade, n8n-facade, browser-facade) and diagnostic
+  // are internal — selected automatically via tool profiles, not shown in the UI.
 
   // ---- Default profiles ----
 

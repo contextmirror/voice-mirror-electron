@@ -738,13 +738,21 @@ describe('ToolSettings.svelte', () => {
     assert.ok(src.includes("import Select from '../shared/Select.svelte'"), 'Should import Select');
   });
 
-  it('defines TOOL_GROUPS with all groups', () => {
+  it('defines TOOL_GROUPS with user-facing groups only', () => {
     assert.ok(src.includes('const TOOL_GROUPS'), 'Should define TOOL_GROUPS');
     assert.ok(src.includes("id: 'core'"), 'Should have core group');
     assert.ok(src.includes("id: 'meta'"), 'Should have meta group');
     assert.ok(src.includes("id: 'browser'"), 'Should have browser group');
     assert.ok(src.includes("id: 'memory'"), 'Should have memory group');
     assert.ok(src.includes("id: 'n8n'"), 'Should have n8n group');
+  });
+
+  it('excludes internal facade and diagnostic groups from UI', () => {
+    // These are auto-selected by profiles, not shown to users
+    assert.ok(!src.includes("id: 'diagnostic'"), 'Should NOT show diagnostic group');
+    assert.ok(!src.includes("id: 'memory-facade'"), 'Should NOT show memory-facade group');
+    assert.ok(!src.includes("id: 'n8n-facade'"), 'Should NOT show n8n-facade group');
+    assert.ok(!src.includes("id: 'browser-facade'"), 'Should NOT show browser-facade group');
   });
 
   it('defines DEFAULT_PROFILES', () => {
