@@ -26,6 +26,7 @@
   let lastPtyCols = $state(0);
   let lastPtyRows = $state(0);
   let initialized = $state(false);
+  let pendingEvents = [];
 
   // ---- CSS token -> ghostty-web theme mapping ----
 
@@ -142,6 +143,49 @@
     }
   }
 
+  // ---- AI output handler ----
+
+  /**
+   * Process a single ai-output event payload.
+   * Extracted so it can be called both from the live listener and
+   * when draining events buffered during the initialization gap.
+   * @param {{ type: string, text?: string, code?: number }} data
+   */
+  function handleAiOutput(data) {
+    if (!term) return;
+
+    switch (data.type) {
+      case 'clear':
+        term.write('\x1b[2J\x1b[3J\x1b[H');
+        break;
+      case 'start':
+        // Clear stale content from previous provider before writing new info
+        term.clear();
+        if (data.text) {
+          term.writeln(`\x1b[34m${data.text}\x1b[0m`);
+        }
+        // Fit after provider starts
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            fitTerminal();
+            resizePtyIfChanged();
+          });
+        });
+        break;
+      case 'stdout':
+      case 'tui':
+      case 'stderr':
+        if (data.text) {
+          term.write(data.text);
+        }
+        break;
+      case 'exit':
+        term.writeln('');
+        term.writeln(`\x1b[33m[Process exited with code ${data.code ?? '?'}]\x1b[0m`);
+        break;
+    }
+  }
+
   // ---- Lifecycle: mount ----
 
   $effect(() => {
@@ -228,39 +272,13 @@
 
       // Listen for AI output events from Tauri backend
       const unlisten = await listen('ai-output', (event) => {
-        if (!term || !initialized) return;
-        const data = event.payload;
-
-        switch (data.type) {
-          case 'clear':
-            term.write('\x1b[2J\x1b[3J\x1b[H');
-            break;
-          case 'start':
-            // Clear stale content from previous provider before writing new info
-            term.clear();
-            if (data.text) {
-              term.writeln(`\x1b[34m${data.text}\x1b[0m`);
-            }
-            // Fit after provider starts
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                fitTerminal();
-                resizePtyIfChanged();
-              });
-            });
-            break;
-          case 'stdout':
-          case 'tui':
-          case 'stderr':
-            if (data.text) {
-              term.write(data.text);
-            }
-            break;
-          case 'exit':
-            term.writeln('');
-            term.writeln(`\x1b[33m[Process exited with code ${data.code ?? '?'}]\x1b[0m`);
-            break;
+        if (!term) return;
+        if (!initialized) {
+          // Buffer events until terminal is fully initialized
+          pendingEvents.push(event);
+          return;
         }
+        handleAiOutput(event.payload);
       });
 
       if (cancelled) {
@@ -297,6 +315,11 @@
           resizePtyIfChanged();
           // Gate: terminal is now fully initialized and ready for ai-output events
           initialized = true;
+          // Replay any events that arrived during initialization
+          for (const evt of pendingEvents) {
+            handleAiOutput(evt.payload);
+          }
+          pendingEvents = [];
         });
       });
     }
@@ -326,6 +349,7 @@
       fitAddon = null;
       lastPtyCols = 0;
       lastPtyRows = 0;
+      pendingEvents = [];
     };
   });
 
