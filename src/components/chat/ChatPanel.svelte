@@ -8,6 +8,7 @@
    */
   import { chatStore } from '../../lib/stores/chat.svelte.js';
   import { voiceStore } from '../../lib/stores/voice.svelte.js';
+  import { chatSave, takeScreenshot } from '../../lib/api.js';
   import MessageGroup from './MessageGroup.svelte';
   import ChatInput from './ChatInput.svelte';
 
@@ -17,6 +18,7 @@
   } = $props();
 
   let isRecording = $derived(voiceStore.isRecording);
+  let saveFlash = $state(false);
 
   let scrollContainer = $state(null);
 
@@ -74,6 +76,57 @@
     });
   }
 
+  /** Clear all messages from the current chat. */
+  function handleClear() {
+    chatStore.clearMessages();
+  }
+
+  /** Explicitly save the current chat to disk. */
+  async function handleSave() {
+    const activeId = chatStore.activeChatId;
+    if (!activeId || chatStore.messages.length === 0) return;
+
+    const toSave = {
+      id: activeId,
+      updatedAt: Date.now(),
+      messages: chatStore.messages.map(m => ({
+        id: m.id,
+        role: m.role,
+        content: m.text,
+        timestamp: m.timestamp,
+      })),
+    };
+
+    try {
+      await chatSave(toSave);
+      saveFlash = true;
+      setTimeout(() => { saveFlash = false; }, 1200);
+    } catch (err) {
+      console.error('[ChatPanel] Save failed:', err);
+    }
+  }
+
+  /** Capture a screenshot and add the path as a system message. */
+  async function handleScreenshot() {
+    try {
+      chatStore.addMessage('system', 'Taking screenshot...');
+      const result = await takeScreenshot();
+      const data = result?.data || result;
+      if (data?.path) {
+        // Replace the "taking screenshot" message with the result
+        const msgs = chatStore.messages;
+        const pending = msgs[msgs.length - 1];
+        if (pending && pending.text === 'Taking screenshot...') {
+          chatStore.removeMessage(pending.id);
+        }
+        chatStore.addMessage('system', `Screenshot saved: ${data.path}`);
+      }
+    } catch (err) {
+      console.error('[ChatPanel] Screenshot failed:', err);
+      chatStore.addMessage('error', `Screenshot failed: ${err?.message || err}`);
+    }
+  }
+
   // Auto-scroll whenever messages change or streaming updates
   $effect(() => {
     // Track messages length and streaming state to trigger this effect
@@ -114,8 +167,12 @@
 
   <ChatInput
     {onSend}
+    onClear={handleClear}
+    onSave={handleSave}
+    onScreenshot={handleScreenshot}
     {isRecording}
     disabled={inputDisabled}
+    {saveFlash}
   />
 </div>
 

@@ -64,6 +64,7 @@ pub fn run() {
             window_cmds::set_always_on_top,
             window_cmds::set_resizable,
             window_cmds::quit_app,
+            window_cmds::take_screenshot,
             // Voice
             voice_cmds::start_voice,
             voice_cmds::stop_voice,

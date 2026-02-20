@@ -1,3 +1,7 @@
+use std::fs;
+use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use super::IpcResponse;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::{AppHandle, Manager};
@@ -171,6 +175,153 @@ pub fn set_resizable(app: AppHandle, value: bool) -> IpcResponse {
 pub fn quit_app(app: AppHandle) -> IpcResponse {
     app.exit(0);
     IpcResponse::ok_empty()
+}
+
+/// Take a screenshot of the primary display.
+///
+/// Uses platform-native tools:
+/// - Windows: PowerShell with .NET System.Drawing
+/// - macOS: screencapture CLI
+/// - Linux: cosmic-screenshot or gnome-screenshot or import (ImageMagick)
+///
+/// Saves to `{data_dir}/screenshots/screenshot-{timestamp}.png`.
+/// Cleans up old screenshots, keeping the last 5.
+#[tauri::command]
+pub async fn take_screenshot() -> IpcResponse {
+    let screenshots_dir = crate::services::platform::get_data_dir().join("screenshots");
+    if let Err(e) = fs::create_dir_all(&screenshots_dir) {
+        return IpcResponse::err(format!("Failed to create screenshots dir: {}", e));
+    }
+
+    // Clean up old screenshots (keep last 5)
+    cleanup_old_screenshots(&screenshots_dir, 5);
+
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let filename = format!("screenshot-{}.png", now_ms);
+    let filepath = screenshots_dir.join(&filename);
+    let filepath_str = filepath.to_string_lossy().to_string();
+
+    let result = tokio::task::spawn_blocking(move || {
+        capture_screen_native(&filepath_str)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(())) => IpcResponse::ok(serde_json::json!({ "path": filepath.to_string_lossy() })),
+        Ok(Err(e)) => IpcResponse::err(e),
+        Err(e) => IpcResponse::err(format!("Screenshot task panicked: {}", e)),
+    }
+}
+
+/// Platform-native screen capture.
+fn capture_screen_native(output_path: &str) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        // PowerShell one-liner: capture primary screen via .NET System.Drawing
+        let ps_script = format!(
+            r#"Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $b = [System.Drawing.Rectangle]::FromLTRB(0,0,[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width,[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height); $bmp = New-Object System.Drawing.Bitmap($b.Width,$b.Height); $g = [System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size); $bmp.Save('{}'); $g.Dispose(); $bmp.Dispose()"#,
+            output_path.replace('\'', "''")
+        );
+        let output = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &ps_script])
+            .output()
+            .map_err(|e| format!("Failed to run PowerShell: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("PowerShell screenshot failed: {}", stderr.trim()));
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let output = std::process::Command::new("screencapture")
+            .args(["-x", output_path])
+            .output()
+            .map_err(|e| format!("Failed to run screencapture: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("screencapture failed: {}", stderr.trim()));
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // Try cosmic-screenshot first
+        if let Ok(output) = std::process::Command::new("cosmic-screenshot")
+            .args(["--interactive=false", "--modal=false", "--notify=false",
+                   &format!("--save-dir={}", Path::new(output_path).parent().unwrap_or(Path::new(".")).display())])
+            .output()
+        {
+            if output.status.success() {
+                return Ok(());
+            }
+        }
+
+        // Try gnome-screenshot
+        if let Ok(output) = std::process::Command::new("gnome-screenshot")
+            .args(["-f", output_path])
+            .output()
+        {
+            if output.status.success() {
+                return Ok(());
+            }
+        }
+
+        // Try import (ImageMagick)
+        let output = std::process::Command::new("import")
+            .args(["-window", "root", output_path])
+            .output()
+            .map_err(|e| format!("No screenshot tool available: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("Screenshot failed: {}", stderr.trim()));
+        }
+        Ok(())
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        Err("Screenshot not supported on this platform".into())
+    }
+}
+
+/// Clean up old screenshots, keeping only the most recent `keep_count`.
+fn cleanup_old_screenshots(dir: &Path, keep_count: usize) {
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    let mut files: Vec<(std::path::PathBuf, SystemTime)> = entries
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .map(|ext| ext == "png")
+                .unwrap_or(false)
+        })
+        .filter_map(|e| {
+            let meta = e.metadata().ok()?;
+            let mtime = meta.modified().ok()?;
+            Some((e.path(), mtime))
+        })
+        .collect();
+
+    files.sort_by(|a, b| b.1.cmp(&a.1));
+
+    if files.len() > keep_count {
+        for (path, _) in &files[keep_count..] {
+            let _ = fs::remove_file(path);
+        }
+    }
 }
 
 /// Get current process CPU and memory stats.

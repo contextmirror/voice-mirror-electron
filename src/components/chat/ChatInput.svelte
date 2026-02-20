@@ -3,18 +3,25 @@
    * ChatInput -- Text input bar at the bottom of the chat panel.
    *
    * Auto-resizing textarea, Enter to send, Shift+Enter for newline,
-   * voice recording indicator, and send button.
+   * "+" action menu (screenshot, save, clear), voice recording indicator,
+   * and send button.
    */
   import { chatStore } from '../../lib/stores/chat.svelte.js';
 
   let {
     onSend = () => {},
+    onClear = () => {},
+    onSave = () => {},
+    onScreenshot = () => {},
     isRecording = false,
     disabled = false,
+    saveFlash = false,
   } = $props();
 
   let text = $state('');
   let textareaEl = $state(null);
+  let menuOpen = $state(false);
+  let menuBtnEl = $state(null);
 
   /** Max number of lines before textarea scrolls internally */
   const MAX_LINES = 5;
@@ -63,8 +70,38 @@
     }
   }
 
+  function toggleMenu() {
+    menuOpen = !menuOpen;
+  }
+
+  function closeMenu() {
+    menuOpen = false;
+  }
+
+  function handleMenuAction(action) {
+    closeMenu();
+    action();
+  }
+
+  /** Close menu on outside click */
+  function handleDocumentClick(e) {
+    if (menuOpen && menuBtnEl && !menuBtnEl.contains(e.target)) {
+      closeMenu();
+    }
+  }
+
+  /** Close menu on Escape */
+  function handleDocumentKeydown(e) {
+    if (e.key === 'Escape' && menuOpen) {
+      closeMenu();
+    }
+  }
+
   const sendDisabled = $derived(disabled || text.trim().length === 0);
+  const hasMessages = $derived(chatStore.messages.length > 0);
 </script>
+
+<svelte:document onclick={handleDocumentClick} onkeydown={handleDocumentKeydown} />
 
 <div class="chat-input-bar" class:recording={isRecording}>
   {#if isRecording}
@@ -75,6 +112,69 @@
   {/if}
 
   <div class="input-row" class:hidden-input={isRecording}>
+    <!-- Action menu button -->
+    <div class="menu-anchor" bind:this={menuBtnEl}>
+      <button
+        class="menu-btn"
+        class:active={menuOpen}
+        onclick={toggleMenu}
+        title="Actions"
+        aria-label="Actions menu"
+        aria-expanded={menuOpen}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+      </button>
+
+      {#if menuOpen}
+        <div class="action-menu" role="menu">
+          <button class="action-menu-item" onclick={() => handleMenuAction(onScreenshot)} role="menuitem">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+            Screenshot
+          </button>
+          <button
+            class="action-menu-item"
+            class:saved={saveFlash}
+            onclick={() => handleMenuAction(onSave)}
+            disabled={!hasMessages}
+            role="menuitem"
+          >
+            {#if saveFlash}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              Saved
+            {:else}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                <polyline points="17 21 17 13 7 13 7 21"/>
+                <polyline points="7 3 7 8 15 8"/>
+              </svg>
+              Save chat
+            {/if}
+          </button>
+          <button
+            class="action-menu-item danger"
+            onclick={() => handleMenuAction(onClear)}
+            disabled={!hasMessages}
+            role="menuitem"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+              <path d="M3 6h18"/>
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+            </svg>
+            Clear chat
+          </button>
+        </div>
+      {/if}
+    </div>
+
     <textarea
       bind:this={textareaEl}
       bind:value={text}
@@ -124,6 +224,85 @@
     margin: 0;
   }
 
+  /* ========== Menu Button & Popup ========== */
+  .menu-anchor {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .menu-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--duration-fast) var(--ease-out);
+  }
+
+  .menu-btn:hover,
+  .menu-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-subtle);
+  }
+
+  .action-menu {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    z-index: 10001;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 4px 0;
+    min-width: 160px;
+    box-shadow: var(--shadow-md);
+  }
+
+  .action-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 12px;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 13px;
+    font-family: var(--font-family);
+    cursor: pointer;
+    text-align: left;
+    transition: background var(--duration-fast) var(--ease-out);
+  }
+
+  .action-menu-item:hover:not(:disabled) {
+    background: var(--bg-hover);
+  }
+
+  .action-menu-item:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .action-menu-item.danger:hover:not(:disabled) {
+    background: var(--danger-subtle);
+    color: var(--danger);
+  }
+
+  .action-menu-item.saved {
+    color: var(--ok);
+  }
+
+  .action-menu-item svg {
+    flex-shrink: 0;
+  }
+
+  /* ========== Textarea ========== */
   .chat-textarea {
     flex: 1;
     background: var(--bg-elevated);
@@ -225,6 +404,11 @@
 
     .send-btn:active:not(:disabled) {
       transform: none;
+    }
+
+    .menu-btn,
+    .action-menu-item {
+      transition: none;
     }
   }
 </style>

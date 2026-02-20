@@ -277,6 +277,12 @@ export async function chatRename(id, name) {
   return invoke('chat_rename', { id, name });
 }
 
+// ============ Screenshot ============
+
+export async function takeScreenshot() {
+  return invoke('take_screenshot');
+}
+
 // ============ Tools ============
 
 /**

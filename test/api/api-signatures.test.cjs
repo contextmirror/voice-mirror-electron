@@ -165,6 +165,8 @@ describe('api.js -- exported async functions', () => {
     'chatSave',
     'chatDelete',
     'chatRename',
+    // Screenshot
+    'takeScreenshot',
     // Tools
     'scanCliTools',
     'checkNpmVersions',
