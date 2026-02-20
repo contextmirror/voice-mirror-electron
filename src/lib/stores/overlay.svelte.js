@@ -97,6 +97,14 @@ function createOverlayStore() {
           await setAlwaysOnTop(true);
           await setResizable(false);
           await setWindowSize(OVERLAY_SIZE.width, OVERLAY_SIZE.height);
+
+          // Restore orb position if saved (otherwise stays at dashboard's top-left)
+          const cfg = configStore.value;
+          const ox = cfg?.window?.orbX;
+          const oy = cfg?.window?.orbY;
+          if (ox != null && oy != null) {
+            await setWindowPosition(ox, oy);
+          }
         } else {
           // Leaving orb mode — save orb position first
           try {

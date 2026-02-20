@@ -400,4 +400,15 @@ describe('overlay: mode-aware position saving', () => {
       'Should restore dashboard position from config when expanding'
     );
   });
+
+  it('restores orb position when entering orb mode', () => {
+    // After resizing to 120x120, the orb should move to its saved position
+    // Use the setWindowSize(OVERLAY_SIZE) call as anchor — orb restore comes after it
+    const orbResizeIdx = src.indexOf('setWindowSize(OVERLAY_SIZE');
+    const orbRestoreBlock = src.slice(orbResizeIdx, orbResizeIdx + 300);
+    assert.ok(
+      orbRestoreBlock.includes("cfg?.window?.orbX") && orbRestoreBlock.includes("cfg?.window?.orbY"),
+      'Should restore orbX/orbY after resizing to orb'
+    );
+  });
 });
