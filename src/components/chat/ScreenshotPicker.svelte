@@ -42,7 +42,9 @@
     try {
       const result = await listMonitors();
       const data = result?.data || result;
-      monitors = Array.isArray(data) ? data : [];
+      const list = Array.isArray(data) ? data : [];
+      // Sort primary monitor first
+      monitors = list.sort((a, b) => (b.primary ? 1 : 0) - (a.primary ? 1 : 0));
       monitorsLoaded = true;
     } catch (err) {
       error = err?.message || String(err);
