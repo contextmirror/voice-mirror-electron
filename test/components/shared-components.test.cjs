@@ -682,3 +682,49 @@ describe('OnboardingModal.svelte', () => {
     assert.ok(src.includes('.onboarding-modal'), 'Should have modal CSS');
   });
 });
+
+// ---- ResizeEdges.svelte ----
+
+describe('ResizeEdges.svelte', () => {
+  const src = readComponent('ResizeEdges.svelte');
+
+  it('imports getCurrentWindow from tauri', () => {
+    assert.ok(src.includes("from '@tauri-apps/api/window'"));
+  });
+
+  it('calls startResizeDragging', () => {
+    assert.ok(src.includes('startResizeDragging'));
+  });
+
+  it('has all four edge directions', () => {
+    for (const dir of ['North', 'South', 'East', 'West']) {
+      assert.ok(src.includes(`'${dir}'`), `Should have ${dir} direction`);
+    }
+  });
+
+  it('has all four corner directions', () => {
+    for (const dir of ['NorthWest', 'NorthEast', 'SouthWest', 'SouthEast']) {
+      assert.ok(src.includes(`'${dir}'`), `Should have ${dir} direction`);
+    }
+  });
+
+  it('has resize-edge CSS class', () => {
+    assert.ok(src.includes('.resize-edge'));
+  });
+
+  it('has resize-corner CSS class', () => {
+    assert.ok(src.includes('.resize-corner'));
+  });
+
+  it('uses high z-index to stay above content', () => {
+    assert.ok(src.includes('z-index: 99999'));
+  });
+
+  it('uses no-drag for frameless window', () => {
+    assert.ok(src.includes('-webkit-app-region: no-drag'));
+  });
+
+  it('uses position fixed', () => {
+    assert.ok(src.includes('position: fixed'));
+  });
+});

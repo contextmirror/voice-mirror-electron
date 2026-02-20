@@ -46,9 +46,9 @@ describe('Sidebar.svelte', () => {
     assert.ok(src.includes("label: 'Terminal'"), 'Should label it Terminal');
   });
 
-  it('has Browser navigation item', () => {
-    assert.ok(src.includes("id: 'browser'"), 'Should have Browser nav item');
-    assert.ok(src.includes("label: 'Browser'"), 'Should label it Browser');
+  it('has Lens navigation item', () => {
+    assert.ok(src.includes("id: 'lens'"), 'Should have Lens nav item');
+    assert.ok(src.includes("label: 'Lens'"), 'Should label it Lens');
   });
 
   it('has Settings navigation item', () => {

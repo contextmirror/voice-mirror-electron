@@ -17,7 +17,7 @@ const src = fs.readFileSync(
 // ============ VALID_VIEWS ============
 
 describe('navigation: VALID_VIEWS', () => {
-  const expectedViews = ['chat', 'terminal', 'browser', 'settings'];
+  const expectedViews = ['chat', 'terminal', 'lens', 'settings'];
 
   it('defines VALID_VIEWS as a const', () => {
     assert.ok(src.includes('const VALID_VIEWS'), 'Should define const VALID_VIEWS');

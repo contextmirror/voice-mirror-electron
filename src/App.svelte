@@ -16,7 +16,9 @@
   import ChatPanel from './components/chat/ChatPanel.svelte';
   import Terminal from './components/terminal/Terminal.svelte';
   import SettingsPanel from './components/settings/SettingsPanel.svelte';
+  import LensPanel from './components/lens/LensPanel.svelte';
   import OverlayPanel from './components/overlay/OverlayPanel.svelte';
+  import ResizeEdges from './components/shared/ResizeEdges.svelte';
   import StatsBar from './components/shared/StatsBar.svelte';
 
   // Load config on mount and init event listeners
@@ -305,6 +307,7 @@
 {#if isOverlay}
   <OverlayPanel />
 {:else}
+  <ResizeEdges />
   <div class="app-shell">
     <TitleBar />
 
@@ -320,17 +323,9 @@
           <div class="view-panel">
             <Terminal />
           </div>
-        {:else if activeView === 'browser'}
+        {:else if activeView === 'lens'}
           <div class="view-panel">
-            <div class="view-placeholder">
-              <svg class="placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="2" y1="12" x2="22" y2="12"/>
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-              </svg>
-              <h2>Browser</h2>
-              <p>Embedded browser will go here.</p>
-            </div>
+            <LensPanel />
           </div>
         {:else if activeView === 'settings'}
           <div class="view-panel">

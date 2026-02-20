@@ -6,6 +6,7 @@ pub mod shortcuts;
 pub mod tools;
 pub mod voice;
 pub mod window;
+pub mod lens;
 
 use serde_json::Value;
 

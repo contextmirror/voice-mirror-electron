@@ -8,7 +8,7 @@
 import { updateConfig } from './config.svelte.js';
 
 /** Valid view identifiers */
-const VALID_VIEWS = ['chat', 'terminal', 'browser', 'settings'];
+const VALID_VIEWS = ['chat', 'terminal', 'lens', 'settings'];
 
 /**
  * Reactive navigation store.
@@ -24,7 +24,7 @@ function createNavigationStore() {
 
     /**
      * Switch to a different view.
-     * @param {'chat'|'terminal'|'browser'|'settings'} view
+     * @param {'chat'|'terminal'|'lens'|'settings'} view
      */
     setView(view) {
       if (!VALID_VIEWS.includes(view)) {

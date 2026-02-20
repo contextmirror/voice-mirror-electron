@@ -14,6 +14,7 @@ use commands::shortcuts as shortcut_cmds;
 use commands::tools as tools_cmds;
 use commands::voice as voice_cmds;
 use commands::window as window_cmds;
+use commands::lens as lens_cmds;
 
 use providers::manager::AiManager;
 use providers::ProviderEvent;
@@ -61,6 +62,9 @@ pub fn run() {
         ))
         .manage(std::sync::Mutex::new(sysinfo::System::new()) as window_cmds::PerfMonitorState)
         .manage(std::sync::Mutex::new(None::<Box<dyn voice::tts::TtsEngine>>) as PreloadedTtsState)
+        .manage(lens_cmds::LensState {
+            webview_label: std::sync::Mutex::new(None),
+        })
         .invoke_handler(tauri::generate_handler![
             // Config
             config_cmds::get_config,
@@ -130,6 +134,15 @@ pub fn run() {
             shortcut_cmds::unregister_all_shortcuts,
             // Performance stats
             window_cmds::get_process_stats,
+            // Lens (embedded browser)
+            lens_cmds::lens_create_webview,
+            lens_cmds::lens_navigate,
+            lens_cmds::lens_go_back,
+            lens_cmds::lens_go_forward,
+            lens_cmds::lens_reload,
+            lens_cmds::lens_resize_webview,
+            lens_cmds::lens_close_webview,
+            lens_cmds::lens_set_visible,
         ])
         .setup(|app| {
             // Clear stale listener locks from previous sessions.

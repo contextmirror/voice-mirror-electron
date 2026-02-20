@@ -373,3 +373,37 @@ export async function getProcessStats() {
 export async function migrateElectronConfig() {
   return invoke('migrate_electron_config');
 }
+
+// ============ Lens ============
+
+export async function lensCreateWebview(url, x, y, width, height) {
+  return invoke('lens_create_webview', { url, x, y, width, height });
+}
+
+export async function lensNavigate(url) {
+  return invoke('lens_navigate', { url });
+}
+
+export async function lensGoBack() {
+  return invoke('lens_go_back');
+}
+
+export async function lensGoForward() {
+  return invoke('lens_go_forward');
+}
+
+export async function lensReload() {
+  return invoke('lens_reload');
+}
+
+export async function lensResizeWebview(x, y, width, height) {
+  return invoke('lens_resize_webview', { x, y, width, height });
+}
+
+export async function lensCloseWebview() {
+  return invoke('lens_close_webview');
+}
+
+export async function lensSetVisible(visible) {
+  return invoke('lens_set_visible', { visible });
+}

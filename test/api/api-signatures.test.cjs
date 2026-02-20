@@ -110,6 +110,15 @@ describe('api.js -- critical Tauri command names', () => {
     'unregister_all_shortcuts',
     // Migration
     'migrate_electron_config',
+    // Lens
+    'lens_create_webview',
+    'lens_navigate',
+    'lens_go_back',
+    'lens_go_forward',
+    'lens_reload',
+    'lens_resize_webview',
+    'lens_close_webview',
+    'lens_set_visible',
   ];
 
   for (const cmd of criticalCommands) {
@@ -194,6 +203,15 @@ describe('api.js -- exported async functions', () => {
     'getProcessStats',
     // Migration
     'migrateElectronConfig',
+    // Lens
+    'lensCreateWebview',
+    'lensNavigate',
+    'lensGoBack',
+    'lensGoForward',
+    'lensReload',
+    'lensResizeWebview',
+    'lensCloseWebview',
+    'lensSetVisible',
   ];
 
   for (const fn of expectedExports) {
@@ -217,7 +235,7 @@ describe('api.js -- exported async functions', () => {
 });
 
 describe('api.js -- section organization', () => {
-  const sections = ['Config', 'Window', 'Voice', 'AI', 'Inbox', 'Chat', 'Tools', 'Shortcuts', 'Performance Stats', 'Config Migration'];
+  const sections = ['Config', 'Window', 'Voice', 'AI', 'Inbox', 'Chat', 'Tools', 'Shortcuts', 'Performance Stats', 'Config Migration', 'Lens'];
 
   for (const section of sections) {
     it(`has "${section}" section comment`, () => {
