@@ -249,8 +249,8 @@
   }
 
   .bubble-attachment-img {
-    max-width: 100%;
-    max-height: 300px;
+    max-width: 80%;
+    max-height: 200px;
     border-radius: var(--radius-sm);
     object-fit: contain;
     display: block;
