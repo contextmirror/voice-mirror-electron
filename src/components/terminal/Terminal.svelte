@@ -29,7 +29,9 @@
   let initialized = $state(false);
   let pendingEvents = [];
   let providerSwitchHandler = null;
-  let preResetDone = false; // True after DOM event reset; prevents double-reset on 'clear'/'start'
+  let preResetDone = false;    // True after DOM event reset; prevents double-reset on 'clear'/'start'
+  let bufferingPreReady = false; // True between provider switch and 'start' — buffers stdout
+  let preReadyBuffer = '';       // Accumulated stdout during TUI setup phase
 
   // ---- CSS token -> ghostty-web theme mapping ----
 
@@ -182,15 +184,22 @@
         break;
       case 'start':
         // Only reset if the DOM event didn't already handle it.
-        // Double-resetting destroys the TUI that the CLI process already
-        // set up during its pre-ready output phase, causing the process to
-        // think alt-screen/cursor state is still active when it's been wiped.
         if (!preResetDone) {
           if (term.reset) {
             term.reset();
           }
         }
         preResetDone = false;
+        // Flush all buffered pre-ready output as a single atomic write.
+        // term.write() processes the entire buffer synchronously through WASM,
+        // so ALL escape sequences (alt screen, cursor positioning, TUI setup)
+        // are resolved before the next render frame. Result: the first painted
+        // frame shows the complete TUI, not intermediate partial states.
+        if (bufferingPreReady && preReadyBuffer) {
+          term.write(preReadyBuffer);
+          preReadyBuffer = '';
+        }
+        bufferingPreReady = false;
         if (data.text) {
           term.writeln(`\x1b[34m${data.text}\x1b[0m`);
         }
@@ -207,10 +216,24 @@
       case 'stderr':
         if (data.text) {
           const cleaned = data.text.replace(SGR_MOUSE_ECHO_RE, '');
-          if (cleaned) term.write(cleaned);
+          if (cleaned) {
+            if (bufferingPreReady) {
+              // Accumulate during TUI setup phase — don't render yet
+              preReadyBuffer += cleaned;
+            } else {
+              term.write(cleaned);
+            }
+          }
         }
         break;
       case 'exit':
+        // If still buffering, flush so exit message appears after any partial output
+        if (bufferingPreReady && preReadyBuffer) {
+          term.write(preReadyBuffer);
+          preReadyBuffer = '';
+        }
+        bufferingPreReady = false;
+        preResetDone = false;
         // Reset terminal modes on provider exit so stale state
         // (mouse tracking, alt screen) doesn't leak to next provider.
         // Use escape sequences here (not term.reset()) to preserve the
@@ -347,6 +370,15 @@
         fitTerminal();
         resizePtyIfChanged();
         preResetDone = true;
+        // Buffer all stdout until 'start' fires. The new CLI process outputs
+        // its entire TUI setup (alt screen, cursor positioning, status bar,
+        // content) across multiple PTY reads / IPC messages. Writing each
+        // chunk individually lets the render loop paint partial TUI frames —
+        // garbled status bars, scattered text. Buffering then flushing as one
+        // atomic write means the WASM parser processes ALL escape sequences
+        // before the next render frame, so the first visible frame is complete.
+        bufferingPreReady = true;
+        preReadyBuffer = '';
       };
       window.addEventListener('ai-provider-switching', providerSwitchHandler);
 
