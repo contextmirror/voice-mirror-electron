@@ -177,11 +177,12 @@ The frontend is a Svelte 5 application built with Vite. It runs inside the Tauri
 | `Orb.svelte` | Animated orb with state-driven visuals |
 | `OverlayPanel.svelte` | Overlay container for orb + expanded panel |
 
-**Terminal** (2 components):
+**Terminal** (4 components):
 | Component | Purpose |
 |-----------|---------|
-| `Terminal.svelte` | xterm.js terminal for PTY providers |
-| `TerminalToolbar.svelte` | Terminal control bar |
+| `Terminal.svelte` | ghostty-web terminal for AI PTY providers |
+| `ShellTerminal.svelte` | Shell PTY terminal (user shells) |
+| `TerminalTabs.svelte` | Tabbed container: AI tab + shell tabs + unified toolbar |
 
 **Shared** (12 components):
 | Component | Purpose |
