@@ -83,6 +83,28 @@ describe('SessionPanel.svelte', () => {
     assert.ok(src.includes('formatRelativeTime'), 'Should format relative time on sessions');
   });
 
+  // ── Context Menu (Delete) ──
+
+  it('imports chatDelete from API', () => {
+    assert.ok(src.includes('chatDelete'), 'Should import chatDelete');
+  });
+
+  it('has context menu support', () => {
+    assert.ok(src.includes('contextMenu'), 'Should have context menu state');
+    assert.ok(src.includes('context-menu'), 'Should have context menu CSS');
+    assert.ok(src.includes('handleContextMenu') || src.includes('oncontextmenu'), 'Should handle right-click');
+  });
+
+  it('has delete session handler', () => {
+    assert.ok(src.includes('handleDeleteSession'), 'Should have delete session handler');
+  });
+
+  it('has context menu with Delete option', () => {
+    assert.ok(src.includes('role="menu"'), 'Should have menu role');
+    assert.ok(src.includes('role="menuitem"'), 'Should have menuitem role');
+    assert.ok(src.includes('Delete'), 'Should have Delete text');
+  });
+
   // ── State ──
 
   it('uses $state or $derived for reactivity', () => {

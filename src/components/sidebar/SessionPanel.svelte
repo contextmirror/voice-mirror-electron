@@ -1,12 +1,49 @@
 <script>
   import { projectStore } from '../../lib/stores/project.svelte.js';
   import { chatStore } from '../../lib/stores/chat.svelte.js';
-  import { chatLoad, chatSave } from '../../lib/api.js';
+  import { chatLoad, chatSave, chatDelete } from '../../lib/api.js';
   import { uid } from '../../lib/utils.js';
-
 
   let activeProject = $derived(projectStore.activeProject);
   let sessions = $derived(projectStore.sessions);
+
+  /** Context menu state */
+  let contextMenu = $state({ visible: false, x: 0, y: 0, sessionId: null });
+
+  function handleContextMenu(event, id) {
+    event.preventDefault();
+    contextMenu = { visible: true, x: event.clientX, y: event.clientY, sessionId: id };
+  }
+
+  function hideContextMenu() {
+    contextMenu = { visible: false, x: 0, y: 0, sessionId: null };
+  }
+
+  async function handleDeleteSession() {
+    const id = contextMenu.sessionId;
+    hideContextMenu();
+    if (!id) return;
+
+    try {
+      await chatDelete(id);
+      // If we deleted the active session, clear it
+      if (chatStore.activeChatId === id) {
+        chatStore.setActiveChatId(null);
+        chatStore.clearMessages();
+      }
+      projectStore.loadSessions();
+    } catch (err) {
+      console.error('[SessionPanel] Failed to delete session:', err);
+    }
+  }
+
+  function handleDocumentClick() {
+    if (contextMenu.visible) hideContextMenu();
+  }
+
+  function handleDocumentKeydown(e) {
+    if (e.key === 'Escape' && contextMenu.visible) hideContextMenu();
+  }
 
   /**
    * Format relative time from a timestamp.
@@ -84,6 +121,8 @@
   }
 </script>
 
+<svelte:document onclick={handleDocumentClick} onkeydown={handleDocumentKeydown} />
+
 <div class="session-panel">
   <div class="session-header">
     {activeProject?.name || 'No Project'}
@@ -95,6 +134,7 @@
         class="session-item"
         class:active={session.id === chatStore.activeChatId}
         onclick={() => handleLoadSession(session.id)}
+        oncontextmenu={(e) => handleContextMenu(e, session.id)}
       >
         <span class="session-name">{session.name || 'Untitled'}</span>
         <span class="session-time">{formatRelativeTime(session.updatedAt)}</span>
@@ -112,6 +152,22 @@
     + New Session
   </button>
 </div>
+
+{#if contextMenu.visible}
+  <div
+    class="context-menu"
+    style="left: {contextMenu.x}px; top: {contextMenu.y}px;"
+    role="menu"
+  >
+    <button class="context-menu-item danger" onclick={handleDeleteSession} role="menuitem">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="3 6 5 6 21 6"/>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+      </svg>
+      Delete
+    </button>
+  </div>
+{/if}
 
 <style>
   .session-panel {
@@ -218,9 +274,53 @@
     cursor: not-allowed;
   }
 
+  /* ========== Context Menu ========== */
+  .context-menu {
+    position: fixed;
+    z-index: 10000;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 4px 0;
+    min-width: 120px;
+    box-shadow: var(--shadow-md);
+  }
+
+  .context-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 12px;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 13px;
+    font-family: var(--font-family);
+    cursor: pointer;
+    text-align: left;
+    transition: background var(--duration-fast) var(--ease-out);
+  }
+
+  .context-menu-item:hover {
+    background: var(--bg-hover);
+  }
+
+  .context-menu-item.danger:hover {
+    background: var(--danger-subtle);
+    color: var(--danger);
+  }
+
+  .context-menu-item svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .session-item,
-    .new-session-btn {
+    .new-session-btn,
+    .context-menu-item {
       transition: none;
     }
   }

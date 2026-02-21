@@ -112,12 +112,14 @@ function createProjectStore() {
      */
     async loadSessions() {
       try {
-        const all = await chatList();
+        const result = await chatList();
+        const all = result?.data || result || [];
+        const list = Array.isArray(all) ? all : [];
         const project = entries[activeIndex];
-        if (project && Array.isArray(all)) {
-          sessions = all.filter((s) => s.projectPath === project.path);
+        if (project) {
+          sessions = list.filter((s) => s.projectPath === project.path);
         } else {
-          sessions = Array.isArray(all) ? all : [];
+          sessions = [];
         }
       } catch (err) {
         console.error('[project] Failed to load sessions:', err);
