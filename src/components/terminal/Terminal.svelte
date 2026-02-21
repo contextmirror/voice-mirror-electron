@@ -14,7 +14,6 @@
   import { listen } from '@tauri-apps/api/event';
   import { aiRawInput, aiPtyResize } from '../../lib/api.js';
   import { currentThemeName } from '../../lib/stores/theme.svelte.js';
-  import { aiStatusStore } from '../../lib/stores/ai-status.svelte.js';
 
   let { onRegisterActions } = $props();
 
@@ -29,6 +28,7 @@
   let lastPtyRows = $state(0);
   let initialized = $state(false);
   let pendingEvents = [];
+  let providerSwitchHandler = null;
 
   // ---- CSS token -> ghostty-web theme mapping ----
 
@@ -321,6 +321,26 @@
 
       unlistenAiOutput = unlisten;
 
+      // Pre-emptive terminal reset on provider switch.
+      // When the user switches providers, the new CLI process starts outputting
+      // immediately (startup banner, TUI setup), but the 'start' event only fires
+      // later when the "ready" pattern is detected. Without an early reset, the
+      // new provider's initial output renders on the OLD terminal — garbled pixels.
+      // This handler fires SYNCHRONOUSLY (dispatchEvent is sync) from _setStarting()
+      // in ai-status.svelte.js, BEFORE the Tauri command and BEFORE any stdout events.
+      // ($effect won't work — Svelte defers effects and loses the race.)
+      providerSwitchHandler = () => {
+        if (!term || !initialized) return;
+        if (term.reset) {
+          term.reset();
+        } else {
+          term.write('\x1b[2J\x1b[3J\x1b[H');
+        }
+        fitTerminal();
+        resizePtyIfChanged();
+      };
+      window.addEventListener('ai-provider-switching', providerSwitchHandler);
+
       // Observe container resize for auto-fitting
       const observer = new ResizeObserver(() => {
         if (resizeTimeout) clearTimeout(resizeTimeout);
@@ -370,6 +390,10 @@
         resizeObserver.disconnect();
         resizeObserver = null;
       }
+      if (providerSwitchHandler) {
+        window.removeEventListener('ai-provider-switching', providerSwitchHandler);
+        providerSwitchHandler = null;
+      }
       if (unlistenAiOutput) {
         unlistenAiOutput();
         unlistenAiOutput = null;
@@ -383,29 +407,6 @@
       lastPtyRows = 0;
       pendingEvents = [];
     };
-  });
-
-  // ---- Provider switch: pre-emptive terminal reset ----
-  //
-  // When the user switches providers, the new CLI process starts outputting
-  // immediately (startup banner, TUI setup sequences), but the 'start' event
-  // only fires later when the "ready" pattern is detected. Without this,
-  // the new provider's initial output renders on the OLD terminal — causing
-  // stale content and garbled pixels. By watching aiStatusStore.starting
-  // (set synchronously BEFORE the Tauri command), we reset the terminal
-  // before any new-provider output arrives.
-
-  $effect(() => {
-    if (!aiStatusStore.starting) return;
-    if (!term || !initialized) return;
-
-    if (term.reset) {
-      term.reset();
-    } else {
-      term.write('\x1b[2J\x1b[3J\x1b[H');
-    }
-    fitTerminal();
-    resizePtyIfChanged();
   });
 
   // ---- Theme reactivity ----
