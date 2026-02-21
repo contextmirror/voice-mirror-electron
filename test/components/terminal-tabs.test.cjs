@@ -175,8 +175,8 @@ describe('TerminalTabs.svelte -- context menu', () => {
 });
 
 describe('TerminalTabs.svelte -- drag-to-reorder', () => {
-  it('has draggable attribute on shell tabs', () => {
-    assert.ok(src.includes("draggable={tab.type === 'shell'}"), 'Shell tabs should be draggable');
+  it('has data-tab-id attribute for pointer drag', () => {
+    assert.ok(src.includes('data-tab-id={tab.id}'), 'Should have data-tab-id attribute');
   });
 
   it('has drag-over class binding', () => {
@@ -187,12 +187,12 @@ describe('TerminalTabs.svelte -- drag-to-reorder', () => {
     assert.ok(src.includes('class:dragging='), 'Should have dragging class');
   });
 
-  it('has handleDragStart function', () => {
-    assert.ok(src.includes('handleDragStart'), 'Should have dragstart handler');
+  it('has handleTabMousedown function', () => {
+    assert.ok(src.includes('handleTabMousedown'), 'Should have mousedown handler');
   });
 
-  it('has handleDrop function', () => {
-    assert.ok(src.includes('handleDrop'), 'Should have drop handler');
+  it('uses pointer-based drag with mousemove', () => {
+    assert.ok(src.includes("'mousemove'"), 'Should listen for mousemove during drag');
   });
 
   it('calls moveTab on drop', () => {
@@ -200,7 +200,11 @@ describe('TerminalTabs.svelte -- drag-to-reorder', () => {
   });
 
   it('prevents dragging AI tab', () => {
-    assert.ok(src.includes("tabId === 'ai'") && src.includes('e.preventDefault'), 'Should prevent dragging AI tab');
+    assert.ok(src.includes("tabId === 'ai'") && src.includes('return'), 'Should prevent dragging AI tab');
+  });
+
+  it('has 5px movement threshold', () => {
+    assert.ok(src.includes('< 5'), 'Should have movement threshold before activating drag');
   });
 });
 

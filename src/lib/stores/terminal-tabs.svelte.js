@@ -66,18 +66,31 @@ function createTerminalTabsStore() {
     },
 
     /**
-     * Move a tab to a new index. AI tab (index 0) cannot be moved.
+     * Move a tab to before another tab. AI tab cannot be moved.
+     * Uses tab IDs (not indices) so the operation is correct after splice.
      * @param {string} id - Tab ID to move
-     * @param {number} toIndex - Target index
+     * @param {string|null} beforeId - Insert before this tab, or null to append
      */
-    moveTab(id, toIndex) {
-      if (id === 'ai') return;
+    moveTab(id, beforeId) {
+      if (id === 'ai' || id === beforeId) return;
       const fromIndex = tabs.findIndex(t => t.id === id);
-      if (fromIndex === -1 || fromIndex === toIndex) return;
-      if (toIndex <= 0) toIndex = 1; // Can't move before AI tab
-      if (toIndex >= tabs.length) toIndex = tabs.length - 1;
+      if (fromIndex === -1) return;
+
       const [tab] = tabs.splice(fromIndex, 1);
-      tabs.splice(toIndex, 0, tab);
+
+      if (beforeId === null) {
+        tabs.push(tab);
+      } else {
+        const toIndex = tabs.findIndex(t => t.id === beforeId);
+        if (toIndex <= 0) {
+          // Can't insert before AI tab — put at index 1
+          tabs.splice(1, 0, tab);
+        } else if (toIndex === -1) {
+          tabs.push(tab);
+        } else {
+          tabs.splice(toIndex, 0, tab);
+        }
+      }
     },
 
     /**

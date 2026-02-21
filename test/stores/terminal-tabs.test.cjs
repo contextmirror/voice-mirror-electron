@@ -108,7 +108,7 @@ describe('terminal-tabs.svelte.js -- tab reordering', () => {
   });
 
   it('prevents moving before AI tab', () => {
-    assert.ok(src.includes('toIndex = 1'), 'Should prevent moving before index 0');
+    assert.ok(src.includes('toIndex <= 0'), 'Should prevent moving before AI tab');
   });
 
   it('uses splice for reordering', () => {

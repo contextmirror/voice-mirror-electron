@@ -164,40 +164,54 @@
     };
   });
 
-  // ---- Drag-to-reorder ----
+  // ---- Drag-to-reorder (pointer-based) ----
 
   let dragTabId = $state(null);
   let dragOverTabId = $state(null);
+  let dragStartX = 0;
+  let dragActive = false;
 
-  function handleDragStart(e, tabId) {
-    if (tabId === 'ai') { e.preventDefault(); return; }
-    dragTabId = tabId;
-    e.dataTransfer.effectAllowed = 'move';
-    // Use a minimal drag image
-    e.dataTransfer.setData('text/plain', tabId);
-  }
+  function handleTabMousedown(e, tabId) {
+    // Only left-click, only shell tabs
+    if (e.button !== 0 || tabId === 'ai') return;
+    dragStartX = e.clientX;
+    dragActive = false;
 
-  function handleDragOver(e, tabId) {
-    if (!dragTabId || tabId === 'ai') return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    dragOverTabId = tabId;
-  }
+    const onMousemove = (/** @type {MouseEvent} */ moveEvt) => {
+      // 5px threshold before activating drag
+      if (!dragActive && Math.abs(moveEvt.clientX - dragStartX) < 5) return;
+      if (!dragActive) {
+        dragActive = true;
+        dragTabId = tabId;
+      }
 
-  function handleDrop(e, tabId) {
-    e.preventDefault();
-    if (!dragTabId || tabId === 'ai') return;
-    const toIndex = terminalTabsStore.tabs.findIndex(t => t.id === tabId);
-    if (toIndex > 0) {
-      terminalTabsStore.moveTab(dragTabId, toIndex);
-    }
-    dragTabId = null;
-    dragOverTabId = null;
-  }
+      // Find the tab element being hovered over
+      const els = document.elementsFromPoint(moveEvt.clientX, moveEvt.clientY);
+      const tabEl = els.find(el => el.closest?.('[data-tab-id]'));
+      const hoverTabEl = tabEl?.closest?.('[data-tab-id]') || tabEl;
+      const hoverId = hoverTabEl?.getAttribute?.('data-tab-id') || null;
 
-  function handleDragEnd() {
-    dragTabId = null;
-    dragOverTabId = null;
+      if (hoverId && hoverId !== 'ai' && hoverId !== tabId) {
+        dragOverTabId = hoverId;
+      } else {
+        dragOverTabId = null;
+      }
+    };
+
+    const onMouseup = () => {
+      window.removeEventListener('mousemove', onMousemove);
+      window.removeEventListener('mouseup', onMouseup);
+
+      if (dragActive && dragOverTabId) {
+        terminalTabsStore.moveTab(dragTabId, dragOverTabId);
+      }
+      dragTabId = null;
+      dragOverTabId = null;
+      dragActive = false;
+    };
+
+    window.addEventListener('mousemove', onMousemove);
+    window.addEventListener('mouseup', onMouseup);
   }
 
   // ---- Keyboard tab cycling (Ctrl+Tab / Ctrl+Shift+Tab) ----
@@ -229,13 +243,10 @@
         class:exited={!tab.running}
         class:drag-over={dragOverTabId === tab.id && dragTabId !== tab.id}
         class:dragging={dragTabId === tab.id}
+        data-tab-id={tab.id}
         onclick={() => terminalTabsStore.setActive(tab.id)}
         oncontextmenu={(e) => showContextMenu(e, tab.id)}
-        draggable={tab.type === 'shell'}
-        ondragstart={(e) => handleDragStart(e, tab.id)}
-        ondragover={(e) => handleDragOver(e, tab.id)}
-        ondrop={(e) => handleDrop(e, tab.id)}
-        ondragend={handleDragEnd}
+        onmousedown={(e) => handleTabMousedown(e, tab.id)}
         title={tab.title}
       >
         {#if tab.type === 'ai'}
