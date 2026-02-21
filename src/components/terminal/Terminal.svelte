@@ -29,6 +29,7 @@
   let initialized = $state(false);
   let pendingEvents = [];
   let providerSwitchHandler = null;
+  let preResetDone = false; // True after DOM event reset; prevents double-reset on 'clear'/'start'
 
   // ---- CSS token -> ghostty-web theme mapping ----
 
@@ -172,17 +173,24 @@
 
     switch (data.type) {
       case 'clear':
+        // Skip if the DOM event already reset the terminal. The TUI is
+        // properly set up on the fresh terminal — clearing it would wipe
+        // the TUI and force a re-render cycle.
+        if (preResetDone) break;
         term.write('\x1b[2J\x1b[3J\x1b[H');
         if (term.forceFullRedraw) term.forceFullRedraw();
         break;
       case 'start':
-        // The terminal was already reset by the aiStatusStore.starting $effect
-        // (which fires synchronously before the Tauri command). This handler
-        // just writes the ready message and ensures fit is up to date.
-        // Defensive reset in case the effect didn't fire (e.g. direct startAI).
-        if (term.reset) {
-          term.reset();
+        // Only reset if the DOM event didn't already handle it.
+        // Double-resetting destroys the TUI that the CLI process already
+        // set up during its pre-ready output phase, causing the process to
+        // think alt-screen/cursor state is still active when it's been wiped.
+        if (!preResetDone) {
+          if (term.reset) {
+            term.reset();
+          }
         }
+        preResetDone = false;
         if (data.text) {
           term.writeln(`\x1b[34m${data.text}\x1b[0m`);
         }
@@ -338,6 +346,7 @@
         }
         fitTerminal();
         resizePtyIfChanged();
+        preResetDone = true;
       };
       window.addEventListener('ai-provider-switching', providerSwitchHandler);
 
