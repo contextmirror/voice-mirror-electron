@@ -51,9 +51,10 @@ describe('Sidebar.svelte', () => {
     assert.ok(src.includes("label: 'Lens'"), 'Should label it Lens');
   });
 
-  it('has Settings navigation item', () => {
-    assert.ok(src.includes("id: 'settings'"), 'Should have Settings nav item');
-    assert.ok(src.includes("label: 'Settings'"), 'Should label it Settings');
+  it('has Settings navigation item pinned above footer', () => {
+    assert.ok(src.includes('settings-item'), 'Should have settings-item class');
+    assert.ok(src.includes("activeView === 'settings'"), 'Should highlight when active');
+    assert.ok(src.includes("aria-label=\"Settings\""), 'Should label it Settings');
   });
 
   it('has collapse/expand toggle button', () => {
