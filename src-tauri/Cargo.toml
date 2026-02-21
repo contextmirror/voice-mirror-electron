@@ -66,6 +66,9 @@ sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 arboard = "3"
 tauri-plugin-decorum = "1.1.1"
 
+# Cross-platform trash/recycle bin support
+trash = "5"
+
 [[bin]]
 name = "voice-mirror-mcp"
 path = "src/bin/mcp.rs"

@@ -125,6 +125,11 @@ describe('api.js -- critical Tauri command names', () => {
     'get_project_root',
     'read_file',
     'write_file',
+    'create_file',
+    'create_directory',
+    'rename_entry',
+    'delete_entry',
+    'reveal_in_explorer',
   ];
 
   for (const cmd of criticalCommands) {
@@ -226,6 +231,11 @@ describe('api.js -- exported async functions', () => {
     'readFile',
     'writeFile',
     'getFileGitContent',
+    'createFile',
+    'createDirectory',
+    'renameEntry',
+    'deleteEntry',
+    'revealInExplorer',
     // Shell Terminals
     'shellSpawn',
     'shellInput',

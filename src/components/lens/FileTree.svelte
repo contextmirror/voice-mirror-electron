@@ -1,8 +1,9 @@
 <script>
-  import { listDirectory, getGitChanges } from '../../lib/api.js';
+  import { listDirectory, getGitChanges, createFile, createDirectory, renameEntry } from '../../lib/api.js';
   import { chooseIconName } from '../../lib/file-icons.js';
   import { projectStore } from '../../lib/stores/project.svelte.js';
   import spriteUrl from '../../assets/icons/file-icons-sprite.svg';
+  import FileContextMenu from './FileContextMenu.svelte';
 
   let { onFileClick = () => {}, onChangeClick = () => {} } = $props();
 
@@ -13,6 +14,18 @@
   let dirChildren = $state(new Map());
   let loadingDirs = $state(new Set());
   let gitChanges = $state([]);
+
+  // Context menu state
+  let contextMenu = $state({ visible: false, x: 0, y: 0, entry: null, isFolder: false, isChange: false });
+
+  // Inline editing state
+  let editingEntry = $state(null);   // { path, name } for rename-in-place
+  let editingValue = $state('');
+  let creatingIn = $state(null);     // { parentPath, type: 'file' | 'directory' }
+  let creatingValue = $state('');
+
+  // Selected entry for F2 rename shortcut
+  let selectedEntry = $state(null);
 
   // Reload when active project changes
   $effect(() => {
@@ -87,9 +100,194 @@
   }
 
   function handleFileClick(entry) {
+    selectedEntry = entry;
     onFileClick(entry);
   }
+
+  // ── Refresh helpers ──
+
+  async function refreshParent(path) {
+    const parentPath = path.includes('/') ? path.substring(0, path.lastIndexOf('/')) : null;
+    const root = projectStore.activeProject?.path || null;
+    try {
+      if (parentPath) {
+        const resp = await listDirectory(parentPath, root);
+        if (resp && resp.data) {
+          const updated = new Map(dirChildren);
+          updated.set(parentPath, resp.data);
+          dirChildren = updated;
+        }
+      } else {
+        await loadRoot();
+      }
+    } catch (err) {
+      console.error('FileTree: refresh failed', err);
+    }
+    await loadGitChanges();
+  }
+
+  // ── Context menu handlers ──
+
+  function handleContextMenu(e, entry, isFolder, isChange) {
+    e.preventDefault();
+    e.stopPropagation();
+    selectedEntry = entry;
+    contextMenu = { visible: true, x: e.clientX, y: e.clientY, entry, isFolder, isChange };
+  }
+
+  function handleEmptyContextMenu(e) {
+    // Only fire if clicking on the scroll container itself (empty space), not a child
+    if (e.target === e.currentTarget || e.target.classList.contains('tree-scroll')) {
+      e.preventDefault();
+      contextMenu = { visible: true, x: e.clientX, y: e.clientY, entry: null, isFolder: false, isChange: false };
+    }
+  }
+
+  function closeContextMenu() {
+    contextMenu = { ...contextMenu, visible: false };
+  }
+
+  function handleContextAction(action, entry) {
+    if (action === 'delete') {
+      refreshParent(entry.path);
+    }
+  }
+
+  // ── Inline rename ──
+
+  function startRename(entry) {
+    editingEntry = entry;
+    editingValue = entry.name || entry.path.split(/[/\\]/).pop();
+  }
+
+  async function saveRename() {
+    if (!editingEntry || !editingValue.trim()) {
+      cancelRename();
+      return;
+    }
+    const oldPath = editingEntry.path;
+    const parentPath = oldPath.includes('/') ? oldPath.substring(0, oldPath.lastIndexOf('/')) : '';
+    const newPath = parentPath ? `${parentPath}/${editingValue.trim()}` : editingValue.trim();
+    if (newPath === oldPath) {
+      cancelRename();
+      return;
+    }
+    try {
+      const root = projectStore.activeProject?.path || null;
+      await renameEntry(oldPath, newPath, root);
+      cancelRename();
+      await refreshParent(oldPath);
+    } catch (err) {
+      console.error('FileTree: rename failed', err);
+      cancelRename();
+    }
+  }
+
+  function cancelRename() {
+    editingEntry = null;
+    editingValue = '';
+  }
+
+  function handleRenameKeydown(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveRename();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelRename();
+    }
+  }
+
+  // ── Inline create (new file / new folder) ──
+
+  function getParentPath(entry) {
+    if (!entry) return '';
+    // If it's a folder, create inside it; if it's a file, create in its parent directory
+    if (entry.type === 'directory') return entry.path;
+    return entry.path.includes('/') ? entry.path.substring(0, entry.path.lastIndexOf('/')) : '';
+  }
+
+  function startNewFile(parentEntry) {
+    const parentPath = getParentPath(parentEntry);
+    // Ensure the folder is expanded
+    if (parentPath && !expandedDirs.has(parentPath) && parentEntry?.type === 'directory') {
+      toggleDir(parentEntry);
+    }
+    creatingIn = { parentPath, type: 'file' };
+    creatingValue = '';
+  }
+
+  function startNewFolder(parentEntry) {
+    const parentPath = getParentPath(parentEntry);
+    if (parentPath && !expandedDirs.has(parentPath) && parentEntry?.type === 'directory') {
+      toggleDir(parentEntry);
+    }
+    creatingIn = { parentPath, type: 'directory' };
+    creatingValue = '';
+  }
+
+  async function saveCreate() {
+    if (!creatingIn || !creatingValue.trim()) {
+      cancelCreate();
+      return;
+    }
+    const fullPath = creatingIn.parentPath
+      ? `${creatingIn.parentPath}/${creatingValue.trim()}`
+      : creatingValue.trim();
+    try {
+      const root = projectStore.activeProject?.path || null;
+      if (creatingIn.type === 'file') {
+        await createFile(fullPath, '', root);
+      } else {
+        await createDirectory(fullPath, root);
+      }
+      cancelCreate();
+      await refreshParent(fullPath);
+    } catch (err) {
+      console.error('FileTree: create failed', err);
+      cancelCreate();
+    }
+  }
+
+  function cancelCreate() {
+    creatingIn = null;
+    creatingValue = '';
+  }
+
+  function handleCreateKeydown(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveCreate();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelCreate();
+    }
+  }
+
+  // ── Keyboard shortcut (F2 rename) ──
+
+  function handleKeydown(e) {
+    if (e.key === 'F2' && selectedEntry && !editingEntry && !creatingIn) {
+      e.preventDefault();
+      startRename(selectedEntry);
+    }
+  }
+
+  // ── Autofocus action ──
+
+  function autofocus(node) {
+    node.focus();
+    // Select filename without extension for rename
+    const dotIdx = node.value.lastIndexOf('.');
+    if (dotIdx > 0) {
+      node.setSelectionRange(0, dotIdx);
+    } else {
+      node.select();
+    }
+  }
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <div class="files-area">
   <div class="files-header">
@@ -106,21 +304,49 @@
   </div>
 
   {#if activeTab === 'files'}
-    <div class="tree-scroll">
+    <div class="tree-scroll" oncontextmenu={handleEmptyContextMenu}>
       {#snippet treeNode(entries, depth)}
         {#each entries as entry}
           {#if entry.type === 'directory'}
             {@const isExpanded = expandedDirs.has(entry.path)}
-            <button
-              class="tree-item folder"
-              style="padding-left: {8 + depth * 16}px"
-              onclick={() => toggleDir(entry)}
-            >
-              <span class="tree-chevron">{isExpanded ? 'v' : '>'}</span>
-              <svg class="tree-icon"><use href="{spriteUrl}#{chooseIconName(entry.path, 'directory', isExpanded)}" /></svg>
-              <span class="tree-name">{entry.name}</span>
-            </button>
+            {#if editingEntry?.path === entry.path}
+              <div class="tree-item folder" style="padding-left: {8 + depth * 16}px">
+                <span class="tree-chevron">{isExpanded ? 'v' : '>'}</span>
+                <input
+                  class="tree-rename-input"
+                  type="text"
+                  bind:value={editingValue}
+                  onkeydown={handleRenameKeydown}
+                  onblur={saveRename}
+                  use:autofocus
+                />
+              </div>
+            {:else}
+              <button
+                class="tree-item folder"
+                style="padding-left: {8 + depth * 16}px"
+                onclick={() => toggleDir(entry)}
+                oncontextmenu={(e) => handleContextMenu(e, entry, true, false)}
+              >
+                <span class="tree-chevron">{isExpanded ? 'v' : '>'}</span>
+                <svg class="tree-icon"><use href="{spriteUrl}#{chooseIconName(entry.path, 'directory', isExpanded)}" /></svg>
+                <span class="tree-name">{entry.name}</span>
+              </button>
+            {/if}
             {#if isExpanded}
+              {#if creatingIn?.parentPath === entry.path}
+                <div class="tree-item file" style="padding-left: {8 + (depth + 1) * 16 + 18}px">
+                  <input
+                    class="tree-rename-input"
+                    type="text"
+                    placeholder={creatingIn.type === 'file' ? 'filename...' : 'folder name...'}
+                    bind:value={creatingValue}
+                    onkeydown={handleCreateKeydown}
+                    onblur={saveCreate}
+                    use:autofocus
+                  />
+                </div>
+              {/if}
               {#if loadingDirs.has(entry.path)}
                 <div class="tree-loading" style="padding-left: {8 + (depth + 1) * 16}px">...</div>
               {:else if dirChildren.has(entry.path)}
@@ -128,17 +354,45 @@
               {/if}
             {/if}
           {:else}
-            <button
-              class="tree-item file"
-              style="padding-left: {8 + depth * 16 + 18}px"
-              onclick={() => handleFileClick(entry)}
-            >
-              <svg class="tree-icon"><use href="{spriteUrl}#{chooseIconName(entry.path, 'file')}" /></svg>
-              <span class="tree-name" class:ignored={entry.ignored}>{entry.name}</span>
-            </button>
+            {#if editingEntry?.path === entry.path}
+              <div class="tree-item file" style="padding-left: {8 + depth * 16 + 18}px">
+                <input
+                  class="tree-rename-input"
+                  type="text"
+                  bind:value={editingValue}
+                  onkeydown={handleRenameKeydown}
+                  onblur={saveRename}
+                  use:autofocus
+                />
+              </div>
+            {:else}
+              <button
+                class="tree-item file"
+                style="padding-left: {8 + depth * 16 + 18}px"
+                onclick={() => handleFileClick(entry)}
+                oncontextmenu={(e) => handleContextMenu(e, entry, false, false)}
+              >
+                <svg class="tree-icon"><use href="{spriteUrl}#{chooseIconName(entry.path, 'file')}" /></svg>
+                <span class="tree-name" class:ignored={entry.ignored}>{entry.name}</span>
+              </button>
+            {/if}
           {/if}
         {/each}
       {/snippet}
+
+      {#if creatingIn?.parentPath === ''}
+        <div class="tree-item file" style="padding-left: {8 + 18}px">
+          <input
+            class="tree-rename-input"
+            type="text"
+            placeholder={creatingIn.type === 'file' ? 'filename...' : 'folder name...'}
+            bind:value={creatingValue}
+            onkeydown={handleCreateKeydown}
+            onblur={saveCreate}
+            use:autofocus
+          />
+        </div>
+      {/if}
 
       {@render treeNode(rootEntries, 0)}
     </div>
@@ -150,7 +404,11 @@
         <div class="changes-empty">No changes</div>
       {:else}
         {#each gitChanges as change}
-          <button class="change-item" onclick={() => onChangeClick(change)}>
+          <button
+            class="change-item"
+            onclick={() => onChangeClick(change)}
+            oncontextmenu={(e) => handleContextMenu(e, change, false, true)}
+          >
             <svg class="tree-icon"><use href="{spriteUrl}#{chooseIconName(change.path, 'file')}" /></svg>
             <span class="change-path">{change.path}</span>
             <span
@@ -167,6 +425,23 @@
     </div>
   {/if}
 </div>
+
+<FileContextMenu
+  x={contextMenu.x}
+  y={contextMenu.y}
+  entry={contextMenu.entry}
+  visible={contextMenu.visible}
+  isFolder={contextMenu.isFolder}
+  isChange={contextMenu.isChange}
+  {gitChanges}
+  onClose={closeContextMenu}
+  onAction={handleContextAction}
+  onOpenFile={(entry) => onFileClick(entry)}
+  onOpenDiff={(change) => onChangeClick(change)}
+  onRename={(entry) => startRename(entry)}
+  onNewFile={(entry) => startNewFile(entry)}
+  onNewFolder={(entry) => startNewFolder(entry)}
+/>
 
 <style>
   .files-area {
@@ -264,6 +539,19 @@
     font-style: italic;
     font-family: var(--font-mono);
     padding: 3px 8px;
+  }
+
+  .tree-rename-input {
+    flex: 1;
+    min-width: 0;
+    padding: 1px 4px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    outline: none;
   }
 
   .change-item {

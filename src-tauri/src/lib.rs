@@ -160,6 +160,11 @@ pub fn run() {
             files_cmds::read_file,
             files_cmds::write_file,
             files_cmds::get_file_git_content,
+            files_cmds::create_file,
+            files_cmds::create_directory,
+            files_cmds::rename_entry,
+            files_cmds::delete_entry,
+            files_cmds::reveal_in_explorer,
             // Shell terminals
             shell_cmds::shell_spawn,
             shell_cmds::shell_input,

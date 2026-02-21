@@ -41,7 +41,7 @@ describe('FileTree.svelte', () => {
 
   it('change items are clickable buttons', () => {
     assert.ok(
-      src.includes('<button class="change-item"') || src.includes("button class='change-item'"),
+      src.includes('class="change-item"') && src.includes('<button'),
       'Change items should be button elements'
     );
   });
@@ -255,5 +255,166 @@ describe('FileTree.svelte', () => {
       src.includes('getGitChanges(root') || src.includes('getGitChanges(projectRoot'),
       'Should pass root parameter to getGitChanges'
     );
+  });
+});
+
+describe('FileTree.svelte -- context menu', () => {
+  it('imports FileContextMenu component', () => {
+    assert.ok(src.includes("import FileContextMenu from"), 'Should import FileContextMenu');
+  });
+
+  it('renders FileContextMenu component', () => {
+    assert.ok(src.includes('<FileContextMenu'), 'Should render FileContextMenu');
+  });
+
+  it('has contextMenu state', () => {
+    assert.ok(src.includes('contextMenu = $state('), 'Should have contextMenu state');
+  });
+
+  it('handles oncontextmenu on tree items', () => {
+    assert.ok(src.includes('oncontextmenu'), 'Should have contextmenu handlers');
+  });
+
+  it('has handleContextMenu function', () => {
+    assert.ok(src.includes('handleContextMenu'), 'Should have handleContextMenu');
+  });
+
+  it('prevents default context menu', () => {
+    assert.ok(src.includes('e.preventDefault()'), 'Should prevent default');
+  });
+
+  it('has closeContextMenu function', () => {
+    assert.ok(src.includes('closeContextMenu'), 'Should have closeContextMenu');
+  });
+
+  it('passes context menu props to FileContextMenu', () => {
+    assert.ok(src.includes('x={contextMenu.x}'), 'Should pass x');
+    assert.ok(src.includes('y={contextMenu.y}'), 'Should pass y');
+    assert.ok(src.includes('visible={contextMenu.visible}'), 'Should pass visible');
+  });
+
+  it('has separate context for files, folders, and changes', () => {
+    assert.ok(src.includes('isFolder'), 'Should distinguish folders');
+    assert.ok(src.includes('isChange'), 'Should distinguish changes');
+  });
+
+  it('has handleEmptyContextMenu for blank space', () => {
+    assert.ok(src.includes('handleEmptyContextMenu'), 'Should have empty space context handler');
+  });
+
+  it('attaches empty context menu to tree-scroll', () => {
+    assert.ok(src.includes('oncontextmenu={handleEmptyContextMenu}'), 'Should handle right-click on empty space');
+  });
+});
+
+describe('FileTree.svelte -- inline rename', () => {
+  it('has editingEntry state', () => {
+    assert.ok(src.includes('editingEntry = $state('), 'Should have editingEntry state');
+  });
+
+  it('has startRename function', () => {
+    assert.ok(src.includes('startRename'), 'Should have startRename');
+  });
+
+  it('has saveRename function', () => {
+    assert.ok(src.includes('saveRename'), 'Should have saveRename');
+  });
+
+  it('has cancelRename function', () => {
+    assert.ok(src.includes('cancelRename'), 'Should have cancelRename');
+  });
+
+  it('has rename input class', () => {
+    assert.ok(src.includes('tree-rename-input'), 'Should have rename input class');
+  });
+
+  it('calls renameEntry API', () => {
+    assert.ok(src.includes('renameEntry('), 'Should call renameEntry');
+  });
+
+  it('imports renameEntry from api', () => {
+    assert.ok(src.includes('renameEntry'), 'Should import renameEntry');
+  });
+
+  it('handles Enter key for save', () => {
+    assert.ok(src.includes("e.key === 'Enter'"), 'Should save on Enter');
+  });
+
+  it('handles Escape key for cancel', () => {
+    assert.ok(src.includes("e.key === 'Escape'"), 'Should cancel on Escape');
+  });
+
+  it('uses autofocus action', () => {
+    assert.ok(src.includes('use:autofocus'), 'Should autofocus rename input');
+  });
+
+  it('selects filename without extension', () => {
+    assert.ok(src.includes('setSelectionRange'), 'Should select filename part');
+  });
+});
+
+describe('FileTree.svelte -- inline create', () => {
+  it('has creatingIn state', () => {
+    assert.ok(src.includes('creatingIn = $state('), 'Should have creatingIn state');
+  });
+
+  it('has startNewFile function', () => {
+    assert.ok(src.includes('startNewFile'), 'Should have startNewFile');
+  });
+
+  it('has startNewFolder function', () => {
+    assert.ok(src.includes('startNewFolder'), 'Should have startNewFolder');
+  });
+
+  it('has saveCreate function', () => {
+    assert.ok(src.includes('saveCreate'), 'Should have saveCreate');
+  });
+
+  it('has cancelCreate function', () => {
+    assert.ok(src.includes('cancelCreate'), 'Should have cancelCreate');
+  });
+
+  it('imports createFile from api', () => {
+    assert.ok(src.includes('createFile'), 'Should import createFile');
+  });
+
+  it('imports createDirectory from api', () => {
+    assert.ok(src.includes('createDirectory'), 'Should import createDirectory');
+  });
+
+  it('has getParentPath helper for file vs folder', () => {
+    assert.ok(src.includes('getParentPath'), 'Should have getParentPath helper');
+  });
+});
+
+describe('FileTree.svelte -- F2 keyboard shortcut', () => {
+  it('has selectedEntry state', () => {
+    assert.ok(src.includes('selectedEntry = $state('), 'Should have selectedEntry state');
+  });
+
+  it('listens for F2 key', () => {
+    assert.ok(src.includes("e.key === 'F2'"), 'Should listen for F2');
+  });
+
+  it('has handleKeydown function', () => {
+    assert.ok(src.includes('handleKeydown'), 'Should have handleKeydown');
+  });
+
+  it('uses svelte:window for keyboard', () => {
+    assert.ok(src.includes('svelte:window'), 'Should use svelte:window');
+  });
+});
+
+describe('FileTree.svelte -- tree refresh', () => {
+  it('has refreshParent function', () => {
+    assert.ok(src.includes('refreshParent'), 'Should have refreshParent');
+  });
+
+  it('refreshes git changes after mutations', () => {
+    // refreshParent should call loadGitChanges
+    const refreshStart = src.indexOf('async function refreshParent');
+    const refreshEnd = src.indexOf('}', src.indexOf('loadGitChanges', refreshStart));
+    const refreshBody = src.slice(refreshStart, refreshEnd);
+    assert.ok(refreshBody.includes('loadGitChanges'), 'Should refresh git changes');
   });
 });

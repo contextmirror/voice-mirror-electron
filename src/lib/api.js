@@ -446,6 +446,56 @@ export async function getFileGitContent(path, root) {
   return invoke('get_file_git_content', { path, root: root || null });
 }
 
+/**
+ * Create a new file with optional content.
+ * Errors if the file already exists. Creates parent directories as needed.
+ * @param {string} path - File path relative to project root
+ * @param {string} [content] - Optional initial content
+ * @param {string} [root] - Optional project root override
+ */
+export async function createFile(path, content, root) {
+  return invoke('create_file', { path, content: content || null, root: root || null });
+}
+
+/**
+ * Create a new directory (including parents).
+ * Errors if the directory already exists.
+ * @param {string} path - Directory path relative to project root
+ * @param {string} [root] - Optional project root override
+ */
+export async function createDirectory(path, root) {
+  return invoke('create_directory', { path, root: root || null });
+}
+
+/**
+ * Rename (move) a file or directory within the project root.
+ * @param {string} oldPath - Current path relative to project root
+ * @param {string} newPath - New path relative to project root
+ * @param {string} [root] - Optional project root override
+ */
+export async function renameEntry(oldPath, newPath, root) {
+  return invoke('rename_entry', { oldPath, newPath, root: root || null });
+}
+
+/**
+ * Delete a file or directory by moving it to the OS trash.
+ * Falls back to permanent delete if trash is unavailable.
+ * @param {string} path - Path relative to project root
+ * @param {string} [root] - Optional project root override
+ */
+export async function deleteEntry(path, root) {
+  return invoke('delete_entry', { path, root: root || null });
+}
+
+/**
+ * Reveal a file or directory in the system file explorer.
+ * @param {string} path - Path relative to project root
+ * @param {string} [root] - Optional project root override
+ */
+export async function revealInExplorer(path, root) {
+  return invoke('reveal_in_explorer', { path, root: root || null });
+}
+
 // ============ Shell Terminals ============
 
 /**

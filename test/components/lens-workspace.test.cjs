@@ -139,4 +139,5 @@ describe('LensWorkspace.svelte', () => {
   it('has terminal-area with border-top', () => {
     assert.ok(src.includes('border-top'));
   });
+
 });

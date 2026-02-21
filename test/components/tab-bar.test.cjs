@@ -143,3 +143,4 @@ describe('TabBar.svelte: diff tab support', () => {
     );
   });
 });
+
