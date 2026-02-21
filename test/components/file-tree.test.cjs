@@ -35,8 +35,16 @@ describe('FileTree.svelte', () => {
     assert.ok(src.includes('$props()'), 'Should use $props()');
   });
 
+  it('accepts onFileDblClick prop', () => {
+    assert.ok(src.includes('onFileDblClick'), 'Should have onFileDblClick prop');
+  });
+
   it('accepts onChangeClick prop', () => {
     assert.ok(src.includes('onChangeClick'), 'Should have onChangeClick prop');
+  });
+
+  it('has ondblclick on file items', () => {
+    assert.ok(src.includes('ondblclick'), 'Should have double-click handler on files');
   });
 
   it('change items are clickable buttons', () => {

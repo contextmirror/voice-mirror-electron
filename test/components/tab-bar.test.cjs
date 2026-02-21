@@ -38,8 +38,10 @@ describe('TabBar.svelte', () => {
     assert.ok(src.includes('class:dirty'), 'Should use class:dirty');
   });
 
-  it('has close button with tab-close class', () => {
-    assert.ok(src.includes('tab-close'), 'Should have tab-close class');
+  it('has tab-action button with pin indicator', () => {
+    assert.ok(src.includes('tab-action'), 'Should have tab-action class');
+    assert.ok(src.includes('icon-pin'), 'Should have pin icon');
+    assert.ok(src.includes('icon-close'), 'Should have close icon');
   });
 
   it('has add button with tab-add class', () => {
@@ -123,6 +125,29 @@ describe('TabBar.svelte: icon mapping', () => {
 
   it('has file type detection', () => {
     assert.ok(src.includes("'code'") || src.includes("'file'"), 'Should detect file types');
+  });
+});
+
+describe('TabBar.svelte: close all tabs', () => {
+  it('has close-all button', () => {
+    assert.ok(src.includes('tab-close-all'), 'Should have tab-close-all class');
+  });
+
+  it('calls closeAll on click', () => {
+    assert.ok(src.includes('closeAll()'), 'Should call closeAll');
+  });
+
+  it('only shows when file tabs are open', () => {
+    assert.ok(src.includes('tabs.length > 1'), 'Should conditionally show close-all');
+  });
+
+  it('has aria-label on close-all button', () => {
+    assert.ok(src.includes('aria-label="Close all tabs"'), 'Should have aria-label');
+  });
+
+  it('highlights danger color on hover', () => {
+    assert.ok(src.includes('.tab-close-all:hover'), 'Should have hover style');
+    assert.ok(src.includes('var(--danger)'), 'Should use danger color on hover');
   });
 });
 

@@ -67,11 +67,13 @@
       {/if}
       {#if tab.type !== 'browser'}
         <button
-          class="tab-close"
+          class="tab-action"
+          class:pinned={!tab.preview}
           onclick={(e) => { e.stopPropagation(); tabsStore.closeTab(tab.id); }}
           aria-label="Close tab"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          <svg class="icon-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 2h6l-1 7h4l-8 8-1-7H5z"/></svg>
         </button>
       {/if}
     </button>
@@ -79,6 +81,11 @@
   <button class="tab-add" onclick={handleAddFile} aria-label="Open file" title="Open file">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
   </button>
+  {#if tabsStore.tabs.length > 1}
+    <button class="tab-close-all" onclick={() => tabsStore.closeAll()} aria-label="Close all tabs" title="Close all tabs">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  {/if}
 </div>
 
 <style>
@@ -158,7 +165,7 @@
     flex-shrink: 0;
   }
 
-  .tab-close {
+  .tab-action {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -170,20 +177,30 @@
     color: var(--muted);
     cursor: pointer;
     padding: 0;
-    opacity: 0;
     transition: opacity 0.1s;
   }
 
-  .tab-close svg {
+  .tab-action svg {
     width: 12px;
     height: 12px;
   }
 
-  .tab:hover .tab-close {
-    opacity: 1;
+  /* Preview tabs: hide action button, show X on hover */
+  .tab-action:not(.pinned) {
+    opacity: 0;
   }
+  .tab-action:not(.pinned) .icon-pin { display: none; }
+  .tab:hover .tab-action:not(.pinned) { opacity: 1; }
 
-  .tab-close:hover {
+  /* Pinned tabs: show pin, swap to X on hover */
+  .tab-action.pinned { opacity: 1; color: var(--accent); }
+  .tab-action.pinned .icon-close { display: none; }
+  .tab-action.pinned .icon-pin { display: block; }
+  .tab:hover .tab-action.pinned .icon-pin { display: none; }
+  .tab:hover .tab-action.pinned .icon-close { display: block; }
+  .tab:hover .tab-action.pinned { opacity: 1; }
+
+  .tab-action:hover {
     background: var(--bg-elevated);
     color: var(--text);
   }
@@ -206,6 +223,26 @@
   .tab-add:hover {
     background: var(--bg);
     color: var(--text);
+  }
+
+  .tab-close-all {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-left: 2px;
+  }
+
+  .tab-close-all:hover {
+    background: var(--bg);
+    color: var(--danger);
   }
 
   .tab-diff-badge {

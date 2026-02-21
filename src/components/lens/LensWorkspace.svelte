@@ -62,6 +62,7 @@
               {#snippet panelB()}
                 <FileTree
                   onFileClick={(entry) => tabsStore.openFile(entry)}
+                  onFileDblClick={(entry) => tabsStore.pinTab(entry.path)}
                   onChangeClick={(change) => tabsStore.openDiff(change)}
                 />
               {/snippet}

@@ -115,6 +115,10 @@ describe('LensWorkspace.svelte', () => {
   it('passes onFileClick to FileTree', () => {
     assert.ok(src.includes('onFileClick'), 'Should wire onFileClick to FileTree');
   });
+  it('passes onFileDblClick to FileTree for pinning', () => {
+    assert.ok(src.includes('onFileDblClick'), 'Should wire onFileDblClick to FileTree');
+    assert.ok(src.includes('pinTab'), 'Should call pinTab on double-click');
+  });
 
   // Webview visibility
   it('imports lensSetVisible', () => {

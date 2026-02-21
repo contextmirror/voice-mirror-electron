@@ -5,7 +5,7 @@
   import spriteUrl from '../../assets/icons/file-icons-sprite.svg';
   import FileContextMenu from './FileContextMenu.svelte';
 
-  let { onFileClick = () => {}, onChangeClick = () => {} } = $props();
+  let { onFileClick = () => {}, onFileDblClick = () => {}, onChangeClick = () => {} } = $props();
 
   // State
   let activeTab = $state('files');
@@ -370,6 +370,7 @@
                 class="tree-item file"
                 style="padding-left: {8 + depth * 16 + 18}px"
                 onclick={() => handleFileClick(entry)}
+                ondblclick={() => onFileDblClick(entry)}
                 oncontextmenu={(e) => handleContextMenu(e, entry, false, false)}
               >
                 <svg class="tree-icon"><use href="{spriteUrl}#{chooseIconName(entry.path, 'file')}" /></svg>
