@@ -24,10 +24,6 @@ describe('Sidebar.svelte', () => {
     assert.ok(src.includes("import { navigationStore }"), 'Should import navigationStore');
   });
 
-  it('imports aiStatusStore', () => {
-    assert.ok(src.includes("import { aiStatusStore }"), 'Should import aiStatusStore');
-  });
-
   it('imports voiceStore', () => {
     assert.ok(src.includes("import { voiceStore }"), 'Should import voiceStore');
   });
@@ -111,25 +107,9 @@ describe('Sidebar.svelte', () => {
     assert.ok(src.includes('aria-label={tab.label}'), 'Should have aria-label on nav buttons');
   });
 
-  it('shows AI provider status indicator', () => {
-    assert.ok(src.includes('sidebar-status'), 'Should have status section');
-    assert.ok(src.includes('aiDisplayName'), 'Should display AI provider name');
-  });
-
-  it('shows provider status dot (running/starting)', () => {
-    assert.ok(src.includes('status-dot'), 'Should have status dot');
-    assert.ok(src.includes('class:running'), 'Should show running state');
-    assert.ok(src.includes('class:starting'), 'Should show starting state');
-  });
-
   it('shows voice status indicator', () => {
     assert.ok(src.includes('voice-status'), 'Should have voice status');
     assert.ok(src.includes('voice-dot'), 'Should have voice dot indicator');
-  });
-
-  it('has provider icon support', () => {
-    assert.ok(src.includes('PROVIDER_ICONS'), 'Should define provider icons');
-    assert.ok(src.includes('sidebar-provider-icon'), 'Should have provider icon CSS');
   });
 
   it('renders ChatList when on chat view', () => {

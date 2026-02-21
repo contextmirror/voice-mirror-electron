@@ -133,6 +133,7 @@
     overflow: hidden;
     background: var(--bg);
     border-right: 1px solid var(--border);
+    border-radius: var(--radius-lg) 0 0 0;
   }
 
   /* ── Terminal Panel ── */

@@ -83,6 +83,15 @@ describe('TitleBar: window controls', () => {
     assert.ok(src.includes('win-compact'), 'Should have compact button');
   });
 
+  it('imports Orb component for compact button preview', () => {
+    assert.ok(src.includes("import Orb from"), 'Should import Orb component');
+  });
+
+  it('renders mini static Orb in compact button', () => {
+    assert.ok(src.includes('isStatic={true}'), 'Should render Orb with isStatic');
+    assert.ok(src.includes('<Orb'), 'Should render Orb component');
+  });
+
   it('has decorum-controls container', () => {
     assert.ok(src.includes('decorum-controls'), 'Should have decorum-controls class');
   });
