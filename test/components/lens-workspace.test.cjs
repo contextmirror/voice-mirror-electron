@@ -22,8 +22,11 @@ describe('LensWorkspace.svelte', () => {
   it('imports ChatPanel', () => {
     assert.ok(src.includes("import ChatPanel from"));
   });
-  it('imports Terminal', () => {
-    assert.ok(src.includes("import Terminal from"));
+  it('imports TerminalTabs', () => {
+    assert.ok(src.includes("import TerminalTabs from"));
+  });
+  it('imports TerminalTabs from terminal-tabs path', () => {
+    assert.ok(src.includes("terminal/TerminalTabs.svelte"), 'Should import from terminal/TerminalTabs.svelte');
   });
 
   // Props
@@ -46,10 +49,27 @@ describe('LensWorkspace.svelte', () => {
     assert.ok(src.includes('previewRatio'));
   });
 
-  // Tab strip
-  it('has tab strip with add button', () => {
-    assert.ok(src.includes('tab-strip'));
-    assert.ok(src.includes('tab-add'));
+  // Tab system
+  it('imports TabBar component', () => {
+    assert.ok(src.includes("import TabBar from"), 'Should import TabBar');
+  });
+  it('imports FileEditor component', () => {
+    assert.ok(src.includes("import FileEditor from"), 'Should import FileEditor');
+  });
+  it('imports tabsStore', () => {
+    assert.ok(src.includes('tabsStore'), 'Should import tabsStore');
+  });
+  it('renders TabBar component', () => {
+    assert.ok(src.includes('<TabBar'), 'Should render TabBar');
+  });
+  it('renders FileEditor conditionally', () => {
+    assert.ok(src.includes('<FileEditor'), 'Should render FileEditor');
+  });
+  it('switches between browser and file views', () => {
+    assert.ok(
+      src.includes("activeTab?.type === 'browser'"),
+      'Should conditionally show browser or file editor'
+    );
   });
 
   // Chat panel (real component)
@@ -61,10 +81,10 @@ describe('LensWorkspace.svelte', () => {
     assert.ok(src.includes('{onSend}'));
   });
 
-  // Terminal panel (real component)
-  it('has terminal area wrapper with Terminal', () => {
+  // Terminal panel (tabbed container)
+  it('has terminal area wrapper with TerminalTabs', () => {
     assert.ok(src.includes('terminal-area'));
-    assert.ok(src.includes('<Terminal'));
+    assert.ok(src.includes('<TerminalTabs'));
   });
 
   // Files panel (FileTree component)
@@ -76,9 +96,22 @@ describe('LensWorkspace.svelte', () => {
   });
 
   // Preview area
-  it('renders LensToolbar and LensPreview in center', () => {
+  it('renders LensToolbar and LensPreview for browser tab', () => {
     assert.ok(src.includes('<LensToolbar'));
     assert.ok(src.includes('<LensPreview'));
+  });
+
+  // FileTree wiring
+  it('passes onFileClick to FileTree', () => {
+    assert.ok(src.includes('onFileClick'), 'Should wire onFileClick to FileTree');
+  });
+
+  // Webview visibility
+  it('imports lensSetVisible', () => {
+    assert.ok(src.includes('lensSetVisible'), 'Should import lensSetVisible for webview toggle');
+  });
+  it('toggles webview visibility with $effect', () => {
+    assert.ok(src.includes('$effect'), 'Should have effect for webview visibility');
   });
 
   // CSS

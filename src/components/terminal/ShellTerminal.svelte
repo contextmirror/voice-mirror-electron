@@ -1,28 +1,24 @@
 <script>
   /**
-   * Terminal.svelte -- ghostty-web terminal for AI provider PTY output.
+   * ShellTerminal.svelte -- ghostty-web terminal for shell PTY sessions.
    *
-   * Mounts a ghostty-web Terminal instance, listens for Tauri `ai-output` events
-   * to write data to the terminal, and captures keyboard input to send back
-   * to the PTY via the `aiRawInput()` API wrapper. Uses ghostty-web's FitAddon
-   * to auto-resize the terminal to fill its container.
-   *
-   * ghostty-web provides an xterm.js-compatible API backed by Ghostty's
-   * battle-tested WASM VT100 parser.
+   * Simplified version of Terminal.svelte that connects to a shell PTY
+   * session instead of the AI provider. Each instance is tied to a shellId
+   * and filters shell-output events by that ID.
    */
   import { init, Terminal, FitAddon } from 'ghostty-web';
   import { listen } from '@tauri-apps/api/event';
-  import { aiRawInput, aiPtyResize } from '../../lib/api.js';
+  import { shellInput, shellResize } from '../../lib/api.js';
   import { currentThemeName } from '../../lib/stores/theme.svelte.js';
+  import { terminalTabsStore } from '../../lib/stores/terminal-tabs.svelte.js';
 
-  let { onRegisterActions } = $props();
+  let { shellId, visible = true, onRegisterActions } = $props();
 
-  // ---- State ----
   let containerEl = $state(null);
   let term = $state(null);
   let fitAddon = $state(null);
   let resizeObserver = $state(null);
-  let unlistenAiOutput = $state(null);
+  let unlistenShellOutput = $state(null);
   let resizeTimeout = $state(null);
   let lastPtyCols = $state(0);
   let lastPtyRows = $state(0);
@@ -92,13 +88,13 @@
     if (term.cols === lastPtyCols && term.rows === lastPtyRows) return;
     lastPtyCols = term.cols;
     lastPtyRows = term.rows;
-    aiPtyResize(term.cols, term.rows).catch((err) => {
-      console.warn('[Terminal] PTY resize failed:', err);
+    shellResize(shellId, term.cols, term.rows).catch((err) => {
+      console.warn('[ShellTerminal] PTY resize failed:', err);
     });
   }
 
   /**
-   * Fit the terminal to its container and notify the PTY of size changes.
+   * Fit the terminal to its container.
    */
   function fitTerminal() {
     if (!fitAddon || !term) return;
@@ -113,7 +109,6 @@
 
   function handleClear() {
     if (!term) return;
-    // Send clear screen + clear scrollback + cursor home
     term.write('\x1b[2J\x1b[3J\x1b[H');
   }
 
@@ -125,7 +120,7 @@
         await navigator.clipboard.writeText(selection);
         term.clearSelection();
       } catch (err) {
-        console.warn('[Terminal] Copy failed:', err);
+        console.warn('[ShellTerminal] Copy failed:', err);
       }
     }
   }
@@ -135,57 +130,37 @@
     try {
       const text = await navigator.clipboard.readText();
       if (text) {
-        aiRawInput(text).catch((err) => {
-          console.warn('[Terminal] Paste/input failed:', err);
+        shellInput(shellId, text).catch((err) => {
+          console.warn('[ShellTerminal] Paste failed:', err);
         });
       }
     } catch (err) {
-      console.warn('[Terminal] Paste failed:', err);
+      console.warn('[ShellTerminal] Paste failed:', err);
     }
   }
 
   // Register toolbar actions for parent TerminalTabs
   onRegisterActions?.({ clear: handleClear, copy: handleCopy, paste: handlePaste });
 
-  // ---- AI output handler ----
+  // ---- Shell output handler ----
 
   /**
-   * Process a single ai-output event payload.
-   * Extracted so it can be called both from the live listener and
-   * when draining events buffered during the initialization gap.
-   * @param {{ type: string, text?: string, code?: number }} data
+   * Process a single shell-output event payload.
+   * Filters by shellId and handles stdout/exit events.
+   * @param {{ id: string, event_type?: string, type?: string, text?: string, code?: number }} data
    */
-  function handleAiOutput(data) {
+  function handleShellOutput(data) {
     if (!term) return;
+    if (data.id !== shellId) return; // Filter by our session ID
 
-    switch (data.type) {
-      case 'clear':
-        term.write('\x1b[2J\x1b[3J\x1b[H');
-        break;
-      case 'start':
-        // Clear stale content from previous provider before writing new info
-        term.clear();
-        if (data.text) {
-          term.writeln(`\x1b[34m${data.text}\x1b[0m`);
-        }
-        // Fit after provider starts
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            fitTerminal();
-            resizePtyIfChanged();
-          });
-        });
-        break;
+    switch (data.event_type || data.type) {
       case 'stdout':
-      case 'tui':
-      case 'stderr':
-        if (data.text) {
-          term.write(data.text);
-        }
+        if (data.text) term.write(data.text);
         break;
       case 'exit':
         term.writeln('');
-        term.writeln(`\x1b[33m[Process exited with code ${data.code ?? '?'}]\x1b[0m`);
+        term.writeln(`\x1b[33m[Shell exited with code ${data.code ?? '?'}]\x1b[0m`);
+        terminalTabsStore.markExited(shellId);
         break;
     }
   }
@@ -195,8 +170,6 @@
   $effect(() => {
     if (!containerEl) return;
 
-    // ghostty-web requires async WASM initialization before creating terminals.
-    // We do this inside the $effect so it runs on mount.
     let cancelled = false;
 
     async function setup() {
@@ -207,8 +180,7 @@
 
       // Create ghostty-web Terminal instance
       const ghosttyTerm = new Terminal({
-        cursorBlink: false,
-        cursorStyle: 'none',
+        cursorBlink: true,
         fontSize: 13,
         fontFamily: getCssVar('--font-mono') || "'Cascadia Code', 'Fira Code', monospace",
         theme: buildTermTheme(),
@@ -232,18 +204,15 @@
       term = ghosttyTerm;
       fitAddon = fit;
 
-      // Send keyboard input to PTY
+      // Keyboard input -> shell PTY
       ghosttyTerm.onData((data) => {
-        aiRawInput(data).catch((err) => {
-          console.warn('[Terminal] PTY input failed:', err);
+        shellInput(shellId, data).catch((err) => {
+          console.warn('[ShellTerminal] PTY input failed:', err);
         });
       });
 
       // Custom keyboard handler for Ctrl+C (copy selection) and Ctrl+V (paste)
-      // ghostty-web convention: return true = "handled, STOP processing"
-      //                         return false = "not handled, let terminal process"
       ghosttyTerm.attachCustomKeyEventHandler((event) => {
-        // Only intercept keydown to avoid double-firing
         if (event.type !== 'keydown') return false;
 
         // Ctrl+C: copy selected text if there is a selection
@@ -269,20 +238,20 @@
         if (cols === lastPtyCols && rows === lastPtyRows) return;
         lastPtyCols = cols;
         lastPtyRows = rows;
-        aiPtyResize(cols, rows).catch((err) => {
-          console.warn('[Terminal] PTY resize failed:', err);
+        shellResize(shellId, cols, rows).catch((err) => {
+          console.warn('[ShellTerminal] PTY resize failed:', err);
         });
       });
 
-      // Listen for AI output events from Tauri backend
-      const unlisten = await listen('ai-output', (event) => {
+      // Listen for shell output events from Tauri backend
+      const unlisten = await listen('shell-output', (event) => {
         if (!term) return;
         if (!initialized) {
           // Buffer events until terminal is fully initialized
           pendingEvents.push(event);
           return;
         }
-        handleAiOutput(event.payload);
+        handleShellOutput(event.payload);
       });
 
       if (cancelled) {
@@ -291,7 +260,7 @@
         return;
       }
 
-      unlistenAiOutput = unlisten;
+      unlistenShellOutput = unlisten;
 
       // Observe container resize for auto-fitting
       const observer = new ResizeObserver(() => {
@@ -299,9 +268,7 @@
         resizeTimeout = setTimeout(() => {
           fitTerminal();
           resizePtyIfChanged();
-          // Force a full canvas redraw on the next frame to prevent artifacts
-          // after resize. The resize changes canvas dimensions but the render
-          // loop may not mark all rows dirty -- writing a no-op ensures it does.
+          // Force a full canvas redraw on the next frame
           if (term) {
             requestAnimationFrame(() => {
               term.write('');
@@ -317,11 +284,11 @@
         requestAnimationFrame(() => {
           fitTerminal();
           resizePtyIfChanged();
-          // Gate: terminal is now fully initialized and ready for ai-output events
+          // Gate: terminal is now fully initialized
           initialized = true;
           // Replay any events that arrived during initialization
           for (const evt of pendingEvents) {
-            handleAiOutput(evt.payload);
+            handleShellOutput(evt.payload);
           }
           pendingEvents = [];
         });
@@ -329,22 +296,21 @@
     }
 
     setup().catch((err) => {
-      console.error('[Terminal] ghostty-web initialization failed:', err);
+      console.error('[ShellTerminal] Init failed:', err);
     });
 
     // Cleanup on unmount
     return () => {
       cancelled = true;
-      // Immediately gate off event handlers before tearing down resources
       initialized = false;
       if (resizeTimeout) clearTimeout(resizeTimeout);
       if (resizeObserver) {
         resizeObserver.disconnect();
         resizeObserver = null;
       }
-      if (unlistenAiOutput) {
-        unlistenAiOutput();
-        unlistenAiOutput = null;
+      if (unlistenShellOutput) {
+        unlistenShellOutput();
+        unlistenShellOutput = null;
       }
       if (term) {
         term.dispose();
@@ -357,6 +323,17 @@
     };
   });
 
+  // ---- Re-fit when becoming visible ----
+
+  $effect(() => {
+    if (visible && fitAddon && term) {
+      requestAnimationFrame(() => {
+        fitTerminal();
+        resizePtyIfChanged();
+      });
+    }
+  });
+
   // ---- Theme reactivity ----
 
   $effect(() => {
@@ -367,8 +344,7 @@
 
     // Small delay to let CSS variables settle after theme application
     requestAnimationFrame(() => {
-      const newTheme = buildTermTheme();
-      term.options.theme = newTheme;
+      term.options.theme = buildTermTheme();
 
       // Update font family in case it changed
       const fontMono = getCssVar('--font-mono');
@@ -382,12 +358,12 @@
   });
 </script>
 
-<div class="terminal-view">
-  <div class="terminal-container" bind:this={containerEl}></div>
+<div class="shell-terminal-view">
+  <div class="shell-terminal-container" bind:this={containerEl}></div>
 </div>
 
 <style>
-  .terminal-view {
+  .shell-terminal-view {
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -395,25 +371,21 @@
     background: var(--bg);
   }
 
-  .terminal-container {
+  .shell-terminal-container {
     flex: 1;
     overflow: hidden;
     padding: 4px;
-    /* Ensure ghostty-web fills the container */
     min-height: 0;
     position: relative;
-    /* Clip canvas rendering to container bounds */
     contain: strict;
   }
 
-  /* ghostty-web renders into a canvas; ensure it fills the container */
-  .terminal-container :global(canvas) {
+  .shell-terminal-container :global(canvas) {
     display: block;
   }
 
-  /* Prevent ghostty-web wrapper from overflowing */
-  .terminal-container :global(.ghostty-web),
-  .terminal-container :global(.xterm) {
+  .shell-terminal-container :global(.ghostty-web),
+  .shell-terminal-container :global(.xterm) {
     overflow: hidden !important;
   }
 </style>

@@ -2,9 +2,13 @@
   import LensToolbar from './LensToolbar.svelte';
   import LensPreview from './LensPreview.svelte';
   import FileTree from './FileTree.svelte';
+  import TabBar from './TabBar.svelte';
+  import FileEditor from './FileEditor.svelte';
   import SplitPanel from '../shared/SplitPanel.svelte';
   import ChatPanel from '../chat/ChatPanel.svelte';
-  import Terminal from '../terminal/Terminal.svelte';
+  import TerminalTabs from '../terminal/TerminalTabs.svelte';
+  import { tabsStore } from '../../lib/stores/tabs.svelte.js';
+  import { lensSetVisible } from '../../lib/api.js';
 
   let {
     onSend = () => {},
@@ -14,6 +18,12 @@
   let verticalRatio = $state(0.75);   // main area vs terminal
   let chatRatio = $state(0.18);       // chat vs center+right
   let previewRatio = $state(0.78);    // preview vs file tree
+
+  // Toggle browser webview visibility when switching between browser and file tabs
+  $effect(() => {
+    const isBrowser = tabsStore.activeTab?.type === 'browser';
+    lensSetVisible(isBrowser).catch(() => {});
+  });
 </script>
 
 <div class="lens-workspace">
@@ -33,17 +43,19 @@
             <SplitPanel direction="horizontal" bind:ratio={previewRatio} minA={300} minB={140}>
               {#snippet panelA()}
                 <div class="preview-area">
-                  <div class="tab-strip">
-                    <button class="tab-add" title="Open file">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    </button>
-                  </div>
-                  <LensToolbar />
-                  <LensPreview />
+                  <TabBar />
+                  {#if tabsStore.activeTab?.type === 'browser'}
+                    <LensToolbar />
+                    <LensPreview />
+                  {:else if tabsStore.activeTab?.type === 'file'}
+                    {#key tabsStore.activeTabId}
+                      <FileEditor tab={tabsStore.activeTab} />
+                    {/key}
+                  {/if}
                 </div>
               {/snippet}
               {#snippet panelB()}
-                <FileTree />
+                <FileTree onFileClick={(entry) => tabsStore.openFile(entry)} />
               {/snippet}
             </SplitPanel>
           {/snippet}
@@ -51,7 +63,7 @@
       {/snippet}
       {#snippet panelB()}
         <div class="terminal-area">
-          <Terminal />
+          <TerminalTabs />
         </div>
       {/snippet}
     </SplitPanel>
@@ -66,33 +78,6 @@
     overflow: hidden;
     background: var(--bg);
   }
-
-  /* ── Tab Strip ── */
-
-  .tab-strip {
-    display: flex;
-    align-items: center;
-    height: 30px;
-    flex-shrink: 0;
-    padding: 0 8px;
-    background: var(--bg-elevated);
-    border-bottom: 1px solid var(--border);
-    -webkit-app-region: no-drag;
-  }
-
-  .tab-add {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    border: none;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--muted);
-    cursor: pointer;
-  }
-  .tab-add:hover { background: var(--bg); color: var(--text); }
 
   /* ── Workspace Content ── */
 

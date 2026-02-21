@@ -8,6 +8,7 @@ pub mod tools;
 pub mod voice;
 pub mod window;
 pub mod lens;
+pub mod shell;
 
 use serde_json::Value;
 

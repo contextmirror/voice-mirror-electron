@@ -239,7 +239,7 @@ export async function getProvider() {
  *
  * @param {string} providerType - Provider ID (e.g. "ollama", "lmstudio").
  * @param {string} [baseUrl] - Custom base URL (uses default if omitted).
- * @returns {{ success: boolean, data?: { online: boolean, models: string[], default: string } }}
+ * @returns {Promise<{ success: boolean, data?: { online: boolean, models: string[], default: string } }>}
  */
 export async function listModels(providerType, baseUrl) {
   return invoke('list_models', {
@@ -425,4 +425,68 @@ export async function getGitChanges(root) {
 
 export async function getProjectRoot() {
   return invoke('get_project_root');
+}
+
+export async function readFile(path, root) {
+  return invoke('read_file', { path, root: root || null });
+}
+
+export async function writeFile(path, content, root) {
+  return invoke('write_file', { path, content, root: root || null });
+}
+
+// ============ Shell Terminals ============
+
+/**
+ * Spawn a new shell terminal session.
+ * @param {Object} [options]
+ * @param {number} [options.cols] - Terminal columns.
+ * @param {number} [options.rows] - Terminal rows.
+ * @param {string} [options.cwd] - Working directory.
+ * @returns {Promise<Object>}
+ */
+export async function shellSpawn(options = {}) {
+  return invoke('shell_spawn', {
+    cols: options.cols || null,
+    rows: options.rows || null,
+    cwd: options.cwd || null,
+  });
+}
+
+/**
+ * Send raw input to a shell terminal session.
+ * @param {string} id - Shell session ID.
+ * @param {string} data - Raw input data.
+ * @returns {Promise<Object>}
+ */
+export async function shellInput(id, data) {
+  return invoke('shell_input', { id, data });
+}
+
+/**
+ * Resize a shell terminal session's PTY.
+ * @param {string} id - Shell session ID.
+ * @param {number} cols - New column count.
+ * @param {number} rows - New row count.
+ * @returns {Promise<Object>}
+ */
+export async function shellResize(id, cols, rows) {
+  return invoke('shell_resize', { id, cols, rows });
+}
+
+/**
+ * Kill a shell terminal session.
+ * @param {string} id - Shell session ID.
+ * @returns {Promise<Object>}
+ */
+export async function shellKill(id) {
+  return invoke('shell_kill', { id });
+}
+
+/**
+ * List active shell terminal sessions.
+ * @returns {Promise<Object>}
+ */
+export async function shellList() {
+  return invoke('shell_list');
 }
