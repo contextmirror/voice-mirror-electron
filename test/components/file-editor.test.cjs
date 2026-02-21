@@ -149,8 +149,12 @@ describe('FileEditor.svelte: language support', () => {
 });
 
 describe('FileEditor.svelte: lifecycle', () => {
-  it('uses onMount', () => {
-    assert.ok(src.includes('onMount'), 'Should use onMount');
+  it('uses $effect to react to tab changes', () => {
+    assert.ok(src.includes('$effect'), 'Should use $effect for reactive loading');
+  });
+
+  it('caches CodeMirror modules', () => {
+    assert.ok(src.includes('cmCache'), 'Should cache CM modules');
   });
 
   it('uses onDestroy', () => {

@@ -1,5 +1,5 @@
 <script>
-  import { onMount, onDestroy, tick } from 'svelte';
+  import { onDestroy, tick } from 'svelte';
   import { readFile, writeFile } from '../../lib/api.js';
   import { tabsStore } from '../../lib/stores/tabs.svelte.js';
   import { projectStore } from '../../lib/stores/project.svelte.js';
@@ -12,6 +12,27 @@
   let error = $state(null);
   let isBinary = $state(false);
   let fileSize = $state(0);
+  let currentPath = $state(null);
+
+  // Cache CodeMirror modules after first load
+  let cmCache = null;
+
+  async function loadCM() {
+    if (cmCache) return cmCache;
+    const [
+      { EditorView, basicSetup },
+      { EditorState },
+      { keymap },
+      { oneDark },
+    ] = await Promise.all([
+      import('codemirror'),
+      import('@codemirror/state'),
+      import('@codemirror/view'),
+      import('@codemirror/theme-one-dark'),
+    ]);
+    cmCache = { EditorView, basicSetup, EditorState, keymap, oneDark };
+    return cmCache;
+  }
 
   async function loadLanguage(filePath) {
     const ext = filePath?.split('.').pop()?.toLowerCase() || '';
@@ -70,32 +91,28 @@
     }
   }
 
-  onMount(async () => {
-    try {
-      const [
-        { EditorView, basicSetup },
-        { EditorState },
-        { keymap },
-        { oneDark },
-      ] = await Promise.all([
-        import('codemirror'),
-        import('@codemirror/state'),
-        import('@codemirror/view'),
-        import('@codemirror/theme-one-dark'),
-      ]);
+  async function loadFile(filePath) {
+    if (!filePath || filePath === currentPath) return;
+    currentPath = filePath;
+    loading = true;
+    error = null;
+    isBinary = false;
 
+    try {
+      const cm = await loadCM();
       const root = projectStore.activeProject?.path || null;
-      const result = await readFile(tab.path, root);
+      const result = await readFile(filePath, root);
       const data = result?.data || result;
 
-      // Handle error response
+      // Check if tab changed while loading
+      if (filePath !== currentPath) return;
+
       if (!result?.success || result?.error) {
         error = result?.error || 'Failed to read file';
         loading = false;
         return;
       }
 
-      // Handle binary files (Rust returns { binary: true, size })
       if (data?.binary) {
         isBinary = true;
         fileSize = data.size || 0;
@@ -109,46 +126,61 @@
         return;
       }
 
-      const langSupport = await loadLanguage(tab.path);
+      const langSupport = await loadLanguage(filePath);
+
+      // Check again if tab changed
+      if (filePath !== currentPath) return;
 
       const extensions = [
-        basicSetup,
-        oneDark,
-        EditorView.updateListener.of((update) => {
+        cm.basicSetup,
+        cm.oneDark,
+        cm.EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             tabsStore.setDirty(tab.id, true);
             tabsStore.pinTab(tab.id);
           }
         }),
-        keymap.of([{
+        cm.keymap.of([{
           key: 'Mod-s',
           run: () => { save(); return true; },
         }]),
       ];
 
-      // Add language support if available
       if (langSupport && !Array.isArray(langSupport)) {
         extensions.splice(1, 0, langSupport);
       } else if (Array.isArray(langSupport) && langSupport.length > 0) {
         extensions.splice(1, 0, ...langSupport);
       }
 
-      const state = EditorState.create({
+      const state = cm.EditorState.create({
         doc: data.content,
         extensions,
       });
 
-      // Clear loading first so editorEl is in the DOM, then attach CodeMirror
+      // Destroy old editor if it exists
+      if (view) {
+        view.destroy();
+        view = null;
+      }
+
       loading = false;
       await tick();
 
       if (editorEl) {
-        view = new EditorView({ state, parent: editorEl });
+        view = new cm.EditorView({ state, parent: editorEl });
       }
     } catch (err) {
-      console.error('[FileEditor] Mount failed:', err);
+      if (filePath !== currentPath) return;
+      console.error('[FileEditor] Load failed:', err);
       error = err.message || 'Failed to load editor';
       loading = false;
+    }
+  }
+
+  // React to tab.path changes
+  $effect(() => {
+    if (tab?.path) {
+      loadFile(tab.path);
     }
   });
 

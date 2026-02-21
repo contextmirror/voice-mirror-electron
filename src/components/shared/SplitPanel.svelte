@@ -1,10 +1,12 @@
 <script>
-  /** @type {{ direction?: 'horizontal' | 'vertical', ratio?: number, minA?: number, minB?: number, panelA: import('svelte').Snippet, panelB: import('svelte').Snippet }} */
+  /** @type {{ direction?: 'horizontal' | 'vertical', ratio?: number, minA?: number, minB?: number, collapseA?: boolean, collapseB?: boolean, panelA: import('svelte').Snippet, panelB: import('svelte').Snippet }} */
   let {
     direction = 'horizontal',
     ratio = $bindable(0.5),
     minA = 200,
     minB = 200,
+    collapseA = false,
+    collapseB = false,
     panelA,
     panelB,
   } = $props();
@@ -33,16 +35,20 @@
     dragging = false;
   }
 
+  let effectiveRatio = $derived(collapseA ? 0 : collapseB ? 1 : ratio);
+
   let panelAStyle = $derived(
     direction === 'horizontal'
-      ? `width: ${ratio * 100}%; height: 100%;`
-      : `height: ${ratio * 100}%; width: 100%;`
+      ? `width: ${effectiveRatio * 100}%; height: 100%;`
+      : `height: ${effectiveRatio * 100}%; width: 100%;`
   );
   let panelBStyle = $derived(
     direction === 'horizontal'
-      ? `width: ${(1 - ratio) * 100}%; height: 100%;`
-      : `height: ${(1 - ratio) * 100}%; width: 100%;`
+      ? `width: ${(1 - effectiveRatio) * 100}%; height: 100%;`
+      : `height: ${(1 - effectiveRatio) * 100}%; width: 100%;`
   );
+
+  let handleHidden = $derived(collapseA || collapseB);
 </script>
 
 <div
@@ -56,18 +62,20 @@
     {@render panelA()}
   </div>
 
-  <div
-    class="split-handle"
-    role="separator"
-    aria-orientation={direction === 'horizontal' ? 'vertical' : 'horizontal'}
-    tabindex="0"
-    onpointerdown={handlePointerDown}
-    onpointermove={handlePointerMove}
-    onpointerup={handlePointerUp}
-    onlostpointercapture={handlePointerUp}
-  >
-    <div class="handle-line"></div>
-  </div>
+  {#if !handleHidden}
+    <div
+      class="split-handle"
+      role="separator"
+      aria-orientation={direction === 'horizontal' ? 'vertical' : 'horizontal'}
+      tabindex="0"
+      onpointerdown={handlePointerDown}
+      onpointermove={handlePointerMove}
+      onpointerup={handlePointerUp}
+      onlostpointercapture={handlePointerUp}
+    >
+      <div class="handle-line"></div>
+    </div>
+  {/if}
 
   <div class="split-panel panel-b" style={panelBStyle}>
     {@render panelB()}

@@ -68,15 +68,13 @@ describe('LensWorkspace.svelte', () => {
   it('renders FileEditor conditionally', () => {
     assert.ok(src.includes('<FileEditor'), 'Should render FileEditor');
   });
-  it('switches between browser and file views', () => {
-    assert.ok(
-      src.includes("activeTab?.type === 'browser'"),
-      'Should conditionally show browser or file editor'
-    );
+  it('uses CSS visibility for browser layer (no destroy/recreate)', () => {
+    assert.ok(src.includes('preview-layer'), 'Should have preview-layer wrapper');
+    assert.ok(src.includes('class:visible={isBrowser}'), 'Should toggle visibility with CSS');
   });
   it('renders DiffViewer for diff tabs', () => {
     assert.ok(src.includes('<DiffViewer'), 'Should render DiffViewer');
-    assert.ok(src.includes("activeTab?.type === 'diff'"), 'Should check for diff tab type');
+    assert.ok(src.includes('isDiff'), 'Should check for diff tab type');
   });
   it('passes onChangeClick to FileTree', () => {
     assert.ok(src.includes('onChangeClick'), 'Should wire onChangeClick to FileTree');
@@ -120,18 +118,18 @@ describe('LensWorkspace.svelte', () => {
     assert.ok(src.includes('pinTab'), 'Should call pinTab on double-click');
   });
 
-  // Panel toggles via layoutStore
+  // Panel toggles via layoutStore (collapse props, not conditional rendering)
   it('imports layoutStore', () => {
     assert.ok(src.includes('layoutStore'), 'Should import layoutStore');
   });
-  it('conditionally renders chat panel', () => {
-    assert.ok(src.includes('layoutStore.showChat'), 'Should use layoutStore for chat toggle');
+  it('collapses chat via SplitPanel collapseA', () => {
+    assert.ok(src.includes('collapseA={!layoutStore.showChat}'), 'Should collapse chat panel');
   });
-  it('conditionally renders terminal panel', () => {
-    assert.ok(src.includes('layoutStore.showTerminal'), 'Should use layoutStore for terminal toggle');
+  it('collapses terminal via SplitPanel collapseB', () => {
+    assert.ok(src.includes('collapseB={!layoutStore.showTerminal}'), 'Should collapse terminal panel');
   });
-  it('conditionally renders file tree panel', () => {
-    assert.ok(src.includes('layoutStore.showFileTree'), 'Should use layoutStore for file tree toggle');
+  it('collapses file tree via SplitPanel collapseB', () => {
+    assert.ok(src.includes('collapseB={!layoutStore.showFileTree}'), 'Should collapse file tree panel');
   });
 
   // Webview visibility
