@@ -161,13 +161,15 @@
   /**
    * Strip SGR mouse event echoes from PTY output.
    * On Windows, ConPTY can echo mouse tracking input back as output,
-   * sometimes with the ESC byte (0x1B) stripped. This regex catches both:
-   *   \x1b[<btn;col;rowM  (with ESC — full SGR sequence)
-   *   [<btn;col;rowM       (without ESC — ConPTY-mangled)
-   * These sequences are a mouse INPUT format and never appear in
-   * legitimate terminal output.
+   * with ESC and/or [ stripped. Cross-chunk splitting means a sequence
+   * like \x1b[<32;62;11M can arrive as "[" at the end of chunk N
+   * and "<32;62;11M" at the start of chunk N+1. Making both \x1b and [
+   * optional catches all variants:
+   *   \x1b[<btn;col;rowM  (full SGR sequence)
+   *   [<btn;col;rowM       (ESC stripped)
+   *   <btn;col;rowM         (ESC and [ stripped — cross-chunk split)
    */
-  const SGR_MOUSE_ECHO_RE = /\x1b?\[<\d+;\d+;\d+[Mm]/g;
+  const SGR_MOUSE_ECHO_RE = /\x1b?\[?<\d+;\d+;\d+[Mm]/g;
 
   /**
    * Process a single ai-output event payload.
@@ -277,8 +279,18 @@
       term = ghosttyTerm;
       fitAddon = fit;
 
-      // Send keyboard input to PTY
+      // Send keyboard input to PTY.
+      // Suppress SGR mouse MOTION events (button 32-63) — ConPTY on Windows
+      // echoes these back as stdout, corrupting the terminal display.
+      // Clicks (button 0-31), releases (lowercase m), and scroll (button 64+)
+      // are still sent. Motion events are cosmetic (hover feedback) and not
+      // needed for TUI interaction.
       ghosttyTerm.onData((data) => {
+        const motionMatch = data.match(/^\x1b\[<(\d+);\d+;\d+M$/);
+        if (motionMatch) {
+          const btn = parseInt(motionMatch[1], 10);
+          if (btn >= 32 && btn < 64) return; // Mouse motion — suppress
+        }
         aiRawInput(data).catch((err) => {
           console.warn('[Terminal] PTY input failed:', err);
         });
