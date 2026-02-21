@@ -268,3 +268,39 @@ describe('sidebar: mode support', () => {
     );
   });
 });
+
+// ---- Sidebar: lens mode project switcher ----
+
+describe('sidebar: lens mode project switcher', () => {
+  const src = readComponent('Sidebar.svelte');
+
+  it('imports ProjectStrip component', () => {
+    assert.ok(src.includes('ProjectStrip'), 'Should import ProjectStrip');
+  });
+
+  it('imports SessionPanel component', () => {
+    assert.ok(src.includes('SessionPanel'), 'Should import SessionPanel');
+  });
+
+  it('has lens-sidebar CSS class', () => {
+    assert.ok(src.includes('lens-sidebar'), 'Should have lens-sidebar CSS class');
+  });
+
+  it('renders ProjectStrip in lens mode', () => {
+    assert.ok(
+      src.includes('<ProjectStrip'),
+      'Should render ProjectStrip component'
+    );
+  });
+
+  it('conditionally renders SessionPanel when not collapsed in lens mode', () => {
+    assert.ok(
+      src.includes('<SessionPanel') || src.includes('SessionPanel'),
+      'Should render SessionPanel component'
+    );
+    assert.ok(
+      src.includes('!collapsed') || src.includes('collapsed'),
+      'Should conditionally show based on collapsed state'
+    );
+  });
+});

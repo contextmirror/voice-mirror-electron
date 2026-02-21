@@ -4,6 +4,8 @@
   import { voiceStore } from '../../lib/stores/voice.svelte.js';
   import { PROVIDER_ICONS } from '../../lib/providers.js';
   import ChatList from './ChatList.svelte';
+  import ProjectStrip from './ProjectStrip.svelte';
+  import SessionPanel from './SessionPanel.svelte';
 
   let aiDisplayName = $derived(aiStatusStore.displayName || 'AI Provider');
   let aiRunning = $derived(aiStatusStore.running);
@@ -90,8 +92,12 @@
       {/each}
     </nav>
   {:else}
-    <!-- Lens mode: empty spacer for future tools -->
-    <div class="sidebar-nav"></div>
+    <div class="lens-sidebar">
+      <ProjectStrip />
+      {#if !collapsed}
+        <SessionPanel />
+      {/if}
+    </div>
   {/if}
 
   <!-- Settings (pinned above footer) -->
@@ -288,6 +294,14 @@
 
   .status-label.starting {
     color: #f59e0b;
+  }
+
+  /* ========== Lens Sidebar ========== */
+  .lens-sidebar {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
   }
 
   /* ========== Chat List Section ========== */

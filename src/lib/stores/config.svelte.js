@@ -76,6 +76,10 @@ const DEFAULT_CONFIG = {
     collapsed: false,
     mode: 'mirror',
   },
+  projects: {
+    entries: [],
+    activeIndex: 0,
+  },
   workspace: {
     showChat: false,
     showTerminal: false,

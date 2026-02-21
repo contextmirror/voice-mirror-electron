@@ -1,5 +1,6 @@
 use super::IpcResponse;
 use crate::util::find_project_root;
+use std::path::PathBuf;
 use tracing::{info, warn};
 
 /// List the contents of a directory within the project root.
@@ -7,11 +8,16 @@ use tracing::{info, warn};
 /// If `path` is None, lists the project root. Otherwise, lists the subdirectory
 /// relative to the project root. Returns entries sorted: directories first, then
 /// files, alphabetical within each group.
+///
+/// When `root` is provided, uses that path instead of auto-detecting the project root.
 #[tauri::command]
-pub fn list_directory(path: Option<String>) -> IpcResponse {
-    let root = match find_project_root() {
-        Some(r) => r,
-        None => return IpcResponse::err("Could not find project root"),
+pub fn list_directory(path: Option<String>, root: Option<String>) -> IpcResponse {
+    let root = match root {
+        Some(r) => PathBuf::from(r),
+        None => match find_project_root() {
+            Some(r) => r,
+            None => return IpcResponse::err("Could not find project root"),
+        },
     };
 
     let target = match &path {
@@ -127,11 +133,16 @@ pub fn list_directory(path: Option<String>) -> IpcResponse {
 ///
 /// Returns `{ "changes": [...] }` where each change has a `path` and `status`.
 /// If git is not available or the project is not a git repo, returns empty changes.
+///
+/// When `root` is provided, uses that path as CWD for git instead of auto-detecting.
 #[tauri::command]
-pub fn get_git_changes() -> IpcResponse {
-    let root = match find_project_root() {
-        Some(r) => r,
-        None => return IpcResponse::err("Could not find project root"),
+pub fn get_git_changes(root: Option<String>) -> IpcResponse {
+    let root = match root {
+        Some(r) => PathBuf::from(r),
+        None => match find_project_root() {
+            Some(r) => r,
+            None => return IpcResponse::err("Could not find project root"),
+        },
     };
 
     let output = match std::process::Command::new("git")

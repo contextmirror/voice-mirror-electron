@@ -126,7 +126,7 @@ describe('FileTree.svelte', () => {
 
   it('lazy-loads directory children on first expand', () => {
     assert.ok(src.includes('dirChildren.has(path)'), 'Should check if children are cached');
-    assert.ok(src.includes('listDirectory(path)'), 'Should load children via API');
+    assert.ok(src.includes('listDirectory(path, root)'), 'Should load children via API with project root');
   });
 
   it('handles file click by calling onFileClick', () => {
@@ -217,5 +217,25 @@ describe('FileTree.svelte', () => {
   it('has git change color coding', () => {
     assert.ok(src.includes('var(--ok)'), 'Should use ok color for added');
     assert.ok(src.includes('var(--danger)'), 'Should use danger color for deleted');
+  });
+
+  // ── Project store integration ──
+
+  it('imports projectStore', () => {
+    assert.ok(src.includes('projectStore'), 'Should import projectStore');
+  });
+
+  it('passes root to listDirectory calls', () => {
+    assert.ok(
+      src.includes('listDirectory(null, root') || src.includes('listDirectory(path, root'),
+      'Should pass root parameter to listDirectory'
+    );
+  });
+
+  it('passes root to getGitChanges calls', () => {
+    assert.ok(
+      src.includes('getGitChanges(root') || src.includes('getGitChanges(projectRoot'),
+      'Should pass root parameter to getGitChanges'
+    );
   });
 });

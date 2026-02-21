@@ -49,6 +49,20 @@ describe('api.js -- listDirectory', () => {
       'Should default path to null for root listing'
     );
   });
+
+  it('accepts root parameter', () => {
+    assert.ok(
+      src.includes('listDirectory(path, root)') || src.includes('listDirectory(path,root)'),
+      'Should accept root parameter'
+    );
+  });
+
+  it('passes root to invoke call', () => {
+    assert.ok(
+      src.includes('root: root || null') || src.includes('root: root ?? null'),
+      'Should pass root to invoke as root || null'
+    );
+  });
 });
 
 describe('api.js -- getGitChanges', () => {
@@ -61,8 +75,22 @@ describe('api.js -- getGitChanges', () => {
 
   it('invokes get_git_changes command', () => {
     assert.ok(
-      src.includes("invoke('get_git_changes')"),
+      src.includes("invoke('get_git_changes'"),
       'Should call invoke with get_git_changes'
+    );
+  });
+
+  it('accepts root parameter in function signature', () => {
+    assert.ok(
+      src.includes('getGitChanges(root)') || src.includes('getGitChanges(root,'),
+      'Should accept root parameter'
+    );
+  });
+
+  it('passes root parameter to invoke', () => {
+    assert.ok(
+      src.includes('root: root || null') || src.includes('root ?? null'),
+      'Should pass root to invoke for get_git_changes'
     );
   });
 });

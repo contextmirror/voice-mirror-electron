@@ -415,12 +415,12 @@ export async function lensSetVisible(visible) {
 
 // ============ Files ============
 
-export async function listDirectory(path) {
-  return invoke('list_directory', { path: path || null });
+export async function listDirectory(path, root) {
+  return invoke('list_directory', { path: path || null, root: root || null });
 }
 
-export async function getGitChanges() {
-  return invoke('get_git_changes');
+export async function getGitChanges(root) {
+  return invoke('get_git_changes', { root: root || null });
 }
 
 export async function getProjectRoot() {

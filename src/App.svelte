@@ -2,6 +2,7 @@
   import { configStore, loadConfig } from './lib/stores/config.svelte.js';
   import { currentThemeName, applyTheme, PRESETS } from './lib/stores/theme.svelte.js';
   import { navigationStore } from './lib/stores/navigation.svelte.js';
+  import { projectStore } from './lib/stores/project.svelte.js';
   import { overlayStore } from './lib/stores/overlay.svelte.js';
   import { aiStatusStore, initAiStatusListeners, startProvider } from './lib/stores/ai-status.svelte.js';
   import { voiceStore, initVoiceListeners, startVoiceEngine } from './lib/stores/voice.svelte.js';
@@ -44,6 +45,11 @@
       if (mode) {
         navigationStore.initMode(mode);
       }
+      const projects = configStore.value?.projects;
+      if (projects) {
+        projectStore.init(projects);
+      }
+
       // Restore overlay (orb) mode if user was in compact mode last session.
       // After restore, show the window (it starts hidden to prevent flash).
       if (!overlayRestored) {

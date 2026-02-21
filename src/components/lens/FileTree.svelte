@@ -1,6 +1,7 @@
 <script>
   import { listDirectory, getGitChanges } from '../../lib/api.js';
   import { chooseIconName } from '../../lib/file-icons.js';
+  import { projectStore } from '../../lib/stores/project.svelte.js';
   import spriteUrl from '../../assets/icons/file-icons-sprite.svg';
 
   let { onFileClick = () => {} } = $props();
@@ -13,19 +14,19 @@
   let loadingDirs = $state(new Set());
   let gitChanges = $state([]);
 
-  // Load root directory and git changes on mount
-  let mounted = false;
+  // Reload when active project changes
   $effect(() => {
-    if (!mounted) {
-      mounted = true;
-      loadRoot();
-      loadGitChanges();
-    }
+    const _ = projectStore.activeIndex;  // track dependency
+    expandedDirs = new Set();
+    dirChildren = new Map();
+    loadRoot();
+    loadGitChanges();
   });
 
   async function loadRoot() {
+    const root = projectStore.activeProject?.path || null;
     try {
-      const resp = await listDirectory(null);
+      const resp = await listDirectory(null, root);
       if (resp && resp.data) {
         rootEntries = resp.data;
       }
@@ -35,8 +36,9 @@
   }
 
   async function loadGitChanges() {
+    const root = projectStore.activeProject?.path || null;
     try {
-      const resp = await getGitChanges();
+      const resp = await getGitChanges(root);
       if (resp && resp.data && Array.isArray(resp.data.changes)) {
         gitChanges = resp.data.changes;
       }
@@ -66,7 +68,8 @@
         loadingDirs = loading;
 
         try {
-          const resp = await listDirectory(path);
+          const root = projectStore.activeProject?.path || null;
+          const resp = await listDirectory(path, root);
           if (resp && resp.data) {
             const updated = new Map(dirChildren);
             updated.set(path, resp.data);

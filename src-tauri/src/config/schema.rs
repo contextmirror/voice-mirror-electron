@@ -29,6 +29,8 @@ pub struct AppConfig {
     pub system: SystemConfig,
     #[serde(default)]
     pub ai: AiConfig,
+    #[serde(default)]
+    pub projects: ProjectsConfig,
 }
 
 /// Wake word detection settings.
@@ -394,6 +396,25 @@ impl Default for AiConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolProfile {
     pub groups: Vec<String>,
+}
+
+/// Multi-project configuration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectsConfig {
+    #[serde(default)]
+    pub entries: Vec<ProjectEntry>,
+    #[serde(default)]
+    pub active_index: usize,
+}
+
+/// A single project entry (path + display name + color tag).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectEntry {
+    pub path: String,
+    pub name: String,
+    pub color: String,
 }
 
 // ============ Default value functions ============
