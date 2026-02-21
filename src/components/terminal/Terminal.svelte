@@ -14,6 +14,7 @@
   import { listen } from '@tauri-apps/api/event';
   import { aiRawInput, aiPtyResize } from '../../lib/api.js';
   import { currentThemeName } from '../../lib/stores/theme.svelte.js';
+  import { aiStatusStore } from '../../lib/stores/ai-status.svelte.js';
 
   let { onRegisterActions } = $props();
 
@@ -175,16 +176,12 @@
         if (term.forceFullRedraw) term.forceFullRedraw();
         break;
       case 'start':
-        // Nuclear reset for clean provider switch: free the old WASM terminal
-        // and create a fresh one. This synchronously destroys all state —
-        // alt screen buffer, mouse tracking modes, scrollback, colors — and
-        // clears the canvas. Escape-sequence-based resets don't work reliably
-        // because term.write() is async (queued for WASM processing), so
-        // forceFullRedraw() fires before the sequences are processed.
+        // The terminal was already reset by the aiStatusStore.starting $effect
+        // (which fires synchronously before the Tauri command). This handler
+        // just writes the ready message and ensures fit is up to date.
+        // Defensive reset in case the effect didn't fire (e.g. direct startAI).
         if (term.reset) {
           term.reset();
-        } else {
-          term.clear();
         }
         if (data.text) {
           term.writeln(`\x1b[34m${data.text}\x1b[0m`);
@@ -386,6 +383,29 @@
       lastPtyRows = 0;
       pendingEvents = [];
     };
+  });
+
+  // ---- Provider switch: pre-emptive terminal reset ----
+  //
+  // When the user switches providers, the new CLI process starts outputting
+  // immediately (startup banner, TUI setup sequences), but the 'start' event
+  // only fires later when the "ready" pattern is detected. Without this,
+  // the new provider's initial output renders on the OLD terminal — causing
+  // stale content and garbled pixels. By watching aiStatusStore.starting
+  // (set synchronously BEFORE the Tauri command), we reset the terminal
+  // before any new-provider output arrives.
+
+  $effect(() => {
+    if (!aiStatusStore.starting) return;
+    if (!term || !initialized) return;
+
+    if (term.reset) {
+      term.reset();
+    } else {
+      term.write('\x1b[2J\x1b[3J\x1b[H');
+    }
+    fitTerminal();
+    resizePtyIfChanged();
   });
 
   // ---- Theme reactivity ----
