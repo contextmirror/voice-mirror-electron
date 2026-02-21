@@ -225,6 +225,7 @@ describe('api.js -- exported async functions', () => {
     'getProjectRoot',
     'readFile',
     'writeFile',
+    'getFileGitContent',
     // Shell Terminals
     'shellSpawn',
     'shellInput',

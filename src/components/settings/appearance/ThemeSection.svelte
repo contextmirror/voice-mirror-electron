@@ -191,7 +191,7 @@
                   <input
                     type="color"
                     value={customColors[key]}
-                    oninput={(e) => handleColorChange(key, e.target.value)}
+                    oninput={(e) => handleColorChange(key, /** @type {HTMLInputElement} */ (e.target).value)}
                     class="color-input"
                   />
                   <div class="color-picker-info">

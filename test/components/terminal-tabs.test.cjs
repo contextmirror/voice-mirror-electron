@@ -98,6 +98,134 @@ describe('TerminalTabs.svelte -- terminal rendering', () => {
   });
 });
 
+describe('TerminalTabs.svelte -- tab renaming', () => {
+  it('has editingTabId state', () => {
+    assert.ok(src.includes('editingTabId'), 'Should have editingTabId state');
+  });
+
+  it('has startRename function', () => {
+    assert.ok(src.includes('startRename'), 'Should have startRename');
+  });
+
+  it('has saveRename function', () => {
+    assert.ok(src.includes('saveRename'), 'Should have saveRename');
+  });
+
+  it('has cancelRename function', () => {
+    assert.ok(src.includes('cancelRename'), 'Should have cancelRename');
+  });
+
+  it('has inline rename input', () => {
+    assert.ok(src.includes('tab-rename-input'), 'Should have rename input class');
+  });
+
+  it('triggers rename on double-click', () => {
+    assert.ok(src.includes('ondblclick'), 'Should have dblclick handler on tab label');
+  });
+
+  it('saves on Enter key', () => {
+    assert.ok(src.includes("e.key === 'Enter'"), 'Should save on Enter');
+  });
+
+  it('cancels on Escape key', () => {
+    assert.ok(src.includes("e.key === 'Escape'"), 'Should cancel on Escape');
+  });
+
+  it('has autofocus action for rename input', () => {
+    assert.ok(src.includes('use:autofocus'), 'Should auto-focus rename input');
+  });
+});
+
+describe('TerminalTabs.svelte -- context menu', () => {
+  it('has context-menu class', () => {
+    assert.ok(src.includes('context-menu'), 'Should have context menu element');
+  });
+
+  it('has showContextMenu function', () => {
+    assert.ok(src.includes('showContextMenu'), 'Should have showContextMenu');
+  });
+
+  it('triggers on right-click', () => {
+    assert.ok(src.includes('oncontextmenu'), 'Should have contextmenu handler');
+  });
+
+  it('has Rename menu item', () => {
+    assert.ok(src.includes('contextRename'), 'Should have rename action');
+  });
+
+  it('has Clear menu item', () => {
+    assert.ok(src.includes('contextClear'), 'Should have clear action');
+  });
+
+  it('has Close menu item for shell tabs', () => {
+    assert.ok(src.includes('contextClose'), 'Should have close action');
+  });
+
+  it('hides Close for AI tab', () => {
+    assert.ok(src.includes("contextMenu.tabId !== 'ai'"), 'Should hide close for AI tab');
+  });
+
+  it('closes on outside click', () => {
+    assert.ok(src.includes('closeContextMenu'), 'Should close on outside click');
+  });
+
+  it('uses fixed positioning', () => {
+    assert.ok(src.includes('position: fixed'), 'Context menu should be fixed positioned');
+  });
+});
+
+describe('TerminalTabs.svelte -- drag-to-reorder', () => {
+  it('has draggable attribute on shell tabs', () => {
+    assert.ok(src.includes("draggable={tab.type === 'shell'}"), 'Shell tabs should be draggable');
+  });
+
+  it('has drag-over class binding', () => {
+    assert.ok(src.includes('class:drag-over='), 'Should have drag-over class');
+  });
+
+  it('has dragging class binding', () => {
+    assert.ok(src.includes('class:dragging='), 'Should have dragging class');
+  });
+
+  it('has handleDragStart function', () => {
+    assert.ok(src.includes('handleDragStart'), 'Should have dragstart handler');
+  });
+
+  it('has handleDrop function', () => {
+    assert.ok(src.includes('handleDrop'), 'Should have drop handler');
+  });
+
+  it('calls moveTab on drop', () => {
+    assert.ok(src.includes('moveTab(dragTabId'), 'Should call moveTab');
+  });
+
+  it('prevents dragging AI tab', () => {
+    assert.ok(src.includes("tabId === 'ai'") && src.includes('e.preventDefault'), 'Should prevent dragging AI tab');
+  });
+});
+
+describe('TerminalTabs.svelte -- keyboard cycling', () => {
+  it('listens for Ctrl+Tab', () => {
+    assert.ok(src.includes("e.key === 'Tab'"), 'Should listen for Tab key');
+  });
+
+  it('checks ctrlKey modifier', () => {
+    assert.ok(src.includes('e.ctrlKey'), 'Should check ctrlKey');
+  });
+
+  it('calls nextTab on Ctrl+Tab', () => {
+    assert.ok(src.includes('nextTab()'), 'Should call nextTab');
+  });
+
+  it('calls prevTab on Ctrl+Shift+Tab', () => {
+    assert.ok(src.includes('prevTab()'), 'Should call prevTab');
+  });
+
+  it('uses capture phase for global keydown', () => {
+    assert.ok(src.includes("'keydown', handleKeydown, true"), 'Should use capture phase');
+  });
+});
+
 describe('TerminalTabs.svelte -- CSS', () => {
   it('hides inactive panels with display none', () => {
     assert.ok(src.includes('display: none'), 'Should hide inactive panels');

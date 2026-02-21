@@ -110,3 +110,79 @@ describe('api.js -- getProjectRoot', () => {
     );
   });
 });
+
+describe('api.js -- readFile', () => {
+  it('exports async function readFile', () => {
+    assert.ok(
+      src.includes('export async function readFile('),
+      'Should export readFile'
+    );
+  });
+
+  it('invokes read_file command', () => {
+    assert.ok(
+      src.includes("invoke('read_file'"),
+      'Should call invoke with read_file'
+    );
+  });
+
+  it('accepts path and root parameters', () => {
+    assert.ok(
+      src.includes('readFile(path, root)') || src.includes('readFile(path,root)'),
+      'Should accept path and root'
+    );
+  });
+});
+
+describe('api.js -- writeFile', () => {
+  it('exports async function writeFile', () => {
+    assert.ok(
+      src.includes('export async function writeFile('),
+      'Should export writeFile'
+    );
+  });
+
+  it('invokes write_file command', () => {
+    assert.ok(
+      src.includes("invoke('write_file'"),
+      'Should call invoke with write_file'
+    );
+  });
+
+  it('accepts path, content, and root parameters', () => {
+    assert.ok(
+      src.includes('writeFile(path, content, root)') || src.includes('writeFile(path,content,root)'),
+      'Should accept path, content, and root'
+    );
+  });
+});
+
+describe('api.js -- getFileGitContent', () => {
+  it('exports async function getFileGitContent', () => {
+    assert.ok(
+      src.includes('export async function getFileGitContent('),
+      'Should export getFileGitContent'
+    );
+  });
+
+  it('invokes get_file_git_content command', () => {
+    assert.ok(
+      src.includes("invoke('get_file_git_content'"),
+      'Should call invoke with get_file_git_content'
+    );
+  });
+
+  it('accepts path and root parameters', () => {
+    assert.ok(
+      src.includes('getFileGitContent(path, root)') || src.includes('getFileGitContent(path,root)'),
+      'Should accept path and root'
+    );
+  });
+
+  it('passes root || null to invoke', () => {
+    assert.ok(
+      src.includes('root: root || null'),
+      'Should pass root || null'
+    );
+  });
+});

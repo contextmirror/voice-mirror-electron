@@ -1,0 +1,232 @@
+<script>
+  import { tabsStore } from '../../lib/stores/tabs.svelte.js';
+
+  async function handleAddFile() {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const selected = await open({ multiple: true, title: 'Open File' });
+      if (!selected) return;
+      const files = Array.isArray(selected) ? selected : [selected];
+      for (const filePath of files) {
+        // Extract filename from path
+        const name = filePath.split(/[/\\]/).pop() || filePath;
+        tabsStore.openFile({ name, path: filePath });
+        tabsStore.pinTab(filePath);  // Explicitly opened files are permanent
+      }
+    } catch (err) {
+      console.error('[TabBar] File picker failed:', err);
+    }
+  }
+
+  function getTabIcon(tab) {
+    if (tab.type === 'browser') return 'globe';
+    if (tab.type === 'diff') return 'diff';
+    const ext = tab.title?.split('.').pop()?.toLowerCase() || '';
+    if (['js', 'jsx', 'mjs', 'cjs', 'ts', 'tsx'].includes(ext)) return 'code';
+    if (['rs'].includes(ext)) return 'code';
+    if (['css', 'scss', 'less'].includes(ext)) return 'palette';
+    if (['html', 'svelte', 'vue'].includes(ext)) return 'code';
+    if (['json', 'toml', 'yaml', 'yml'].includes(ext)) return 'settings';
+    if (['md', 'txt', 'log'].includes(ext)) return 'doc';
+    if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'image';
+    return 'file';
+  }
+</script>
+
+<div class="tab-bar">
+  {#each tabsStore.tabs as tab (tab.id)}
+    <button
+      class="tab"
+      class:active={tab.id === tabsStore.activeTabId}
+      class:preview={tab.preview}
+      class:dirty={tab.dirty}
+      onclick={() => tabsStore.setActive(tab.id)}
+      ondblclick={() => tabsStore.pinTab(tab.id)}
+      title={tab.path || tab.title}
+    >
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        {#if getTabIcon(tab) === 'globe'}
+          <circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        {:else if getTabIcon(tab) === 'diff'}
+          <circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/>
+        {:else}
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+        {/if}
+      </svg>
+      <span class="tab-title">{tab.title}</span>
+      {#if tab.type === 'diff' && tab.status}
+        <span
+          class="tab-diff-badge"
+          class:added={tab.status === 'added'}
+          class:modified={tab.status === 'modified'}
+          class:deleted={tab.status === 'deleted'}
+        >{tab.status === 'added' ? 'A' : tab.status === 'deleted' ? 'D' : 'M'}</span>
+      {/if}
+      {#if tab.dirty}
+        <span class="dirty-dot"></span>
+      {/if}
+      {#if tab.type !== 'browser'}
+        <button
+          class="tab-close"
+          onclick={(e) => { e.stopPropagation(); tabsStore.closeTab(tab.id); }}
+          aria-label="Close tab"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      {/if}
+    </button>
+  {/each}
+  <button class="tab-add" onclick={handleAddFile} aria-label="Open file" title="Open file">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  </button>
+</div>
+
+<style>
+  .tab-bar {
+    display: flex;
+    align-items: center;
+    height: 30px;
+    flex-shrink: 0;
+    padding: 0 4px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    -webkit-app-region: no-drag;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 1px;
+  }
+
+  .tab-bar::-webkit-scrollbar {
+    height: 2px;
+  }
+  .tab-bar::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 1px;
+  }
+
+  .tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 100%;
+    padding: 0 10px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    font-family: var(--font-family);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    position: relative;
+    transition: color 0.15s ease;
+  }
+
+  .tab:hover {
+    color: var(--text);
+    background: var(--bg);
+  }
+
+  .tab.active {
+    color: var(--text-strong);
+    background: var(--bg);
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+
+  .tab.preview .tab-title {
+    font-style: italic;
+  }
+
+  .tab-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+  }
+
+  .tab-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+  }
+
+  .dirty-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
+
+  .tab-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 0;
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+
+  .tab-close svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .tab:hover .tab-close {
+    opacity: 1;
+  }
+
+  .tab-close:hover {
+    background: var(--bg-elevated);
+    color: var(--text);
+  }
+
+  .tab-add {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-left: 4px;
+  }
+
+  .tab-add:hover {
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  .tab-diff-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    font-size: 9px;
+    font-weight: 700;
+    border-radius: 2px;
+    flex-shrink: 0;
+    color: var(--bg);
+  }
+  .tab-diff-badge.added {
+    background: var(--ok);
+  }
+  .tab-diff-badge.modified {
+    background: var(--accent);
+  }
+  .tab-diff-badge.deleted {
+    background: var(--danger);
+  }
+</style>

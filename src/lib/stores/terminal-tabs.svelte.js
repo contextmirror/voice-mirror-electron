@@ -16,6 +16,22 @@ function createTerminalTabsStore() {
   ]);
   let activeTabId = $state('ai');
 
+  /**
+   * Find the next available shell number, filling gaps.
+   * If Shell 1 and Shell 3 exist, returns 2.
+   */
+  function nextShellNumber() {
+    const existing = new Set(
+      tabs.filter(t => t.type === 'shell').map(t => {
+        const match = t.title.match(/^Shell (\d+)$/);
+        return match ? parseInt(match[1]) : null;
+      }).filter(n => n !== null)
+    );
+    let num = 1;
+    while (existing.has(num)) num++;
+    return num;
+  }
+
   return {
     get tabs() { return tabs; },
     get activeTabId() { return activeTabId; },
@@ -32,7 +48,41 @@ function createTerminalTabsStore() {
     },
 
     /**
+     * Cycle to the next tab (wraps around).
+     */
+    nextTab() {
+      const idx = tabs.findIndex(t => t.id === activeTabId);
+      if (idx === -1) return;
+      activeTabId = tabs[(idx + 1) % tabs.length].id;
+    },
+
+    /**
+     * Cycle to the previous tab (wraps around).
+     */
+    prevTab() {
+      const idx = tabs.findIndex(t => t.id === activeTabId);
+      if (idx === -1) return;
+      activeTabId = tabs[idx === 0 ? tabs.length - 1 : idx - 1].id;
+    },
+
+    /**
+     * Move a tab to a new index. AI tab (index 0) cannot be moved.
+     * @param {string} id - Tab ID to move
+     * @param {number} toIndex - Target index
+     */
+    moveTab(id, toIndex) {
+      if (id === 'ai') return;
+      const fromIndex = tabs.findIndex(t => t.id === id);
+      if (fromIndex === -1 || fromIndex === toIndex) return;
+      if (toIndex <= 0) toIndex = 1; // Can't move before AI tab
+      if (toIndex >= tabs.length) toIndex = tabs.length - 1;
+      const [tab] = tabs.splice(fromIndex, 1);
+      tabs.splice(toIndex, 0, tab);
+    },
+
+    /**
      * Add a new shell tab. Spawns a PTY on the backend.
+     * Uses smart numbering that fills gaps (e.g. Shell 1, Shell 3 → next is Shell 2).
      * @param {Object} [options]
      * @param {number} [options.cols]
      * @param {number} [options.rows]
@@ -47,7 +97,7 @@ function createTerminalTabsStore() {
           return null;
         }
         const shellId = result.data.id;
-        const tabNum = tabs.filter(t => t.type === 'shell').length + 1;
+        const tabNum = nextShellNumber();
         const tab = {
           id: shellId,
           type: 'shell',

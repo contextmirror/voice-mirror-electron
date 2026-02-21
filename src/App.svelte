@@ -43,7 +43,7 @@
       }
       const mode = configStore.value?.sidebar?.mode;
       if (mode) {
-        navigationStore.initMode(mode);
+        navigationStore.initMode(/** @type {'mirror'|'lens'} */ (mode));
       }
       const projects = configStore.value?.projects;
       if (projects) {

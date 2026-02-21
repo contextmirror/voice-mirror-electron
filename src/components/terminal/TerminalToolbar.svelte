@@ -13,6 +13,7 @@
   import { configStore } from '../../lib/stores/config.svelte.js';
   import { toastStore } from '../../lib/stores/toast.svelte.js';
 
+  /** @type {{ onClear?: (e?: MouseEvent) => void, onCopy?: (e?: MouseEvent) => void, onPaste?: (e?: MouseEvent) => void }} */
   let {
     onClear = () => {},
     onCopy = () => {},

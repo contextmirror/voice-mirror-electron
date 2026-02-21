@@ -56,6 +56,9 @@ describe('LensWorkspace.svelte', () => {
   it('imports FileEditor component', () => {
     assert.ok(src.includes("import FileEditor from"), 'Should import FileEditor');
   });
+  it('imports DiffViewer component', () => {
+    assert.ok(src.includes("import DiffViewer from"), 'Should import DiffViewer');
+  });
   it('imports tabsStore', () => {
     assert.ok(src.includes('tabsStore'), 'Should import tabsStore');
   });
@@ -70,6 +73,13 @@ describe('LensWorkspace.svelte', () => {
       src.includes("activeTab?.type === 'browser'"),
       'Should conditionally show browser or file editor'
     );
+  });
+  it('renders DiffViewer for diff tabs', () => {
+    assert.ok(src.includes('<DiffViewer'), 'Should render DiffViewer');
+    assert.ok(src.includes("activeTab?.type === 'diff'"), 'Should check for diff tab type');
+  });
+  it('passes onChangeClick to FileTree', () => {
+    assert.ok(src.includes('onChangeClick'), 'Should wire onChangeClick to FileTree');
   });
 
   // Chat panel (real component)

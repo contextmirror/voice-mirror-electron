@@ -35,6 +35,24 @@ describe('FileTree.svelte', () => {
     assert.ok(src.includes('$props()'), 'Should use $props()');
   });
 
+  it('accepts onChangeClick prop', () => {
+    assert.ok(src.includes('onChangeClick'), 'Should have onChangeClick prop');
+  });
+
+  it('change items are clickable buttons', () => {
+    assert.ok(
+      src.includes('<button class="change-item"') || src.includes("button class='change-item'"),
+      'Change items should be button elements'
+    );
+  });
+
+  it('calls onChangeClick when change item is clicked', () => {
+    assert.ok(
+      src.includes('onChangeClick(change)'),
+      'Should call onChangeClick with change object'
+    );
+  });
+
   // ── State management ──
 
   it('uses $state for activeTab', () => {

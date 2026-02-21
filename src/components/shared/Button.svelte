@@ -9,6 +9,7 @@
    *   type {string} - Button type attribute
    *   small {boolean} - Compact size variant
    */
+  /** @type {{ variant?: string, disabled?: boolean, onClick?: (e: MouseEvent) => void, type?: 'button'|'submit'|'reset', small?: boolean, children: import('svelte').Snippet }} */
   let {
     variant = 'secondary',
     disabled = false,

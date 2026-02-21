@@ -199,7 +199,7 @@
           <input
             type="color"
             value={orbCoreColor}
-            oninput={(e) => onOrbCoreColorChange(e.target.value)}
+            oninput={(e) => onOrbCoreColorChange(/** @type {HTMLInputElement} */ (e.target).value)}
             class="color-input"
           />
           <span class="orb-core-hex">{orbCoreColor}</span>

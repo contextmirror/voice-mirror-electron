@@ -10,6 +10,7 @@
   import { listMonitors, listWindows, captureMonitor, captureWindow } from '../../lib/api.js';
   import { lensStore } from '../../lib/stores/lens.svelte.js';
 
+  /** @type {{ onCapture?: (path: string, dataUrl?: string|null) => void, onClose?: () => void, browserSnapshot?: any }} */
   let {
     onCapture = () => {},
     onClose = () => {},

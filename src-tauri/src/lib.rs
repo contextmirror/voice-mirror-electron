@@ -159,6 +159,7 @@ pub fn run() {
             files_cmds::get_project_root,
             files_cmds::read_file,
             files_cmds::write_file,
+            files_cmds::get_file_git_content,
             // Shell terminals
             shell_cmds::shell_spawn,
             shell_cmds::shell_input,

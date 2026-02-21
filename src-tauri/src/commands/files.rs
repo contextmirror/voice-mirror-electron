@@ -213,3 +213,196 @@ pub fn get_project_root() -> IpcResponse {
         None => IpcResponse::err("Could not find project root"),
     }
 }
+
+/// Read a file's contents as UTF-8 text.
+///
+/// `path` is relative to the project root (or the provided `root`).
+/// Returns `{ content, path, size }` on success.
+#[tauri::command]
+pub fn read_file(path: String, root: Option<String>) -> IpcResponse {
+    let root = match root {
+        Some(r) => PathBuf::from(r),
+        None => match find_project_root() {
+            Some(r) => r,
+            None => return IpcResponse::err("Could not find project root"),
+        },
+    };
+
+    let target = root.join(&path);
+
+    // Security: canonicalize both paths and verify target is within root
+    let canon_root = match root.canonicalize() {
+        Ok(p) => p,
+        Err(e) => return IpcResponse::err(format!("Failed to resolve project root: {}", e)),
+    };
+    let canon_target = match target.canonicalize() {
+        Ok(p) => p,
+        Err(e) => return IpcResponse::err(format!("File not found: {}", e)),
+    };
+
+    if !canon_target.starts_with(&canon_root) {
+        warn!(
+            "Path traversal blocked: {} is outside project root {}",
+            canon_target.display(),
+            canon_root.display()
+        );
+        return IpcResponse::err("Path is outside the project root");
+    }
+
+    let size = match std::fs::metadata(&canon_target) {
+        Ok(m) => m.len(),
+        Err(e) => return IpcResponse::err(format!("Failed to get file metadata: {}", e)),
+    };
+
+    // Read file bytes and attempt UTF-8 conversion
+    let bytes = match std::fs::read(&canon_target) {
+        Ok(b) => b,
+        Err(e) => return IpcResponse::err(format!("Failed to read file: {}", e)),
+    };
+
+    let content = match String::from_utf8(bytes) {
+        Ok(c) => c,
+        Err(_) => {
+            // Return a structured error so the frontend can show "binary file" UI
+            return IpcResponse::ok(serde_json::json!({
+                "binary": true,
+                "path": path,
+                "size": size
+            }));
+        }
+    };
+
+    let rel_path = match canon_target.strip_prefix(&canon_root) {
+        Ok(p) => p.to_string_lossy().replace('\\', "/"),
+        Err(_) => path.clone(),
+    };
+
+    info!("read_file: {} ({} bytes)", rel_path, size);
+    IpcResponse::ok(serde_json::json!({ "content": content, "path": rel_path, "size": size }))
+}
+
+/// Get a file's content as it exists in git HEAD.
+///
+/// Runs `git show HEAD:<path>` in the project root.
+/// For new (untracked) files, returns empty content with `isNew: true`.
+/// `path` is relative to the project root.
+#[tauri::command]
+pub fn get_file_git_content(path: String, root: Option<String>) -> IpcResponse {
+    let root = match root {
+        Some(r) => PathBuf::from(r),
+        None => match find_project_root() {
+            Some(r) => r,
+            None => return IpcResponse::err("Could not find project root"),
+        },
+    };
+
+    // Normalize path separators for git (always forward slashes)
+    let git_path = path.replace('\\', "/");
+
+    let output = match std::process::Command::new("git")
+        .args(["show", &format!("HEAD:{}", git_path)])
+        .current_dir(&root)
+        .output()
+    {
+        Ok(o) => o,
+        Err(e) => {
+            info!("git show failed: {}", e);
+            return IpcResponse::ok(serde_json::json!({
+                "content": "",
+                "path": path,
+                "isNew": true
+            }));
+        }
+    };
+
+    if !output.status.success() {
+        return IpcResponse::ok(serde_json::json!({
+            "content": "",
+            "path": path,
+            "isNew": true
+        }));
+    }
+
+    match String::from_utf8(output.stdout) {
+        Ok(content) => IpcResponse::ok(serde_json::json!({
+            "content": content,
+            "path": path,
+            "isNew": false
+        })),
+        Err(_) => IpcResponse::ok(serde_json::json!({
+            "binary": true,
+            "path": path
+        })),
+    }
+}
+
+/// Write content to a file using atomic write (temp file + rename).
+///
+/// `path` is relative to the project root (or the provided `root`).
+/// Creates parent directories if they don't exist.
+/// Returns `{ path, size }` on success.
+#[tauri::command]
+pub fn write_file(path: String, content: String, root: Option<String>) -> IpcResponse {
+    let root = match root {
+        Some(r) => PathBuf::from(r),
+        None => match find_project_root() {
+            Some(r) => r,
+            None => return IpcResponse::err("Could not find project root"),
+        },
+    };
+
+    let target = root.join(&path);
+
+    // Security: canonicalize root and verify target will be within it.
+    // For new files, canonicalize the parent directory instead.
+    let canon_root = match root.canonicalize() {
+        Ok(p) => p,
+        Err(e) => return IpcResponse::err(format!("Failed to resolve project root: {}", e)),
+    };
+
+    // Ensure parent directory exists
+    if let Some(parent) = target.parent() {
+        if !parent.exists() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                return IpcResponse::err(format!("Failed to create parent directories: {}", e));
+            }
+        }
+    }
+
+    // Canonicalize the parent to check path traversal (target file may not exist yet)
+    let canon_parent = match target.parent().unwrap_or(&root).canonicalize() {
+        Ok(p) => p,
+        Err(e) => return IpcResponse::err(format!("Parent directory not found: {}", e)),
+    };
+    let canon_target = canon_parent.join(target.file_name().unwrap_or_default());
+
+    if !canon_target.starts_with(&canon_root) {
+        warn!(
+            "Path traversal blocked: {} is outside project root {}",
+            canon_target.display(),
+            canon_root.display()
+        );
+        return IpcResponse::err("Path is outside the project root");
+    }
+
+    // Atomic write: write to temp file, then rename
+    let tmp_path = canon_target.with_extension("tmp");
+    if let Err(e) = std::fs::write(&tmp_path, &content) {
+        return IpcResponse::err(format!("Failed to write temp file: {}", e));
+    }
+
+    if let Err(e) = std::fs::rename(&tmp_path, &canon_target) {
+        // Clean up temp file on rename failure
+        let _ = std::fs::remove_file(&tmp_path);
+        return IpcResponse::err(format!("Failed to rename temp file: {}", e));
+    }
+
+    let rel_path = match canon_target.strip_prefix(&canon_root) {
+        Ok(p) => p.to_string_lossy().replace('\\', "/"),
+        Err(_) => path.clone(),
+    };
+
+    let size = content.len();
+    info!("write_file: {} ({} bytes)", rel_path, size);
+    IpcResponse::ok(serde_json::json!({ "path": rel_path, "size": size }))
+}

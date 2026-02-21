@@ -21,6 +21,7 @@
       : ''
   );
 
+  /** @type {any} */
   const mc = $derived(configStore.value?.appearance?.messageCard || {});
   const customAvatars = $derived(mc.customAvatars || []);
   const aiAvatar = $derived(resolveAvatar(mc.aiAvatar, customAvatars, 'ai'));

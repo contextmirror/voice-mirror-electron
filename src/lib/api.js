@@ -435,6 +435,17 @@ export async function writeFile(path, content, root) {
   return invoke('write_file', { path, content, root: root || null });
 }
 
+/**
+ * Get the HEAD (committed) version of a file's content from git.
+ * Returns { content, path, isNew } for text files, { binary, path } for binary.
+ * For new/untracked files, content is "" and isNew is true.
+ * @param {string} path - File path relative to project root
+ * @param {string} [root] - Optional project root override
+ */
+export async function getFileGitContent(path, root) {
+  return invoke('get_file_git_content', { path, root: root || null });
+}
+
 // ============ Shell Terminals ============
 
 /**

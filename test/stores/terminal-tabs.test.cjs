@@ -64,6 +64,56 @@ describe('terminal-tabs.svelte.js -- methods', () => {
   it('has renameTab method', () => {
     assert.ok(src.includes('renameTab('), 'Should have renameTab method');
   });
+
+  it('has nextTab method for cycling', () => {
+    assert.ok(src.includes('nextTab()'), 'Should have nextTab method');
+  });
+
+  it('has prevTab method for cycling', () => {
+    assert.ok(src.includes('prevTab()'), 'Should have prevTab method');
+  });
+
+  it('has moveTab method for reordering', () => {
+    assert.ok(src.includes('moveTab('), 'Should have moveTab method');
+  });
+});
+
+describe('terminal-tabs.svelte.js -- tab cycling', () => {
+  it('nextTab wraps around with modulo', () => {
+    assert.ok(src.includes('% tabs.length'), 'nextTab should wrap around');
+  });
+
+  it('prevTab wraps to last tab', () => {
+    assert.ok(src.includes('tabs.length - 1'), 'prevTab should wrap to end');
+  });
+});
+
+describe('terminal-tabs.svelte.js -- smart numbering', () => {
+  it('has nextShellNumber function', () => {
+    assert.ok(src.includes('nextShellNumber'), 'Should have nextShellNumber');
+  });
+
+  it('fills gaps in shell numbering', () => {
+    assert.ok(src.includes("match(/^Shell (\\d+)$/)"), 'Should parse existing shell numbers');
+  });
+
+  it('uses Set for existing numbers', () => {
+    assert.ok(src.includes('new Set('), 'Should use Set for gap detection');
+  });
+});
+
+describe('terminal-tabs.svelte.js -- tab reordering', () => {
+  it('prevents moving AI tab', () => {
+    assert.ok(src.includes("if (id === 'ai') return"), 'moveTab should prevent moving AI tab');
+  });
+
+  it('prevents moving before AI tab', () => {
+    assert.ok(src.includes('toIndex = 1'), 'Should prevent moving before index 0');
+  });
+
+  it('uses splice for reordering', () => {
+    assert.ok(src.includes('tabs.splice(fromIndex, 1)'), 'Should splice to reorder');
+  });
 });
 
 describe('terminal-tabs.svelte.js -- behavior', () => {

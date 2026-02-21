@@ -32,7 +32,7 @@
 //   alpha: 0-1
 //   scale: 0-1 (relative to inner radius)
 
-/** @type {Record<string, OrbPreset>} */
+/** @type {Record<string, any>} */
 export const ORB_PRESETS = {
   classic: {
     id: 'classic',

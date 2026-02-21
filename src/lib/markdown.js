@@ -12,7 +12,7 @@ import DOMPurify from 'dompurify';
 marked.setOptions({
   breaks: true,       // GFM line breaks
   gfm: true,          // GitHub-flavored markdown
-  headerIds: false,    // Don't generate IDs on headings (deprecated option handled gracefully)
+  async: false,       // Ensure synchronous parsing
 });
 
 /**
@@ -22,6 +22,6 @@ marked.setOptions({
  */
 export function renderMarkdown(text) {
   if (!text) return '';
-  const raw = marked.parse(text);
+  const raw = /** @type {string} */ (marked.parse(text));
   return DOMPurify.sanitize(raw);
 }

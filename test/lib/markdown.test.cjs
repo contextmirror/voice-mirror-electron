@@ -43,8 +43,8 @@ describe('markdown.js -- marked configuration', () => {
     assert.ok(src.includes('gfm: true'), 'Should enable GFM');
   });
 
-  it('disables headerIds', () => {
-    assert.ok(src.includes('headerIds: false'), 'Should disable header IDs');
+  it('uses synchronous parsing', () => {
+    assert.ok(src.includes('async: false'), 'Should use synchronous parsing');
   });
 });
 

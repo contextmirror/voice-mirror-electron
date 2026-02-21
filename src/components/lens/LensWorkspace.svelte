@@ -4,6 +4,7 @@
   import FileTree from './FileTree.svelte';
   import TabBar from './TabBar.svelte';
   import FileEditor from './FileEditor.svelte';
+  import DiffViewer from './DiffViewer.svelte';
   import SplitPanel from '../shared/SplitPanel.svelte';
   import ChatPanel from '../chat/ChatPanel.svelte';
   import TerminalTabs from '../terminal/TerminalTabs.svelte';
@@ -51,11 +52,18 @@
                     {#key tabsStore.activeTabId}
                       <FileEditor tab={tabsStore.activeTab} />
                     {/key}
+                  {:else if tabsStore.activeTab?.type === 'diff'}
+                    {#key tabsStore.activeTabId}
+                      <DiffViewer tab={tabsStore.activeTab} />
+                    {/key}
                   {/if}
                 </div>
               {/snippet}
               {#snippet panelB()}
-                <FileTree onFileClick={(entry) => tabsStore.openFile(entry)} />
+                <FileTree
+                  onFileClick={(entry) => tabsStore.openFile(entry)}
+                  onChangeClick={(change) => tabsStore.openDiff(change)}
+                />
               {/snippet}
             </SplitPanel>
           {/snippet}

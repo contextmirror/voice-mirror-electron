@@ -4,7 +4,7 @@
   import { projectStore } from '../../lib/stores/project.svelte.js';
   import spriteUrl from '../../assets/icons/file-icons-sprite.svg';
 
-  let { onFileClick = () => {} } = $props();
+  let { onFileClick = () => {}, onChangeClick = () => {} } = $props();
 
   // State
   let activeTab = $state('files');
@@ -150,7 +150,7 @@
         <div class="changes-empty">No changes</div>
       {:else}
         {#each gitChanges as change}
-          <div class="change-item">
+          <button class="change-item" onclick={() => onChangeClick(change)}>
             <svg class="tree-icon"><use href="{spriteUrl}#{chooseIconName(change.path, 'file')}" /></svg>
             <span class="change-path">{change.path}</span>
             <span
@@ -161,7 +161,7 @@
             >
               {change.status === 'added' ? 'A' : change.status === 'deleted' ? 'D' : 'M'}
             </span>
-          </div>
+          </button>
         {/each}
       {/if}
     </div>
@@ -270,10 +270,19 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    width: 100%;
+    border: none;
+    background: transparent;
     padding: 3px 12px;
     font-size: 12px;
     font-family: var(--font-mono);
     color: var(--text);
+    cursor: pointer;
+    text-align: left;
+    -webkit-app-region: no-drag;
+  }
+  .change-item:hover {
+    background: var(--bg-elevated);
   }
 
   .change-badge {
