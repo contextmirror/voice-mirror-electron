@@ -29,7 +29,14 @@
   let initialized = $state(false);
   let pendingEvents = [];
   let providerSwitchHandler = null;
-  let preResetDone = false; // True after DOM event reset; prevents double-reset on 'clear'/'start'
+
+  // Provider switch: hide the canvas via direct DOM style during the transition
+  // so the user never sees garbled partial-frame renders from the TUI setup.
+  // We use direct DOM manipulation (not Svelte $state) because Svelte batches
+  // reactive DOM updates to the next microtask — by then the render loop has
+  // already painted garbled frames.
+  let switchRevealTimer = null;
+  let isSwitching = false;
 
   // ---- CSS token -> ghostty-web theme mapping ----
 
@@ -173,32 +180,25 @@
 
     switch (data.type) {
       case 'clear':
-        // Skip if the DOM event already reset the terminal. The TUI is
-        // properly set up on the fresh terminal — clearing it would wipe
-        // the TUI and force a re-render cycle.
-        if (preResetDone) break;
         term.write('\x1b[2J\x1b[3J\x1b[H');
-        if (term.forceFullRedraw) term.forceFullRedraw();
         break;
       case 'start':
-        // Only clear if the DOM event didn't already handle it.
-        if (!preResetDone) {
-          term.write('\x1b[2J\x1b[3J\x1b[H');
-        }
-        preResetDone = false;
-        // Unfreeze rendering — the WASM buffer now has the complete TUI state
-        // from all the pre-ready writes. unfreeze() does a forceAll render,
-        // painting the full TUI in a single frame.
-        // NOTE: Do NOT write text after unfreeze — for TUI providers on the
-        // alternate screen, any writeln() here would garble the TUI.
-        if (term.unfreeze) term.unfreeze();
-        // Fit after provider starts
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
+        // Provider is ready. Reveal the terminal after a delay to let
+        // the TUI finish drawing. Uses direct DOM to bypass Svelte batching.
+        isSwitching = false;
+        if (switchRevealTimer) clearTimeout(switchRevealTimer);
+        switchRevealTimer = setTimeout(() => {
+          switchRevealTimer = null;
+          if (term) {
             fitTerminal();
             resizePtyIfChanged();
-          });
-        });
+            // Force a full canvas resize + redraw cycle. This resets
+            // canvas.width/height + ctx.scale() for DPI + forceAll render.
+            // Same thing that happens when you move/resize the window.
+            if (term.refresh) term.refresh();
+          }
+          if (containerEl) containerEl.style.visibility = '';
+        }, 500);
         break;
       case 'stdout':
       case 'tui':
@@ -209,9 +209,6 @@
         }
         break;
       case 'exit':
-        // Unfreeze if still frozen (provider exited before ready)
-        if (term.unfreeze) term.unfreeze();
-        preResetDone = false;
         // Reset terminal modes on provider exit so stale state
         // (mouse tracking, alt screen) doesn't leak to next provider.
         // Use escape sequences here (not term.reset()) to preserve the
@@ -223,6 +220,17 @@
         );
         term.writeln('');
         term.writeln(`\x1b[33m[Process exited with code ${data.code ?? '?'}]\x1b[0m`);
+        // Only reveal the terminal if this is a standalone exit (not a switch).
+        // During a provider switch, the container stays hidden until the
+        // 'start' handler's reveal timer fires — otherwise the user sees
+        // garbled partial-frame renders from the new TUI's initialization.
+        if (!isSwitching) {
+          if (switchRevealTimer) {
+            clearTimeout(switchRevealTimer);
+            switchRevealTimer = null;
+          }
+          if (containerEl) containerEl.style.visibility = '';
+        }
         break;
     }
   }
@@ -330,31 +338,23 @@
 
       unlistenAiOutput = unlisten;
 
-      // Pre-emptive terminal reset on provider switch.
+      // Pre-emptive canvas hide on provider switch.
       // When the user switches providers, the new CLI process starts outputting
-      // immediately (startup banner, TUI setup), but the 'start' event only fires
-      // later when the "ready" pattern is detected. Without an early reset, the
-      // new provider's initial output renders on the OLD terminal — garbled pixels.
+      // immediately (startup banner, TUI setup), causing garbled partial-frame
+      // renders. Instead of trying to control the renderer, we simply hide the
+      // canvas container with CSS and reveal it once the provider is ready.
       // This handler fires SYNCHRONOUSLY (dispatchEvent is sync) from _setStarting()
       // in ai-status.svelte.js, BEFORE the Tauri command and BEFORE any stdout events.
-      // ($effect won't work — Svelte defers effects and loses the race.)
       providerSwitchHandler = () => {
-        if (!term || !initialized) return;
-        // Clean up terminal modes left by the old provider, then freeze
-        // rendering so the new provider's TUI setup is processed by the
-        // WASM parser but NOT painted. When 'start' fires, unfreeze()
-        // does a single forceAll render — first visible frame is the
-        // complete TUI with no partial-frame flicker.
-        term.write(
-          '\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l' + // Disable mouse tracking
-          '\x1b[?1049l' +  // Exit alternate screen (if active)
-          '\x1b[0m' +      // Reset attributes
-          '\x1b[2J\x1b[3J\x1b[H'  // Clear screen + scrollback + home
-        );
-        fitTerminal();
-        resizePtyIfChanged();
-        preResetDone = true;
-        if (term.freeze) term.freeze();
+        if (!containerEl || !initialized) return;
+        // Hide the canvas INSTANTLY via direct DOM — bypasses Svelte's
+        // deferred reactive batching so the hide is synchronous.
+        containerEl.style.visibility = 'hidden';
+        isSwitching = true;
+        if (switchRevealTimer) {
+          clearTimeout(switchRevealTimer);
+          switchRevealTimer = null;
+        }
       };
       window.addEventListener('ai-provider-switching', providerSwitchHandler);
 
@@ -364,18 +364,6 @@
         resizeTimeout = setTimeout(() => {
           fitTerminal();
           resizePtyIfChanged();
-          // Force a full canvas redraw after resize settles.
-          // fitTerminal() triggers a resize which sets forceAll=true in the
-          // renderer, so the next render frame already redraws everything.
-          // Write a single space + backspace to mark the buffer dirty,
-          // ensuring the render loop picks up the resize.
-          if (term) {
-            requestAnimationFrame(() => {
-              if (term.forceFullRedraw) {
-                term.forceFullRedraw();
-              }
-            });
-          }
         }, 150);
       });
       observer.observe(containerEl);
@@ -406,7 +394,9 @@
       cancelled = true;
       // Immediately gate off event handlers before tearing down resources
       initialized = false;
+      isSwitching = false;
       if (resizeTimeout) clearTimeout(resizeTimeout);
+      if (switchRevealTimer) clearTimeout(switchRevealTimer);
       if (resizeObserver) {
         resizeObserver.disconnect();
         resizeObserver = null;
