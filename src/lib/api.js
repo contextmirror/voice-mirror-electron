@@ -496,6 +496,16 @@ export async function revealInExplorer(path, root) {
   return invoke('reveal_in_explorer', { path, root: root || null });
 }
 
+/**
+ * Recursively list all files in the project (respects .gitignore).
+ * Returns an array of relative file paths.
+ * @param {string} [root] - Project root override.
+ * @returns {Promise<{success: boolean, data?: string[], error?: string}>}
+ */
+export async function searchFiles(root) {
+  return invoke('search_files', { root: root || null });
+}
+
 // ============ Shell Terminals ============
 
 /**

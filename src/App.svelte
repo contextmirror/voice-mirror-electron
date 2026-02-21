@@ -20,6 +20,7 @@
   import SettingsPanel from './components/settings/SettingsPanel.svelte';
   import LensWorkspace from './components/lens/LensWorkspace.svelte';
   import StatusDropdown from './components/lens/StatusDropdown.svelte';
+  import CommandPalette from './components/lens/CommandPalette.svelte';
   import { layoutStore } from './lib/stores/layout.svelte.js';
   import OverlayPanel from './components/overlay/OverlayPanel.svelte';
   import ResizeEdges from './components/shared/ResizeEdges.svelte';
@@ -89,6 +90,9 @@
 
   // ---- Stats dashboard visibility ----
   let statsVisible = $state(false);
+
+  // ---- Command palette visibility ----
+  let commandPaletteVisible = $state(false);
 
   // ---- Voice activation handlers (shared by keyboard shortcuts + mouse buttons) ----
 
@@ -168,6 +172,7 @@
       setActionHandler('toggle-voice', handleVoicePress);
       setReleaseHandler('toggle-voice', handleVoiceRelease);
       setActionHandler('stats-dashboard', () => { statsVisible = !statsVisible; });
+      setActionHandler('open-file-search', () => { commandPaletteVisible = true; });
 
       // Listen for PTT events from the unified input hook.
       // The Rust hook handles matching the configured key and emits
@@ -348,7 +353,8 @@
         </div>
         {#if activeView === 'lens'}
           <div class="titlebar-lens-center">
-            <div class="titlebar-search-box">
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="titlebar-search-box" onclick={() => { commandPaletteVisible = true; }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <span>Search Voice Mirror</span>
               <kbd>Ctrl+P</kbd>
@@ -425,6 +431,7 @@
 {/if}
 
 <StatsBar bind:visible={statsVisible} />
+<CommandPalette bind:visible={commandPaletteVisible} onClose={() => { commandPaletteVisible = false; }} />
 
 <style>
   .app-shell {

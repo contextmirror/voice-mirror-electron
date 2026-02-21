@@ -108,6 +108,7 @@ describe('shortcuts: IN_APP_SHORTCUTS entries', () => {
     { id: 'new-chat', keys: 'Ctrl+N', label: 'New chat' },
     { id: 'switch-terminal', keys: 'Ctrl+T', label: 'Switch to terminal' },
     { id: 'close-panel', keys: 'Escape', label: 'Close current panel/modal' },
+    { id: 'open-file-search', keys: 'Ctrl+P', label: 'Search files and commands' },
   ];
 
   for (const { id, keys, label } of expectedInApp) {
@@ -229,6 +230,17 @@ describe('shortcuts: setupInAppShortcuts', () => {
     assert.ok(
       src.includes("event.key === 't'") || src.includes("key === 't'"),
       'Should handle Ctrl+T for switch-terminal'
+    );
+  });
+
+  it('handles Ctrl+P for open-file-search', () => {
+    assert.ok(
+      src.includes("event.key === 'p'") || src.includes("key === 'p'"),
+      'Should handle Ctrl+P for open-file-search'
+    );
+    assert.ok(
+      src.includes("actionHandlers['open-file-search']"),
+      'Should dispatch to open-file-search action handler'
     );
   });
 

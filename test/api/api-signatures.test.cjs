@@ -130,6 +130,7 @@ describe('api.js -- critical Tauri command names', () => {
     'rename_entry',
     'delete_entry',
     'reveal_in_explorer',
+    'search_files',
   ];
 
   for (const cmd of criticalCommands) {
@@ -236,6 +237,7 @@ describe('api.js -- exported async functions', () => {
     'renameEntry',
     'deleteEntry',
     'revealInExplorer',
+    'searchFiles',
     // Shell Terminals
     'shellSpawn',
     'shellInput',

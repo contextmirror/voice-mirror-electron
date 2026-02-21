@@ -33,6 +33,7 @@
     "@tauri-apps/plugin-updater": "^2.10.0",
     "codemirror": "^6.0.2",
     "dompurify": "^3.3.1",
+    "fuzzysort": "^3.1.0",
     "ghostty-web": "github:contextmirror/ghostty-web",
     "marked": "^15.0.0"
   },
