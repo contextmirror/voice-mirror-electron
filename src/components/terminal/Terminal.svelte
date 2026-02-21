@@ -364,12 +364,16 @@
         resizeTimeout = setTimeout(() => {
           fitTerminal();
           resizePtyIfChanged();
-          // Force a full canvas redraw on the next frame to prevent artifacts
-          // after resize. The resize changes canvas dimensions but the render
-          // loop may not mark all rows dirty -- writing a no-op ensures it does.
+          // Force a full canvas redraw after resize settles.
+          // fitTerminal() triggers a resize which sets forceAll=true in the
+          // renderer, so the next render frame already redraws everything.
+          // Write a single space + backspace to mark the buffer dirty,
+          // ensuring the render loop picks up the resize.
           if (term) {
             requestAnimationFrame(() => {
-              term.write('');
+              if (term.forceFullRedraw) {
+                term.forceFullRedraw();
+              }
             });
           }
         }, 150);
