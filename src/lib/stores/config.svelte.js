@@ -74,6 +74,7 @@ const DEFAULT_CONFIG = {
   },
   sidebar: {
     collapsed: false,
+    mode: 'mirror',
   },
   workspace: {
     showChat: false,

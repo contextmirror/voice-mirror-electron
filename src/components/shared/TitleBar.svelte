@@ -1,6 +1,13 @@
 <script>
   import { minimizeWindow, maximizeWindow, quitApp } from '../../lib/api.js';
   import { overlayStore } from '../../lib/stores/overlay.svelte.js';
+  import { navigationStore } from '../../lib/stores/navigation.svelte.js';
+
+  let appMode = $derived(navigationStore.appMode);
+
+  function handleModeSwitch(mode) {
+    navigationStore.setMode(mode);
+  }
 
   /** @type {{ centerContent?: import('svelte').Snippet }} */
   let { centerContent } = $props();
@@ -53,7 +60,24 @@
       <path d="M8 12a4 4 0 0 1 8 0"/>
       <circle cx="12" cy="12" r="1"/>
     </svg>
-    <span class="titlebar-title" data-tauri-drag-region>Voice Mirror</span>
+    <div class="mode-toggle" role="radiogroup" aria-label="App mode">
+      <button
+        class="mode-btn"
+        class:active={appMode === 'mirror'}
+        onclick={() => handleModeSwitch('mirror')}
+        role="radio"
+        aria-checked={appMode === 'mirror'}
+        aria-label="Mirror mode"
+      >Mirror</button>
+      <button
+        class="mode-btn"
+        class:active={appMode === 'lens'}
+        onclick={() => handleModeSwitch('lens')}
+        role="radio"
+        aria-checked={appMode === 'lens'}
+        aria-label="Lens mode"
+      >Lens</button>
+    </div>
   </div>
 
   {#if centerContent}
@@ -147,12 +171,41 @@
     flex-shrink: 0;
   }
 
-  .titlebar-title {
-    color: var(--text-strong);
-    font-size: 13px;
-    font-weight: 600;
+  .mode-toggle {
+    display: flex;
+    align-items: center;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    padding: 2px;
+    pointer-events: auto;
+    -webkit-app-region: no-drag;
+    z-index: 10001;
+  }
+
+  .mode-btn {
+    padding: 3px 12px;
+    border: none;
+    border-radius: 9999px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+    font-family: var(--font-family);
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--ease-out);
     white-space: nowrap;
-    letter-spacing: -0.01em;
+    line-height: 1;
+  }
+
+  .mode-btn:hover:not(.active) {
+    color: var(--text);
+  }
+
+  .mode-btn.active {
+    background: var(--accent-subtle);
+    color: var(--accent);
+    font-weight: 600;
   }
 
   .titlebar-center {
@@ -220,6 +273,9 @@
 
   @media (prefers-reduced-motion: reduce) {
     .win-btn {
+      transition: none;
+    }
+    .mode-btn {
       transition: none;
     }
   }

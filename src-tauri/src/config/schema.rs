@@ -273,11 +273,26 @@ pub struct AdvancedConfig {
 }
 
 /// Sidebar UI state.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SidebarConfig {
     #[serde(default)]
     pub collapsed: bool,
+    #[serde(default = "default_sidebar_mode")]
+    pub mode: String,
+}
+
+impl Default for SidebarConfig {
+    fn default() -> Self {
+        Self {
+            collapsed: false,
+            mode: "mirror".into(),
+        }
+    }
+}
+
+fn default_sidebar_mode() -> String {
+    "mirror".to_string()
 }
 
 /// Lens workspace panel layout state.

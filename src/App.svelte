@@ -40,6 +40,10 @@
       if (collapsed !== undefined) {
         navigationStore.initSidebarState(collapsed);
       }
+      const mode = configStore.value?.sidebar?.mode;
+      if (mode) {
+        navigationStore.initMode(mode);
+      }
       // Restore overlay (orb) mode if user was in compact mode last session.
       // After restore, show the window (it starts hidden to prevent flash).
       if (!overlayRestored) {

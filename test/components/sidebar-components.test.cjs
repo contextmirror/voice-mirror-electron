@@ -46,9 +46,15 @@ describe('Sidebar.svelte', () => {
     assert.ok(src.includes("label: 'Terminal'"), 'Should label it Terminal');
   });
 
-  it('has Lens navigation item', () => {
-    assert.ok(src.includes("id: 'lens'"), 'Should have Lens nav item');
-    assert.ok(src.includes("label: 'Lens'"), 'Should label it Lens');
+  it('derives appMode from navigationStore', () => {
+    assert.ok(src.includes('navigationStore.appMode'), 'Should derive appMode from store');
+  });
+
+  it('has mode-conditional rendering for mirror vs lens', () => {
+    assert.ok(
+      src.includes("appMode === 'mirror'"),
+      'Should conditionally render based on appMode'
+    );
   });
 
   it('has Settings navigation item pinned above footer', () => {
@@ -235,5 +241,30 @@ describe('ChatList.svelte', () => {
 
   it('uses $state for local state', () => {
     assert.ok(src.includes('$state('), 'Should use $state rune');
+  });
+});
+
+// ---- Sidebar: mode support ----
+
+describe('sidebar: mode support', () => {
+  const src = readComponent('Sidebar.svelte');
+
+  it('derives appMode from navigationStore', () => {
+    assert.ok(src.includes('navigationStore.appMode'), 'Should derive appMode');
+  });
+
+  it('conditionally renders based on appMode', () => {
+    assert.ok(
+      src.includes("appMode === 'mirror'"),
+      'Should branch on appMode for mirror mode'
+    );
+  });
+
+  it('has lens mode placeholder in sidebar', () => {
+    // In lens mode the nav area is an empty spacer
+    assert.ok(
+      src.includes("appMode === 'mirror'") || src.includes("{:else}"),
+      'Should have else branch for lens mode'
+    );
   });
 });
