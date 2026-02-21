@@ -181,20 +181,17 @@
         if (term.forceFullRedraw) term.forceFullRedraw();
         break;
       case 'start':
-        // Only reset if the DOM event didn't already handle it.
+        // Only clear if the DOM event didn't already handle it.
         if (!preResetDone) {
-          if (term.reset) {
-            term.reset();
-          }
+          term.write('\x1b[2J\x1b[3J\x1b[H');
         }
         preResetDone = false;
         // Unfreeze rendering — the WASM buffer now has the complete TUI state
         // from all the pre-ready writes. unfreeze() does a forceAll render,
         // painting the full TUI in a single frame.
+        // NOTE: Do NOT write text after unfreeze — for TUI providers on the
+        // alternate screen, any writeln() here would garble the TUI.
         if (term.unfreeze) term.unfreeze();
-        if (data.text) {
-          term.writeln(`\x1b[34m${data.text}\x1b[0m`);
-        }
         // Fit after provider starts
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
@@ -343,19 +340,20 @@
       // ($effect won't work — Svelte defers effects and loses the race.)
       providerSwitchHandler = () => {
         if (!term || !initialized) return;
-        if (term.reset) {
-          term.reset();
-        } else {
-          term.write('\x1b[2J\x1b[3J\x1b[H');
-        }
+        // Clean up terminal modes left by the old provider, then freeze
+        // rendering so the new provider's TUI setup is processed by the
+        // WASM parser but NOT painted. When 'start' fires, unfreeze()
+        // does a single forceAll render — first visible frame is the
+        // complete TUI with no partial-frame flicker.
+        term.write(
+          '\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l' + // Disable mouse tracking
+          '\x1b[?1049l' +  // Exit alternate screen (if active)
+          '\x1b[0m' +      // Reset attributes
+          '\x1b[2J\x1b[3J\x1b[H'  // Clear screen + scrollback + home
+        );
         fitTerminal();
         resizePtyIfChanged();
         preResetDone = true;
-        // Freeze rendering: the render loop keeps running but skips canvas
-        // updates. Writes from the new provider's TUI setup are processed
-        // by the WASM parser (maintaining alt-screen, cursor, color state)
-        // but NOT painted. When 'start' fires, unfreeze() does a single
-        // forceAll render — first visible frame is the complete TUI.
         if (term.freeze) term.freeze();
       };
       window.addEventListener('ai-provider-switching', providerSwitchHandler);
