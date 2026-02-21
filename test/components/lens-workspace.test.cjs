@@ -136,6 +136,13 @@ describe('LensWorkspace.svelte', () => {
   it('imports lensSetVisible', () => {
     assert.ok(src.includes('lensSetVisible'), 'Should import lensSetVisible for webview toggle');
   });
+  it('imports lensStore for webviewReady guard', () => {
+    assert.ok(src.includes('lensStore'), 'Should import lensStore');
+    assert.ok(src.includes("stores/lens.svelte.js"), 'Should import from lens store path');
+  });
+  it('guards lensSetVisible with webviewReady check', () => {
+    assert.ok(src.includes('lensStore.webviewReady'), 'Should check webviewReady before calling lensSetVisible');
+  });
   it('toggles webview visibility with $effect', () => {
     assert.ok(src.includes('$effect'), 'Should have effect for webview visibility');
   });

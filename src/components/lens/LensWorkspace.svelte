@@ -10,6 +10,7 @@
   import TerminalTabs from '../terminal/TerminalTabs.svelte';
   import { tabsStore } from '../../lib/stores/tabs.svelte.js';
   import { layoutStore } from '../../lib/stores/layout.svelte.js';
+  import { lensStore } from '../../lib/stores/lens.svelte.js';
   import { lensSetVisible } from '../../lib/api.js';
 
   let {
@@ -26,8 +27,11 @@
   let isFile = $derived(tabsStore.activeTab?.type === 'file');
   let isDiff = $derived(tabsStore.activeTab?.type === 'diff');
 
-  // Toggle browser webview visibility when switching between browser and file tabs
+  // Toggle browser webview visibility when switching between browser and file tabs.
+  // Guard on webviewReady so we never call before the webview exists.
+  // When webviewReady transitions false→true, this effect re-fires and syncs visibility.
   $effect(() => {
+    if (!lensStore.webviewReady) return;
     lensSetVisible(isBrowser).catch(() => {});
   });
 </script>
