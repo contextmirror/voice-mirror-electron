@@ -1,5 +1,7 @@
 <script>
   import { listDirectory, getGitChanges } from '../../lib/api.js';
+  import { chooseIconName } from '../../lib/file-icons.js';
+  import spriteUrl from '../../assets/icons/file-icons-sprite.svg';
 
   let { onFileClick = () => {} } = $props();
 
@@ -105,15 +107,17 @@
       {#snippet treeNode(entries, depth)}
         {#each entries as entry}
           {#if entry.type === 'directory'}
+            {@const isExpanded = expandedDirs.has(entry.path)}
             <button
               class="tree-item folder"
               style="padding-left: {8 + depth * 16}px"
               onclick={() => toggleDir(entry)}
             >
-              <span class="tree-chevron">{expandedDirs.has(entry.path) ? 'v' : '>'}</span>
+              <span class="tree-chevron">{isExpanded ? 'v' : '>'}</span>
+              <svg class="tree-icon"><use href="{spriteUrl}#{chooseIconName(entry.path, 'directory', isExpanded)}" /></svg>
               <span class="tree-name">{entry.name}</span>
             </button>
-            {#if expandedDirs.has(entry.path)}
+            {#if isExpanded}
               {#if loadingDirs.has(entry.path)}
                 <div class="tree-loading" style="padding-left: {8 + (depth + 1) * 16}px">...</div>
               {:else if dirChildren.has(entry.path)}
@@ -123,9 +127,10 @@
           {:else}
             <button
               class="tree-item file"
-              style="padding-left: {8 + depth * 16}px"
+              style="padding-left: {8 + depth * 16 + 18}px"
               onclick={() => handleFileClick(entry)}
             >
+              <svg class="tree-icon"><use href="{spriteUrl}#{chooseIconName(entry.path, 'file')}" /></svg>
               <span class="tree-name" class:ignored={entry.ignored}>{entry.name}</span>
             </button>
           {/if}
@@ -143,6 +148,8 @@
       {:else}
         {#each gitChanges as change}
           <div class="change-item">
+            <svg class="tree-icon"><use href="{spriteUrl}#{chooseIconName(change.path, 'file')}" /></svg>
+            <span class="change-path">{change.path}</span>
             <span
               class="change-badge"
               class:added={change.status === 'added'}
@@ -151,7 +158,6 @@
             >
               {change.status === 'added' ? 'A' : change.status === 'deleted' ? 'D' : 'M'}
             </span>
-            <span class="change-path">{change.path}</span>
           </div>
         {/each}
       {/if}
@@ -229,6 +235,12 @@
     flex-shrink: 0;
   }
 
+  .tree-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+
   .tree-name {
     white-space: nowrap;
     overflow: hidden;
@@ -254,7 +266,7 @@
   .change-item {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     padding: 3px 12px;
     font-size: 12px;
     font-family: var(--font-mono);
@@ -284,6 +296,8 @@
   }
 
   .change-path {
+    flex: 1;
+    min-width: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
