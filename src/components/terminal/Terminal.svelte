@@ -367,6 +367,12 @@
           clearTimeout(switchRevealTimer);
           switchRevealTimer = null;
         }
+        // Nuclear reset: free the old WASM terminal, create a fresh one,
+        // clear the canvas, restart the render loop. This puts the terminal
+        // in the exact same state as initial startup — which always renders
+        // cleanly. Without this, the old provider's canvas pixels, dirty-row
+        // tracking, and WASM buffer state leak into the new provider's render.
+        if (term) term.reset();
       };
       window.addEventListener('ai-provider-switching', providerSwitchHandler);
 
