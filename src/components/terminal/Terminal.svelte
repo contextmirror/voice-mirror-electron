@@ -150,6 +150,17 @@
   // ---- AI output handler ----
 
   /**
+   * Strip SGR mouse event echoes from PTY output.
+   * On Windows, ConPTY can echo mouse tracking input back as output,
+   * sometimes with the ESC byte (0x1B) stripped. This regex catches both:
+   *   \x1b[<btn;col;rowM  (with ESC — full SGR sequence)
+   *   [<btn;col;rowM       (without ESC — ConPTY-mangled)
+   * These sequences are a mouse INPUT format and never appear in
+   * legitimate terminal output.
+   */
+  const SGR_MOUSE_ECHO_RE = /\x1b?\[<\d+;\d+;\d+[Mm]/g;
+
+  /**
    * Process a single ai-output event payload.
    * Extracted so it can be called both from the live listener and
    * when draining events buffered during the initialization gap.
@@ -180,7 +191,8 @@
       case 'tui':
       case 'stderr':
         if (data.text) {
-          term.write(data.text);
+          const cleaned = data.text.replace(SGR_MOUSE_ECHO_RE, '');
+          if (cleaned) term.write(cleaned);
         }
         break;
       case 'exit':
