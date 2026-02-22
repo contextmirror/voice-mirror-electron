@@ -1,7 +1,7 @@
 <script>
   import { onDestroy, tick } from 'svelte';
   import { listen } from '@tauri-apps/api/event';
-  import { readFile, writeFile, lspOpenFile, lspCloseFile, lspChangeFile, lspSaveFile, lspRequestCompletion, lspRequestHover, lspRequestDefinition, revealInExplorer, writeUserMessage, aiPtyInput } from '../../lib/api.js';
+  import { readFile, readExternalFile, writeFile, lspOpenFile, lspCloseFile, lspChangeFile, lspSaveFile, lspRequestCompletion, lspRequestHover, lspRequestDefinition, revealInExplorer, writeUserMessage, aiPtyInput } from '../../lib/api.js';
   import { tabsStore } from '../../lib/stores/tabs.svelte.js';
   import { projectStore } from '../../lib/stores/project.svelte.js';
   import { chatStore } from '../../lib/stores/chat.svelte.js';
@@ -107,7 +107,8 @@
     }
   }
 
-  /** Convert a file:// URI to a project-relative path. */
+  /** Convert a file:// URI to a project-relative path.
+   *  Returns { path, external } where external=true if outside project root. */
   function uriToRelativePath(uri, root) {
     if (!uri) return null;
     try {
@@ -119,10 +120,10 @@
       if (/^\/[A-Za-z]:\//.test(filePath)) filePath = filePath.slice(1);
       const normalizedRoot = root.replace(/\\/g, '/').replace(/\/$/, '');
       if (filePath.startsWith(normalizedRoot + '/')) {
-        return filePath.slice(normalizedRoot.length + 1);
+        return { path: filePath.slice(normalizedRoot.length + 1), external: false };
       }
-      // Fallback: return the full path
-      return filePath;
+      // Outside project root — return absolute path marked as external
+      return { path: filePath, external: true };
     } catch {
       return null;
     }
@@ -200,17 +201,17 @@
       if (!result?.data?.locations?.length) return;
       const loc = result.data.locations[0];
       const root = projectStore.activeProject?.path || '';
-      const locPath = uriToRelativePath(loc.uri, root);
-      if (!locPath) return;
-      if (locPath === currentPath) {
+      const resolved = uriToRelativePath(loc.uri, root);
+      if (!resolved) return;
+      if (resolved.path === currentPath && !resolved.external) {
         const targetLine = view.state.doc.line(loc.range.start.line + 1);
         view.dispatch({
           selection: { anchor: targetLine.from + loc.range.start.character },
           scrollIntoView: true,
         });
       } else {
-        const fileName = locPath.split(/[/\\]/).pop() || locPath;
-        tabsStore.openFile({ name: fileName, path: locPath });
+        const fileName = resolved.path.split(/[/\\]/).pop() || resolved.path;
+        tabsStore.openFile({ name: fileName, path: resolved.path, readOnly: resolved.external, external: resolved.external });
       }
     } catch {}
   }
@@ -373,10 +374,16 @@
     isBinary = false;
     conflictDetected = false;
 
+    // Check if this is an external (read-only) file
+    const isExternal = tab?.external || false;
+    const isReadOnly = tab?.readOnly || false;
+
     try {
       const cm = await loadCM();
       const root = projectStore.activeProject?.path || null;
-      const result = await readFile(filePath, root);
+      const result = isExternal
+        ? await readExternalFile(filePath)
+        : await readFile(filePath, root);
       const data = result?.data || result;
 
       // Check if tab changed while loading
@@ -406,13 +413,14 @@
       // Check again if tab changed
       if (filePath !== currentPath) return;
 
-      // Determine LSP support from file extension
+      // Determine LSP support from file extension (no LSP for external files)
       const ext = filePath.split('.').pop()?.toLowerCase() || '';
-      hasLsp = LSP_EXTENSIONS.has(ext);
+      hasLsp = !isExternal && LSP_EXTENSIONS.has(ext);
 
       const extensions = [
         cm.basicSetup,
         ...voiceMirrorEditorTheme,
+        ...(isReadOnly ? [cm.EditorState.readOnly.of(true)] : []),
         cm.lintGutter(),
         cm.autocompletion(hasLsp ? {
           override: [lspCompletionSource],
@@ -522,18 +530,18 @@
 
             const loc = result.data.locations[0];
             const root = projectStore.activeProject?.path || '';
-            const locPath = uriToRelativePath(loc.uri, root);
-            if (!locPath) return true;
+            const resolved = uriToRelativePath(loc.uri, root);
+            if (!resolved) return true;
 
-            if (locPath === currentPath) {
+            if (resolved.path === currentPath && !resolved.external) {
               const targetLine = v.state.doc.line(loc.range.start.line + 1);
               v.dispatch({
                 selection: { anchor: targetLine.from + loc.range.start.character },
                 scrollIntoView: true,
               });
             } else {
-              const fileName = locPath.split(/[/\\]/).pop() || locPath;
-              tabsStore.openFile({ name: fileName, path: locPath });
+              const fileName = resolved.path.split(/[/\\]/).pop() || resolved.path;
+              tabsStore.openFile({ name: fileName, path: resolved.path, readOnly: resolved.external, external: resolved.external });
             }
           } catch {
             // Definition lookup failed — still consume the event
@@ -697,6 +705,14 @@
     <span class="error-text">{error}</span>
   </div>
 {:else}
+  {#if tab?.readOnly}
+    <div class="readonly-banner">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+      <span>Read-only — {tab.external ? 'external file' : 'cannot edit'}</span>
+    </div>
+  {/if}
   <div class="file-editor" bind:this={editorEl}>
     {#if loading}
       <div class="editor-loading">
@@ -850,6 +866,23 @@
 
   .conflict-dismiss:hover {
     background: var(--warn-subtle, rgba(245, 158, 11, 0.15));
+  }
+
+  .readonly-banner {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    background: var(--bg-elevated, #1a1a2e);
+    border-bottom: 1px solid var(--muted, #666);
+    color: var(--muted, #999);
+    font-size: 11px;
+    font-family: var(--font-family);
+  }
+
+  .readonly-banner svg {
+    flex-shrink: 0;
+    opacity: 0.7;
   }
 
   .file-editor :global(.cm-lintPoint-error) {

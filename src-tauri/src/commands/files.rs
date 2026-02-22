@@ -308,6 +308,56 @@ pub fn read_file(path: String, root: Option<String>) -> IpcResponse {
     IpcResponse::ok(serde_json::json!({ "content": content, "path": rel_path, "size": size }))
 }
 
+/// Read an external file by absolute path (read-only, no project root restriction).
+///
+/// Used for viewing type definitions, node_modules files, etc. that are outside
+/// the project root. Only supports reading — no writes allowed for external files.
+/// Path must be absolute.
+#[tauri::command]
+pub fn read_external_file(path: String) -> IpcResponse {
+    let file_path = PathBuf::from(&path);
+
+    // Must be an absolute path
+    if !file_path.is_absolute() {
+        return IpcResponse::err("read_external_file requires an absolute path");
+    }
+
+    // Canonicalize to resolve symlinks
+    let canon = match file_path.canonicalize() {
+        Ok(p) => p,
+        Err(e) => return IpcResponse::err(format!("File not found: {}", e)),
+    };
+
+    let size = match std::fs::metadata(&canon) {
+        Ok(m) => m.len(),
+        Err(e) => return IpcResponse::err(format!("Failed to get file metadata: {}", e)),
+    };
+
+    // Cap at 2MB for safety — type definitions can be large but not absurd
+    if size > 2 * 1024 * 1024 {
+        return IpcResponse::err("File too large for external preview (max 2MB)");
+    }
+
+    let bytes = match std::fs::read(&canon) {
+        Ok(b) => b,
+        Err(e) => return IpcResponse::err(format!("Failed to read file: {}", e)),
+    };
+
+    let content = match String::from_utf8(bytes) {
+        Ok(c) => c,
+        Err(_) => {
+            return IpcResponse::ok(serde_json::json!({
+                "binary": true,
+                "path": path,
+                "size": size
+            }));
+        }
+    };
+
+    info!("read_external_file: {} ({} bytes)", path, size);
+    IpcResponse::ok(serde_json::json!({ "content": content, "path": path, "size": size, "readOnly": true }))
+}
+
 /// Get a file's content as it exists in git HEAD.
 ///
 /// Runs `git show HEAD:<path>` in the project root.

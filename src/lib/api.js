@@ -431,6 +431,10 @@ export async function readFile(path, root) {
   return invoke('read_file', { path, root: root || null });
 }
 
+export async function readExternalFile(path) {
+  return invoke('read_external_file', { path });
+}
+
 export async function writeFile(path, content, root) {
   return invoke('write_file', { path, content, root: root || null });
 }

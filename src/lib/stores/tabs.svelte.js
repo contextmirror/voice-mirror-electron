@@ -37,6 +37,8 @@ function createTabsStore() {
         path: entry.path,
         preview: true,
         dirty: false,
+        readOnly: entry.readOnly || false,
+        external: entry.external || false,
       };
 
       if (previewIdx !== -1) {

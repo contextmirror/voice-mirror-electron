@@ -230,6 +230,7 @@ describe('api.js -- exported async functions', () => {
     'getGitChanges',
     'getProjectRoot',
     'readFile',
+    'readExternalFile',
     'writeFile',
     'getFileGitContent',
     'createFile',
