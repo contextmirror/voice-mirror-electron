@@ -10,6 +10,54 @@ pub struct ServerInfo {
     pub binary: String,
     pub args: Vec<String>,
     pub installed: bool,
+    /// The full resolved path from `which` (may be a .cmd on Windows).
+    pub resolved_path: Option<std::path::PathBuf>,
+}
+
+/// On Windows, npm-installed servers are `.cmd` batch wrappers that break
+/// stdio piping. Resolve the actual Node.js entry script and return
+/// `("node", [script_path, ...original_args])` instead.
+#[cfg(target_os = "windows")]
+pub fn resolve_node_script(info: &ServerInfo) -> Option<(String, Vec<String>)> {
+    let resolved = info.resolved_path.as_ref()?;
+
+    // Only handle .cmd wrappers
+    if resolved
+        .extension()
+        .map(|ext| !ext.eq_ignore_ascii_case("cmd"))
+        .unwrap_or(true)
+    {
+        return None;
+    }
+
+    // npm global .cmd wrappers point to:
+    //   <npm_dir>/node_modules/<pkg>/bin/<binary>
+    // The .cmd sits at <npm_dir>/<binary>.cmd, so the script is at:
+    //   <npm_dir>/node_modules/*/bin/<binary>
+    let npm_dir = resolved.parent()?;
+    let binary_name = resolved.file_stem()?;
+
+    // Walk node_modules looking for the matching bin script
+    let node_modules = npm_dir.join("node_modules");
+    if node_modules.is_dir() {
+        for entry in std::fs::read_dir(&node_modules).ok()? {
+            let entry = entry.ok()?;
+            let bin_script = entry.path().join("bin").join(binary_name);
+            if bin_script.exists() {
+                let node = which::which("node").ok()?;
+                let mut args = vec![bin_script.to_string_lossy().to_string()];
+                args.extend(info.args.iter().cloned());
+                return Some((node.to_string_lossy().to_string(), args));
+            }
+        }
+    }
+
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn resolve_node_script(_info: &ServerInfo) -> Option<(String, Vec<String>)> {
+    None
 }
 
 /// Known language servers: (extensions, language_id, binary, args).
@@ -56,12 +104,14 @@ pub fn detect_for_extension(ext: &str) -> Option<ServerInfo> {
     let ext_lower = ext.to_lowercase();
     for &(extensions, language_id, binary, args) in LANGUAGE_SERVERS {
         if extensions.contains(&ext_lower.as_str()) {
-            let installed = which::which(binary).is_ok();
+            let resolved = which::which(binary).ok();
+            let installed = resolved.is_some();
             return Some(ServerInfo {
                 language_id: language_id.to_string(),
                 binary: binary.to_string(),
                 args: args.iter().map(|s| s.to_string()).collect(),
                 installed,
+                resolved_path: resolved,
             });
         }
     }
@@ -87,12 +137,14 @@ pub fn detect_all() -> Vec<ServerInfo> {
 
     for &(_, language_id, binary, args) in LANGUAGE_SERVERS {
         if seen.insert(language_id) {
-            let installed = which::which(binary).is_ok();
+            let resolved = which::which(binary).ok();
+            let installed = resolved.is_some();
             results.push(ServerInfo {
                 language_id: language_id.to_string(),
                 binary: binary.to_string(),
                 args: args.iter().map(|s| s.to_string()).collect(),
                 installed,
+                resolved_path: resolved,
             });
         }
     }

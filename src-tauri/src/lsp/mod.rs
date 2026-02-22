@@ -88,13 +88,35 @@ impl LspManager {
             server_info.binary, lang_id
         );
 
-        // Spawn the server process
-        let mut cmd = tokio::process::Command::new(&server_info.binary);
-        cmd.args(&server_info.args)
+        // Spawn the server process.
+        // On Windows, npm-installed servers are .cmd batch wrappers that break
+        // stdio piping through cmd.exe. Resolve to `node <script>` directly.
+        let (spawn_binary, spawn_args) =
+            if let Some((node, args)) = detection::resolve_node_script(&server_info) {
+                info!(
+                    "LSP '{}' resolved to node script: {} {}",
+                    server_info.binary,
+                    node,
+                    args.first().unwrap_or(&String::new())
+                );
+                (node, args)
+            } else {
+                let binary_path = server_info
+                    .resolved_path
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| server_info.binary.clone());
+                info!("LSP binary resolved to: {}", binary_path);
+                (binary_path, server_info.args.clone())
+            };
+
+        let mut cmd = tokio::process::Command::new(&spawn_binary);
+        cmd.args(&spawn_args)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
-            .current_dir(project_root);
+            .current_dir(project_root)
+            .kill_on_drop(true);
 
         // On Windows, prevent console window from flashing
         #[cfg(target_os = "windows")]
