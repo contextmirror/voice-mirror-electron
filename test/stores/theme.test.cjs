@@ -107,6 +107,29 @@ describe('theme.svelte.js -- deriveTheme function', () => {
   it('handles light vs dark detection', () => {
     assert.ok(src.includes('isLight'), 'Should detect light vs dark background');
   });
+
+  it('generates CodeMirror editor variables', () => {
+    assert.ok(src.includes("'--cm-background'"), 'Should generate --cm-background');
+    assert.ok(src.includes("'--cm-foreground'"), 'Should generate --cm-foreground');
+    assert.ok(src.includes("'--cm-cursor'"), 'Should generate --cm-cursor');
+    assert.ok(src.includes("'--cm-selection'"), 'Should generate --cm-selection');
+    assert.ok(src.includes("'--cm-gutter-bg'"), 'Should generate --cm-gutter-bg');
+    assert.ok(src.includes("'--cm-gutter-fg'"), 'Should generate --cm-gutter-fg');
+    assert.ok(src.includes("'--cm-tooltip-bg'"), 'Should generate --cm-tooltip-bg');
+  });
+
+  it('generates CodeMirror syntax highlighting variables', () => {
+    assert.ok(src.includes("'--cm-keyword'"), 'Should generate --cm-keyword');
+    assert.ok(src.includes("'--cm-string'"), 'Should generate --cm-string');
+    assert.ok(src.includes("'--cm-comment'"), 'Should generate --cm-comment');
+    assert.ok(src.includes("'--cm-function'"), 'Should generate --cm-function');
+    assert.ok(src.includes("'--cm-type'"), 'Should generate --cm-type');
+    assert.ok(src.includes("'--cm-number'"), 'Should generate --cm-number');
+    assert.ok(src.includes("'--cm-operator'"), 'Should generate --cm-operator');
+    assert.ok(src.includes("'--cm-variable'"), 'Should generate --cm-variable');
+    assert.ok(src.includes("'--cm-tag'"), 'Should generate --cm-tag');
+    assert.ok(src.includes("'--cm-invalid'"), 'Should generate --cm-invalid');
+  });
 });
 
 describe('theme.svelte.js -- color utility functions', () => {

@@ -7,6 +7,7 @@
   import { chatStore } from '../../lib/stores/chat.svelte.js';
   import { aiStatusStore } from '../../lib/stores/ai-status.svelte.js';
   import EditorContextMenu from './EditorContextMenu.svelte';
+  import { voiceMirrorEditorTheme } from '../../lib/editor-theme.js';
 
   let { tab } = $props();
 
@@ -45,18 +46,16 @@
       { EditorView, basicSetup },
       { EditorState },
       { keymap, hoverTooltip },
-      { oneDark },
       { autocompletion },
       { setDiagnostics, lintGutter },
     ] = await Promise.all([
       import('codemirror'),
       import('@codemirror/state'),
       import('@codemirror/view'),
-      import('@codemirror/theme-one-dark'),
       import('@codemirror/autocomplete'),
       import('@codemirror/lint'),
     ]);
-    cmCache = { EditorView, basicSetup, EditorState, keymap, hoverTooltip, oneDark, autocompletion, setDiagnostics, lintGutter };
+    cmCache = { EditorView, basicSetup, EditorState, keymap, hoverTooltip, autocompletion, setDiagnostics, lintGutter };
     return cmCache;
   }
 
@@ -384,7 +383,7 @@
 
       const extensions = [
         cm.basicSetup,
-        cm.oneDark,
+        ...voiceMirrorEditorTheme,
         cm.lintGutter(),
         cm.autocompletion(hasLsp ? {
           override: [lspCompletionSource],

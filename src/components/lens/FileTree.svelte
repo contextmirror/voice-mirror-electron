@@ -1,5 +1,5 @@
 <script>
-  import { listDirectory, getGitChanges, createFile, createDirectory, renameEntry } from '../../lib/api.js';
+  import { listDirectory, getGitChanges, createFile, createDirectory, renameEntry, revealInExplorer } from '../../lib/api.js';
   import { listen } from '@tauri-apps/api/event';
   import { chooseIconName } from '../../lib/file-icons.js';
   import { projectStore } from '../../lib/stores/project.svelte.js';
@@ -318,9 +318,39 @@
     }
   }
 
+  // ── Project path collapse + context menu ──
+  let projectPathOpen = $state(false);
+  let projectMenu = $state({ visible: false, x: 0, y: 0 });
+
+  function handleProjectContextMenu(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    projectMenu = { visible: true, x: e.clientX, y: e.clientY };
+  }
+
+  function closeProjectMenu() {
+    projectMenu = { ...projectMenu, visible: false };
+  }
+
+  function copyProjectPath() {
+    const path = projectStore.activeProject?.path;
+    if (path) navigator.clipboard.writeText(path).catch(() => {});
+    closeProjectMenu();
+  }
+
+  function revealProject() {
+    const path = projectStore.activeProject?.path;
+    if (path) revealInExplorer(path, path).catch(() => {});
+    closeProjectMenu();
+  }
+
   // ── Keyboard shortcut (F2 rename) ──
 
   function handleKeydown(e) {
+    if (e.key === 'Escape' && projectMenu.visible) {
+      closeProjectMenu();
+      return;
+    }
     if (e.key === 'F2' && selectedEntry && !editingEntry && !creatingIn) {
       e.preventDefault();
       startRename(selectedEntry);
@@ -341,7 +371,7 @@
   }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} onclick={() => { if (projectMenu.visible) closeProjectMenu(); }} />
 
 <div class="files-area">
   <div class="files-header">
@@ -479,6 +509,40 @@
           </button>
         {/each}
       {/if}
+    </div>
+  {/if}
+
+  <!-- Project path (collapsible, bottom) -->
+  {#if projectStore.activeProject?.path}
+    <div class="project-path-section">
+      <button
+        class="project-path-toggle"
+        onclick={() => { projectPathOpen = !projectPathOpen; }}
+        oncontextmenu={handleProjectContextMenu}
+        aria-expanded={projectPathOpen}
+        title={projectStore.activeProject.path}
+      >
+        <svg class="project-path-chevron" class:open={projectPathOpen} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        <svg class="project-path-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <span class="project-path-label">Project</span>
+      </button>
+      {#if projectPathOpen}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="project-path-value" oncontextmenu={handleProjectContextMenu}>{projectStore.activeProject.path}</div>
+      {/if}
+    </div>
+  {/if}
+
+  {#if projectMenu.visible}
+    <div class="project-context-menu" style="top: {projectMenu.y}px; left: {projectMenu.x}px;" role="menu">
+      <button class="project-menu-item" role="menuitem" onclick={copyProjectPath}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        Copy Path
+      </button>
+      <button class="project-menu-item" role="menuitem" onclick={revealProject}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        Reveal in File Explorer
+      </button>
     </div>
   {/if}
 </div>
@@ -665,5 +729,100 @@
     text-align: center;
     padding: 24px 12px;
     font-size: 12px;
+  }
+
+  /* ── Project path (collapsible footer) ── */
+
+  .project-path-section {
+    flex-shrink: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .project-path-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    padding: 6px 8px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 11px;
+    cursor: pointer;
+    text-align: left;
+    -webkit-app-region: no-drag;
+    transition: color var(--duration-fast) var(--ease-out);
+  }
+  .project-path-toggle:hover {
+    color: var(--text);
+  }
+
+  .project-path-chevron {
+    flex-shrink: 0;
+    transition: transform var(--duration-fast) var(--ease-out);
+  }
+  .project-path-chevron.open {
+    transform: rotate(90deg);
+  }
+
+  .project-path-icon {
+    flex-shrink: 0;
+    opacity: 0.6;
+  }
+
+  .project-path-label {
+    white-space: nowrap;
+  }
+
+  .project-path-value {
+    padding: 0 8px 8px 30px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--muted);
+    word-break: break-all;
+    line-height: 1.4;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  /* ── Project context menu ── */
+
+  .project-context-menu {
+    position: fixed;
+    min-width: 180px;
+    padding: 4px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    z-index: 10003;
+    -webkit-app-region: no-drag;
+  }
+
+  .project-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 10px;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    text-align: left;
+    -webkit-app-region: no-drag;
+  }
+  .project-menu-item:hover {
+    background: var(--accent);
+    color: var(--bg);
+  }
+  .project-menu-item svg {
+    flex-shrink: 0;
+    opacity: 0.7;
+  }
+  .project-menu-item:hover svg {
+    opacity: 1;
   }
 </style>

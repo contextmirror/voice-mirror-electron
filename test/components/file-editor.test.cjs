@@ -61,8 +61,8 @@ describe('FileEditor.svelte: CodeMirror integration', () => {
     assert.ok(src.includes('@codemirror/view'), 'Should import codemirror view');
   });
 
-  it('uses oneDark theme', () => {
-    assert.ok(src.includes('oneDark'), 'Should use oneDark theme');
+  it('uses custom Voice Mirror editor theme', () => {
+    assert.ok(src.includes('voiceMirrorEditorTheme'), 'Should use voiceMirrorEditorTheme');
   });
 
   it('creates EditorView', () => {

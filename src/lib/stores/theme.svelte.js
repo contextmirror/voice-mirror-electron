@@ -228,8 +228,8 @@ export function deriveTheme(colors, fonts = /** @type {any} */ ({})) {
     '--text': c.text,
     '--text-strong': c.textStrong,
     '--muted': c.muted,
-    '--border': hexToRgba(c.textStrong, isLight ? 0.12 : 0.06),
-    '--border-strong': hexToRgba(c.textStrong, isLight ? 0.18 : 0.10),
+    '--border': hexToRgba(c.textStrong, isLight ? 0.14 : 0.10),
+    '--border-strong': hexToRgba(c.textStrong, isLight ? 0.22 : 0.16),
     '--accent': c.accent,
     '--accent-hover': lighten(c.accent, 0.12),
     '--accent-subtle': hexToRgba(c.accent, 0.15),
@@ -271,6 +271,59 @@ export function deriveTheme(colors, fonts = /** @type {any} */ ({})) {
       : `linear-gradient(135deg, ${blend(c.bg, c.bgElevated, 0.5)} 0%, ${blend(c.bg, c.bgElevated, 0.2)} 100%)`,
     '--msg-ai-border': hexToRgba(c.textStrong, isLight ? 0.12 : 0.10),
     '--msg-ai-radius': '4px 16px 16px 16px',
+
+    // ── CodeMirror editor variables ──
+    // These drive the custom editor theme in src/lib/editor-theme.js.
+    // Each preset's 10 base colors map to distinct syntax highlighting palettes.
+
+    // Editor chrome
+    '--cm-background': c.bg,
+    '--cm-foreground': c.text,
+    '--cm-cursor': c.accent,
+    '--cm-selection': hexToRgba(c.accent, isLight ? 0.18 : 0.3),
+    '--cm-selection-match': hexToRgba(c.accent, isLight ? 0.1 : 0.12),
+    '--cm-line-highlight': hexToRgba(c.accent, isLight ? 0.05 : 0.04),
+    '--cm-bracket-match': hexToRgba(c.accent, isLight ? 0.2 : 0.25),
+    '--cm-bracket-match-border': hexToRgba(c.accent, 0.5),
+    '--cm-bracket-mismatch': hexToRgba(c.danger, 0.3),
+    '--cm-search-match': hexToRgba(c.accent, isLight ? 0.15 : 0.2),
+    '--cm-gutter-bg': c.bg,
+    '--cm-gutter-fg': isLight ? darken(c.muted, 0.05) : darken(c.muted, 0.1),
+    '--cm-gutter-active-bg': hexToRgba(c.accent, 0.06),
+    '--cm-gutter-active-fg': c.text,
+    '--cm-panel-bg': isLight ? darken(c.bg, 0.03) : lighten(c.bg, 0.03),
+    '--cm-tooltip-bg': c.bgElevated,
+    '--cm-autocomplete-selected': hexToRgba(c.accent, 0.2),
+    '--cm-fold-placeholder': c.muted,
+    '--cm-accent': c.accent,
+
+    // Syntax highlighting — derived from the 10 base palette colors
+    // Light mode: saturate and deepen for contrast on white.
+    // Dark mode: lighten for vibrancy on dark backgrounds.
+    '--cm-keyword': isLight ? darken(c.accent, 0.08) : c.accent,
+    '--cm-string': isLight ? darken(c.ok, 0.08) : c.ok,
+    '--cm-comment': c.muted,
+    '--cm-function': isLight
+      ? blend(darken(c.accent, 0.15), c.warn, 0.35)   // warm blue-brown, distinct from keywords
+      : lighten(c.accent, 0.08),
+    '--cm-property': isLight
+      ? darken(c.danger, 0.1)                           // deep red for properties
+      : lighten(c.danger, 0.08),
+    '--cm-type': isLight ? darken(c.warn, 0.12) : c.warn,
+    '--cm-number': isLight
+      ? blend(c.ok, c.accent, 0.35)                    // teal — distinct from strings
+      : lighten(c.warn, 0.05),
+    '--cm-constant': isLight
+      ? blend(c.accent, c.danger, 0.4)                 // deep purple — distinct from keywords
+      : lighten(c.warn, 0.08),
+    '--cm-operator': isLight ? darken(c.muted, 0.2) : lighten(c.muted, 0.2),
+    '--cm-variable': c.text,
+    '--cm-variable-def': c.textStrong,
+    '--cm-punctuation': isLight ? darken(c.muted, 0.1) : lighten(c.muted, 0.1),
+    '--cm-tag': isLight ? darken(c.danger, 0.08) : c.danger,
+    '--cm-attribute': isLight ? darken(c.warn, 0.08) : c.warn,
+    '--cm-link': c.accent,
+    '--cm-invalid': c.danger,
   };
 }
 
