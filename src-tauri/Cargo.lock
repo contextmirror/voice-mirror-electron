@@ -6403,8 +6403,10 @@ dependencies = [
  "trash",
  "url",
  "uuid",
+ "webview2-com",
  "which 7.0.3",
  "whisper-rs",
+ "windows-core 0.61.2",
  "zip 2.4.2",
 ]
 

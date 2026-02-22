@@ -2,122 +2,106 @@
 //! Tauri webview (Lens).
 //!
 //! For actions that need return values from JavaScript (snapshot, act, cookies,
-//! storage), we use a custom URI scheme (`lens-bridge`) pattern:
-//! 1. Generate a unique eval ID
-//! 2. Register a oneshot channel for that ID in BridgeState
-//! 3. Inject JS that does `fetch('https://lens-bridge.localhost/result/{id}', { method: 'POST', body: result })`
-//! 4. The URI scheme handler receives the result and routes it to the channel
-//! 5. The caller awaits the channel with a timeout
-
-use std::collections::HashMap;
+//! storage), we use WebView2's native `ExecuteScript` COM API with a callback.
+//! This bypasses Tauri's fire-and-forget `eval()` and gives us direct access
+//! to the JS evaluation result.
+//!
+//! On Windows, we access the ICoreWebView2 interface via `webview.with_webview()`
+//! → `controller.CoreWebView2()` → `ExecuteScript()` with a completion handler.
+//! The result is routed back to the caller through a oneshot channel.
 
 use serde_json::{json, Value};
-use tauri::{AppHandle, Manager};
-use tokio::sync::{oneshot, Mutex};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::commands::lens::LensState;
 
 // ---------------------------------------------------------------------------
-// Bridge state for JS eval results
+// JS eval with result (via native WebView2 ExecuteScript COM API)
 // ---------------------------------------------------------------------------
-
-/// Managed state for routing JS evaluation results from the `lens-bridge`
-/// URI scheme handler back to waiting callers.
-pub struct BridgeState {
-    /// Pending eval requests waiting for results.
-    pub waiters: Mutex<HashMap<String, oneshot::Sender<String>>>,
-}
-
-impl BridgeState {
-    pub fn new() -> Self {
-        Self {
-            waiters: Mutex::new(HashMap::new()),
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// JS eval with result (via URI scheme bridge)
-// ---------------------------------------------------------------------------
-
-/// Counter for generating unique eval IDs.
-static EVAL_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
-fn generate_eval_id() -> String {
-    let n = EVAL_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    format!("eval-{}-{}", ts, n)
-}
 
 /// Evaluate JavaScript in the lens webview and return the result.
 ///
-/// Wraps the JS expression in a fetch() call to the `lens-bridge` URI scheme,
-/// which routes the result back to this function via a oneshot channel.
+/// Uses the native WebView2 `ICoreWebView2::ExecuteScript` API which provides
+/// a completion callback with the result. This is the same API that wry uses
+/// internally, but we call it directly on the child webview because Tauri's
+/// `webview.eval()` is fire-and-forget with no return value.
+///
+/// The JS expression is evaluated as-is. `ExecuteScript` returns the result
+/// as a JSON-serialized string (the last expression value).
 async fn evaluate_js_with_result(
-    app: &AppHandle,
+    _app: &AppHandle,
     webview: &tauri::Webview,
     js_expression: &str,
     timeout: std::time::Duration,
 ) -> Result<Value, String> {
-    let bridge_state = app.try_state::<BridgeState>()
-        .ok_or("BridgeState not initialized")?;
+    let (tx, rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
 
-    let eval_id = generate_eval_id();
+    let js_owned = js_expression.to_string();
 
-    // Register a waiter
-    let (tx, rx) = oneshot::channel::<String>();
-    {
-        let mut waiters = bridge_state.waiters.lock().await;
-        waiters.insert(eval_id.clone(), tx);
-    }
-
-    // Build the bridge URL (Windows uses https:// scheme)
-    let bridge_url = if cfg!(target_os = "windows") {
-        format!("https://lens-bridge.localhost/result/{}", eval_id)
-    } else {
-        format!("lens-bridge://localhost/result/{}", eval_id)
-    };
-
-    // Wrap the user's JS in a self-invoking async function that sends the
-    // result back via fetch() to our custom URI scheme.
-    let wrapped_js = format!(
-        r#"(async function() {{
-            try {{
-                var __result = (function() {{ {js_code} }})();
-                if (__result && typeof __result.then === 'function') {{
-                    __result = await __result;
-                }}
-                var __body = (typeof __result === 'string') ? __result : JSON.stringify(__result);
-                await fetch('{url}', {{ method: 'POST', body: __body, mode: 'no-cors' }});
-            }} catch(__e) {{
-                await fetch('{url}', {{ method: 'POST', body: JSON.stringify({{ error: __e.message }}), mode: 'no-cors' }});
-            }}
-        }})();"#,
-        js_code = js_expression,
-        url = bridge_url,
-    );
-
-    // Inject the script
     webview
-        .eval(&wrapped_js)
-        .map_err(|e| format!("JS eval failed: {}", e))?;
+        .with_webview(move |platform_webview| {
+            #[cfg(windows)]
+            {
+                use webview2_com::ExecuteScriptCompletedHandler;
+                use windows_core::HSTRING;
+
+                unsafe {
+                    let controller = platform_webview.controller();
+                    let core_webview = match controller.CoreWebView2() {
+                        Ok(wv) => wv,
+                        Err(e) => {
+                            let _ = tx.send(Err(format!("Failed to get CoreWebView2: {:?}", e)));
+                            return;
+                        }
+                    };
+
+                    let js = HSTRING::from(js_owned.as_str());
+                    let handler =
+                        ExecuteScriptCompletedHandler::create(Box::new(move |hresult, result| {
+                            if hresult.is_ok() {
+                                let _ = tx.send(Ok(result));
+                            } else {
+                                let _ = tx.send(Err(format!(
+                                    "ExecuteScript failed: HRESULT {:?}",
+                                    hresult
+                                )));
+                            }
+                            Ok(())
+                        }));
+
+                    if let Err(e) = core_webview.ExecuteScript(&js, &handler) {
+                        // tx is already moved into handler, can't send here.
+                        // This error means the call itself failed to dispatch.
+                        tracing::error!("[browser_bridge] ExecuteScript dispatch failed: {:?}", e);
+                    }
+                }
+
+                #[cfg(not(windows))]
+                {
+                    let _ = tx.send(Err(
+                        "ExecuteScript is only available on Windows".to_string(),
+                    ));
+                }
+            }
+        })
+        .map_err(|e| format!("with_webview failed: {}", e))?;
 
     // Wait for the result with timeout
     match tokio::time::timeout(timeout, rx).await {
-        Ok(Ok(result_str)) => {
-            // Try to parse as JSON
-            serde_json::from_str(&result_str).or_else(|_| Ok(json!({ "raw": result_str })))
+        Ok(Ok(Ok(result_str))) => {
+            // ExecuteScript returns JSON-serialized result. The string "null"
+            // means the expression returned undefined/null in JS.
+            if result_str == "null" {
+                Ok(json!(null))
+            } else {
+                // Try to parse as JSON; fall back to wrapping as raw string
+                serde_json::from_str(&result_str)
+                    .or_else(|_| Ok(json!({ "raw": result_str })))
+            }
         }
+        Ok(Ok(Err(e))) => Err(e),
         Ok(Err(_)) => Err("JS eval channel closed unexpectedly".into()),
-        Err(_) => {
-            // Clean up the waiter
-            let mut waiters = bridge_state.waiters.lock().await;
-            waiters.remove(&eval_id);
-            Err("JS eval timed out".into())
-        }
+        Err(_) => Err("JS eval timed out".into()),
     }
 }
 
@@ -151,6 +135,9 @@ fn escape_js(s: &str) -> String {
 // Snapshot JS
 // ---------------------------------------------------------------------------
 
+/// JavaScript that builds a lightweight DOM tree snapshot.
+/// ExecuteScript evaluates the last expression value, so this IIFE returns
+/// the JSON string directly (no `return` keyword needed at the top level).
 const SNAPSHOT_JS: &str = r#"
 (function() {
     function buildTree(el, depth) {
@@ -218,6 +205,8 @@ pub async fn handle_browser_action(
             webview
                 .navigate(parsed)
                 .map_err(|e| format!("Navigation failed: {}", e))?;
+            // Notify frontend so URL bar updates
+            let _ = app.emit("lens-url-changed", json!({ "url": url }));
             Ok(json!({ "ok": true, "url": url }))
         }
 
@@ -234,6 +223,8 @@ pub async fn handle_browser_action(
             webview
                 .navigate(parsed)
                 .map_err(|e| format!("Navigation failed: {}", e))?;
+            // Notify frontend so URL bar updates
+            let _ = app.emit("lens-url-changed", json!({ "url": url }));
             Ok(json!({ "ok": true, "url": url }))
         }
 
@@ -269,12 +260,12 @@ pub async fn handle_browser_action(
             let result = evaluate_js_with_result(
                 app,
                 &webview,
-                r#"return JSON.stringify({
+                r#"JSON.stringify({
                     title: document.title,
                     url: location.href,
                     width: window.innerWidth,
                     height: window.innerHeight
-                });"#,
+                })"#,
                 std::time::Duration::from_secs(10),
             )
             .await?;
@@ -304,6 +295,8 @@ pub async fn handle_browser_action(
 
             let webview = get_webview(app, &state)?;
 
+            // ExecuteScript evaluates the expression and returns the last value
+            // as a JSON string. IIFEs with `return` work fine.
             let js = match kind {
                 "click" => {
                     let selector = request
@@ -312,12 +305,12 @@ pub async fn handle_browser_action(
                         .and_then(|v| v.as_str())
                         .ok_or("selector or ref required for click")?;
                     format!(
-                        r#"return (function() {{
+                        r#"(function() {{
                             var el = document.querySelector('{}');
                             if (!el) return JSON.stringify({{ error: 'Element not found: {}' }});
                             el.click();
                             return JSON.stringify({{ ok: true, action: 'click', selector: '{}' }});
-                        }})();"#,
+                        }})()"#,
                         escape_js(selector),
                         escape_js(selector),
                         escape_js(selector)
@@ -335,7 +328,7 @@ pub async fn handle_browser_action(
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
                     format!(
-                        r#"return (function() {{
+                        r#"(function() {{
                             var el = document.querySelector('{}');
                             if (!el) return JSON.stringify({{ error: 'Element not found: {}' }});
                             el.focus();
@@ -343,7 +336,7 @@ pub async fn handle_browser_action(
                             el.dispatchEvent(new Event('input', {{ bubbles: true }}));
                             el.dispatchEvent(new Event('change', {{ bubbles: true }}));
                             return JSON.stringify({{ ok: true, action: 'fill', selector: '{}' }});
-                        }})();"#,
+                        }})()"#,
                         escape_js(selector),
                         escape_js(selector),
                         escape_js(text),
@@ -356,7 +349,7 @@ pub async fn handle_browser_action(
                         .and_then(|v| v.as_str())
                         .ok_or("key is required for press")?;
                     format!(
-                        r#"return (function() {{
+                        r#"(function() {{
                             document.activeElement.dispatchEvent(
                                 new KeyboardEvent('keydown', {{ key: '{}', bubbles: true }})
                             );
@@ -364,7 +357,7 @@ pub async fn handle_browser_action(
                                 new KeyboardEvent('keyup', {{ key: '{}', bubbles: true }})
                             );
                             return JSON.stringify({{ ok: true, action: 'press', key: '{}' }});
-                        }})();"#,
+                        }})()"#,
                         escape_js(key),
                         escape_js(key),
                         escape_js(key)
@@ -376,14 +369,14 @@ pub async fn handle_browser_action(
                         .and_then(|v| v.as_str())
                         .ok_or("expression is required for evaluate")?;
                     format!(
-                        r#"return (function() {{
+                        r#"(function() {{
                             try {{
                                 var result = eval({});
                                 return JSON.stringify({{ ok: true, result: result }});
                             }} catch(e) {{
                                 return JSON.stringify({{ error: e.message }});
                             }}
-                        }})();"#,
+                        }})()"#,
                         serde_json::to_string(expression).unwrap_or_default()
                     )
                 }
@@ -391,10 +384,10 @@ pub async fn handle_browser_action(
                     let x = request.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0);
                     let y = request.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0);
                     format!(
-                        r#"return (function() {{
+                        r#"(function() {{
                             window.scrollBy({}, {});
                             return JSON.stringify({{ ok: true, action: 'scroll', scrollX: window.scrollX, scrollY: window.scrollY }});
-                        }})();"#,
+                        }})()"#,
                         x, y
                     )
                 }
@@ -456,16 +449,16 @@ pub async fn handle_browser_action(
                 .and_then(|v| v.as_str())
                 .unwrap_or("list");
             let js = match action_type {
-                "list" => "return JSON.stringify({ cookies: document.cookie });".to_string(),
+                "list" => "JSON.stringify({ cookies: document.cookie })".to_string(),
                 "clear" => {
                     "document.cookie.split(';').forEach(function(c) { \
                      document.cookie = c.trim().split('=')[0] + \
                      '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; }); \
-                     return JSON.stringify({ ok: true });"
+                     JSON.stringify({ ok: true })"
                         .to_string()
                 }
                 _ => format!(
-                    "return JSON.stringify({{ error: 'Cookie action {} not supported via JS' }});",
+                    "JSON.stringify({{ error: 'Cookie action {} not supported via JS' }})",
                     action_type
                 ),
             };
@@ -498,27 +491,27 @@ pub async fn handle_browser_action(
 
             let js = match action_type {
                 "get" => format!(
-                    "return JSON.stringify({{ value: {}.getItem('{}') }});",
+                    "JSON.stringify({{ value: {}.getItem('{}') }})",
                     storage_type,
                     escape_js(key)
                 ),
                 "set" => format!(
-                    "{}.setItem('{}', '{}'); return JSON.stringify({{ ok: true }});",
+                    "{}.setItem('{}', '{}'); JSON.stringify({{ ok: true }})",
                     storage_type,
                     escape_js(key),
                     escape_js(value)
                 ),
                 "delete" => format!(
-                    "{}.removeItem('{}'); return JSON.stringify({{ ok: true }});",
+                    "{}.removeItem('{}'); JSON.stringify({{ ok: true }})",
                     storage_type,
                     escape_js(key)
                 ),
                 "clear" => format!(
-                    "{}.clear(); return JSON.stringify({{ ok: true }});",
+                    "{}.clear(); JSON.stringify({{ ok: true }})",
                     storage_type
                 ),
                 _ => format!(
-                    "return JSON.stringify({{ error: 'Unknown action: {}' }});",
+                    "JSON.stringify({{ error: 'Unknown action: {}' }})",
                     action_type
                 ),
             };

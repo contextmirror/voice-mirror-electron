@@ -73,6 +73,11 @@ tauri-plugin-decorum = "1.1.1"
 # Cross-platform trash/recycle bin support
 trash = "5"
 
+# Direct WebView2 COM access for JS eval with results (Windows only)
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.38"
+windows-core = "0.61"
+
 [[bin]]
 name = "voice-mirror-mcp"
 path = "src/bin/mcp.rs"

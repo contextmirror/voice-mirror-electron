@@ -65,55 +65,8 @@ pub fn run() {
         // processes (NOT iframes), so window.top.postMessage() doesn't work.
         // Instead the injected JS fires `new Image().src` to this scheme,
         // Rust intercepts it here and emits a Tauri event the frontend listens to.
-        // Custom URI scheme for receiving JS evaluation results from the lens
-        // child webview. The browser_bridge service injects JS that does:
-        //   fetch('https://lens-bridge.localhost/result/{id}', { method: 'POST', body: result })
-        // This handler routes the result to a waiting oneshot channel.
-        .register_asynchronous_uri_scheme_protocol("lens-bridge", |ctx, request, responder| {
-            let uri = request.uri().to_string();
-            let body = request.body().to_vec();
-
-            // Extract eval ID from URL path: /result/{id}
-            let eval_id = uri
-                .split("localhost")
-                .nth(1)
-                .unwrap_or("")
-                .trim_start_matches('/')
-                .trim_start_matches(':')
-                .strip_prefix("result/")
-                .unwrap_or("")
-                .split('?')
-                .next()
-                .unwrap_or("")
-                .to_string();
-
-            if !eval_id.is_empty() {
-                let app = ctx.app_handle().clone();
-                // Spawn async to access the BridgeState mutex
-                tauri::async_runtime::spawn(async move {
-                    if let Some(bridge) = app.try_state::<services::browser_bridge::BridgeState>() {
-                        let mut waiters = bridge.waiters.lock().await;
-                        if let Some(tx) = waiters.remove(&eval_id) {
-                            let result_str = String::from_utf8(body)
-                                .unwrap_or_else(|_| "{}".to_string());
-                            let _ = tx.send(result_str);
-                        }
-                    }
-                });
-            }
-
-            // Return 200 OK with CORS headers
-            responder.respond(
-                tauri::http::Response::builder()
-                    .status(200)
-                    .header("content-type", "text/plain")
-                    .header("access-control-allow-origin", "*")
-                    .header("access-control-allow-methods", "POST, OPTIONS")
-                    .header("access-control-allow-headers", "*")
-                    .body(Vec::new())
-                    .unwrap(),
-            );
-        })
+        // Custom URI scheme for forwarding keyboard shortcuts from the lens
+        // child webview back to the app.
         .register_uri_scheme_protocol("lens-shortcut", |ctx, request| {
             let uri = request.uri().to_string();
             // URL format — Windows: https://lens-shortcut.localhost/{key}?t=...
@@ -163,7 +116,6 @@ pub fn run() {
             webview_label: std::sync::Mutex::new(None),
             bounds: std::sync::Mutex::new(None),
         })
-        .manage(services::browser_bridge::BridgeState::new())
         .manage(services::file_watcher::FileWatcherState {
             handle: std::sync::Mutex::new(None),
         })

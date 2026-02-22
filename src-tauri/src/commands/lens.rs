@@ -114,9 +114,20 @@ pub async fn lens_create_webview(
             return Err("Main window not found".to_string());
         };
 
+        let app_for_handler = app_clone.clone();
         let builder =
             WebviewBuilder::new(&label_clone, tauri::WebviewUrl::External(parsed_url))
-                .initialization_script(&shortcut_script);
+                .initialization_script(&shortcut_script)
+                .on_page_load(move |_webview, payload| {
+                    if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
+                        let url_str = payload.url().to_string();
+                        info!("[lens] Page load finished: {}", url_str);
+                        let _ = app_for_handler.emit(
+                            "lens-url-changed",
+                            serde_json::json!({ "url": url_str }),
+                        );
+                    }
+                });
 
         info!("[lens] Calling window.add_child for {}", label_clone);
 
