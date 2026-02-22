@@ -113,6 +113,23 @@ describe('ChatBubble.svelte', () => {
     assert.ok(src.includes('att.dataUrl'), 'Should use att.dataUrl for image src');
     assert.ok(src.includes('bubble-attachment-img'), 'Should have bubble-attachment-img class');
   });
+
+  it('has collapsible code block styles (code-collapse)', () => {
+    assert.ok(src.includes('details.code-collapse'), 'Should style details.code-collapse');
+  });
+
+  it('has summary styling for collapsed code', () => {
+    assert.ok(src.includes('code-collapse summary'), 'Should style code-collapse summary');
+  });
+
+  it('has triangle rotation for open/close state', () => {
+    assert.ok(src.includes("content: '▶'"), 'Should have triangle marker');
+    assert.ok(src.includes('rotate(90deg)'), 'Should rotate when open');
+  });
+
+  it('removes pre border inside details (uses details border)', () => {
+    assert.ok(src.includes('code-collapse pre'), 'Should style pre inside code-collapse');
+  });
 });
 
 // ---- ChatInput.svelte ----

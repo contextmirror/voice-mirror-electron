@@ -22,7 +22,8 @@ describe('markdown.js -- exports', () => {
 
 describe('markdown.js -- dependencies', () => {
   it('imports marked library', () => {
-    assert.ok(src.includes("import { marked } from 'marked'"), 'Should import marked');
+    assert.ok(src.includes("from 'marked'"), 'Should import from marked');
+    assert.ok(src.includes('marked'), 'Should import marked');
   });
 
   it('imports DOMPurify for XSS prevention', () => {
@@ -62,7 +63,66 @@ describe('markdown.js -- renderMarkdown implementation', () => {
   });
 
   it('returns sanitized HTML string', () => {
-    assert.ok(src.includes('return DOMPurify.sanitize(raw)'), 'Should return sanitized result');
+    assert.ok(src.includes('return DOMPurify.sanitize(raw'), 'Should return sanitized result');
+  });
+});
+
+describe('markdown.js -- collapsible code blocks', () => {
+  it('imports Renderer from marked', () => {
+    assert.ok(src.includes("import { marked, Renderer } from 'marked'"), 'Should import Renderer');
+  });
+
+  it('defines COLLAPSE_LINE_THRESHOLD constant', () => {
+    assert.ok(src.includes('COLLAPSE_LINE_THRESHOLD'), 'Should define threshold constant');
+  });
+
+  it('sets threshold to 10 lines', () => {
+    assert.ok(src.includes('COLLAPSE_LINE_THRESHOLD = 10'), 'Threshold should be 10');
+  });
+
+  it('creates custom renderer instance', () => {
+    assert.ok(src.includes('new Renderer()'), 'Should create renderer');
+  });
+
+  it('saves default code renderer', () => {
+    assert.ok(src.includes('renderer.code.bind(renderer)'), 'Should bind default code renderer');
+  });
+
+  it('overrides renderer.code function', () => {
+    assert.ok(src.includes('renderer.code = function'), 'Should override code renderer');
+  });
+
+  it('counts lines using newline matches', () => {
+    assert.ok(src.includes("text.match(/\\n/g)"), 'Should count newlines');
+  });
+
+  it('compares lineCount to threshold', () => {
+    assert.ok(src.includes('lineCount <= COLLAPSE_LINE_THRESHOLD'), 'Should compare to threshold');
+  });
+
+  it('wraps long code in <details> with code-collapse class', () => {
+    assert.ok(src.includes('code-collapse'), 'Should use code-collapse class');
+    assert.ok(src.includes('<details'), 'Should use <details> element');
+    assert.ok(src.includes('<summary>'), 'Should use <summary> element');
+  });
+
+  it('includes language and line count in summary label', () => {
+    assert.ok(src.includes('lineCount} lines'), 'Should show line count');
+    assert.ok(src.includes('lang ?'), 'Should conditionally include language');
+  });
+
+  it('passes custom renderer to marked.setOptions', () => {
+    assert.ok(src.includes('renderer,') || src.includes('renderer }'), 'Should pass renderer to marked');
+  });
+
+  it('configures DOMPurify to allow details and summary tags', () => {
+    assert.ok(src.includes("ADD_TAGS"), 'Should use ADD_TAGS');
+    assert.ok(src.includes("'details'"), 'Should allow details tag');
+    assert.ok(src.includes("'summary'"), 'Should allow summary tag');
+  });
+
+  it('passes PURIFY_CONFIG to DOMPurify.sanitize', () => {
+    assert.ok(src.includes('DOMPurify.sanitize(raw, PURIFY_CONFIG)'), 'Should pass config to sanitize');
   });
 });
 
