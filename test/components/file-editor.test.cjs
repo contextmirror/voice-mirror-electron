@@ -169,6 +169,70 @@ describe('FileEditor.svelte: autocomplete', () => {
   });
 });
 
+describe('FileEditor.svelte: go-to-definition navigation', () => {
+  it('wraps path in object for openFile', () => {
+    // BUG-002 fix: openFile expects { name, path }, not a raw string
+    assert.ok(
+      src.includes('tabsStore.openFile({ name: fileName, path: locPath })'),
+      'Should pass { name, path } object to openFile'
+    );
+  });
+
+  it('extracts filename from path for tab title', () => {
+    assert.ok(
+      src.includes(".split(/[/\\\\]/).pop()"),
+      'Should extract filename from path for display'
+    );
+  });
+});
+
+describe('FileEditor.svelte: conflict detection', () => {
+  it('has conflictDetected state', () => {
+    assert.ok(src.includes('conflictDetected'), 'Should have conflict detection state');
+  });
+
+  it('sets conflictDetected when file changes on dirty tab', () => {
+    assert.ok(
+      src.includes('conflictDetected = true'),
+      'Should set conflict flag when external change detected on dirty tab'
+    );
+  });
+
+  it('has reloadFromDisk function', () => {
+    assert.ok(src.includes('async function reloadFromDisk'), 'Should have reload function');
+  });
+
+  it('has dismissConflict function', () => {
+    assert.ok(src.includes('function dismissConflict'), 'Should have dismiss function');
+  });
+
+  it('shows conflict banner UI', () => {
+    assert.ok(src.includes('conflict-banner'), 'Should have conflict banner CSS class');
+  });
+
+  it('has Reload button', () => {
+    assert.ok(src.includes('conflict-reload'), 'Should have reload button');
+  });
+
+  it('has Dismiss button', () => {
+    assert.ok(src.includes('conflict-dismiss'), 'Should have dismiss button');
+  });
+
+  it('displays file changed message', () => {
+    assert.ok(
+      src.includes('File changed on disk'),
+      'Should show descriptive conflict message'
+    );
+  });
+
+  it('reloadFromDisk clears conflict and dirty flags', () => {
+    const fnStart = src.indexOf('async function reloadFromDisk');
+    const chunk = src.slice(fnStart, fnStart + 700);
+    assert.ok(chunk.includes('conflictDetected = false'), 'Should clear conflict after reload');
+    assert.ok(chunk.includes('setDirty'), 'Should clear dirty flag after reload');
+  });
+});
+
 describe('FileEditor.svelte: lifecycle', () => {
   it('uses $effect to react to tab changes', () => {
     assert.ok(src.includes('$effect'), 'Should use $effect for reactive loading');
