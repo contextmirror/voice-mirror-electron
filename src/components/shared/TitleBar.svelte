@@ -202,13 +202,36 @@
     -webkit-app-region: no-drag;
   }
 
-  /* Style the native decorum buttons to match our titlebar height */
+  /* Style the native decorum buttons to match our titlebar height and theme */
   :global(button.decorum-tb-btn),
   :global(button#decorum-tb-minimize),
   :global(button#decorum-tb-maximize),
   :global(button#decorum-tb-close),
   :global(div[data-tauri-decorum-tb]) {
     height: 40px !important;
+  }
+
+  :global(button.decorum-tb-btn) {
+    color: var(--muted) !important;
+    background: transparent !important;
+    border: none !important;
+    transition: color 0.15s, background 0.15s !important;
+  }
+
+  :global(button.decorum-tb-btn:hover) {
+    color: var(--text-strong) !important;
+    background: var(--bg-hover, rgba(255, 255, 255, 0.08)) !important;
+  }
+
+  :global(button#decorum-tb-close:hover) {
+    color: #ffffff !important;
+    background: var(--danger, #ef4444) !important;
+  }
+
+  /* Ensure decorum SVG icons inherit the button color */
+  :global(button.decorum-tb-btn svg) {
+    color: inherit !important;
+    fill: currentColor !important;
   }
 
   @media (prefers-reduced-motion: reduce) {
