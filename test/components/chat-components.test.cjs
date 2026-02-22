@@ -295,6 +295,15 @@ describe('ChatPanel.svelte', () => {
     assert.ok(src.includes('inputDisabled'), 'Should accept inputDisabled prop');
   });
 
+  it('handleClear immediately persists empty messages to disk', () => {
+    // Fix for messages resurrecting after app close — bypasses 500ms debounce
+    assert.ok(src.includes('chatSave'), 'Should import chatSave for immediate persist');
+    assert.ok(src.includes('chatLoad'), 'Should import chatLoad to preserve metadata');
+    const clearFn = src.slice(src.indexOf('async function handleClear'), src.indexOf('async function handleClear') + 600);
+    assert.ok(clearFn.includes('chat.messages = []'), 'Should set messages to empty array');
+    assert.ok(clearFn.includes('await chatSave('), 'Should immediately save to disk');
+  });
+
   it('imports ScreenshotPicker', () => {
     assert.ok(src.includes("import ScreenshotPicker from './ScreenshotPicker.svelte'"), 'Should import ScreenshotPicker');
   });

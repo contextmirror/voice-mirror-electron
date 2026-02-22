@@ -9,7 +9,7 @@
   import { chatStore } from '../../lib/stores/chat.svelte.js';
   import { voiceStore } from '../../lib/stores/voice.svelte.js';
   import { attachmentsStore } from '../../lib/stores/attachments.svelte.js';
-  import { exportChatToFile, lensCapturePreview } from '../../lib/api.js';
+  import { chatLoad, chatSave, exportChatToFile, lensCapturePreview } from '../../lib/api.js';
   import { lensStore } from '../../lib/stores/lens.svelte.js';
   import { save } from '@tauri-apps/plugin-dialog';
   import MessageGroup from './MessageGroup.svelte';
@@ -83,9 +83,27 @@
     });
   }
 
-  /** Clear all messages from the current chat. */
-  function handleClear() {
+  /** Clear all messages from the current chat.
+   *  Immediately persists empty state to disk (bypasses the 500ms auto-save
+   *  debounce) so messages don't resurrect if the app is closed quickly. */
+  async function handleClear() {
+    const activeId = chatStore.activeChatId;
     chatStore.clearMessages();
+
+    // Flush empty messages to disk immediately
+    if (activeId) {
+      try {
+        const result = await chatLoad(activeId);
+        const chat = result?.data || result;
+        if (chat) {
+          chat.messages = [];
+          chat.updatedAt = Date.now();
+          await chatSave(chat);
+        }
+      } catch (err) {
+        console.warn('[ChatPanel] Failed to persist clear:', err);
+      }
+    }
   }
 
   /** Export the current chat via a native Save As dialog. */
