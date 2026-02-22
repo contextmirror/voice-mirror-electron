@@ -11,11 +11,13 @@
 //! destructive actions on the same facade are never blocked.
 
 use std::path::Path;
+use std::sync::Arc;
 use serde_json::{json, Value};
 
 use super::McpToolResult;
 use super::browser;
 use super::n8n;
+use crate::mcp::pipe_router::PipeRouter;
 
 // ============================================
 // Confirmation gate helper
@@ -124,7 +126,7 @@ pub async fn handle_n8n_manage(args: &Value, data_dir: &Path) -> McpToolResult {
 /// `browser_manage` -- combined browser tool for voice mode.
 ///
 /// Actions: search, open, fetch, snapshot, screenshot, click, type, tabs, navigate, start, stop
-pub async fn handle_browser_manage(args: &Value, data_dir: &Path) -> McpToolResult {
+pub async fn handle_browser_manage(args: &Value, data_dir: &Path, pipe: Option<&Arc<PipeRouter>>) -> McpToolResult {
     let action = match args.get("action").and_then(|v| v.as_str()) {
         Some(a) => a.to_string(),
         None => {
@@ -137,9 +139,9 @@ pub async fn handle_browser_manage(args: &Value, data_dir: &Path) -> McpToolResu
     match action.as_str() {
         "search" => browser::handle_browser_search(args, data_dir).await,
         "fetch" => browser::handle_browser_fetch(args, data_dir).await,
-        "open" => browser::handle_browser_control("open", args, data_dir).await,
-        "snapshot" => browser::handle_browser_control("snapshot", args, data_dir).await,
-        "screenshot" => browser::handle_browser_control("screenshot", args, data_dir).await,
+        "open" => browser::handle_browser_control("open", args, data_dir, pipe).await,
+        "snapshot" => browser::handle_browser_control("snapshot", args, data_dir, pipe).await,
+        "screenshot" => browser::handle_browser_control("screenshot", args, data_dir, pipe).await,
         "click" => {
             // Construct act request with kind=click
             let mut act_args = args.clone();
@@ -161,7 +163,7 @@ pub async fn handle_browser_manage(args: &Value, data_dir: &Path) -> McpToolResu
                 }
                 obj.insert("request".into(), request);
             }
-            browser::handle_browser_control("act", &act_args, data_dir).await
+            browser::handle_browser_control("act", &act_args, data_dir, pipe).await
         }
         "type" => {
             // Construct act request with kind=type
@@ -188,12 +190,12 @@ pub async fn handle_browser_manage(args: &Value, data_dir: &Path) -> McpToolResu
                 }
                 obj.insert("request".into(), request);
             }
-            browser::handle_browser_control("act", &act_args, data_dir).await
+            browser::handle_browser_control("act", &act_args, data_dir, pipe).await
         }
-        "tabs" => browser::handle_browser_control("tabs", args, data_dir).await,
-        "navigate" => browser::handle_browser_control("navigate", args, data_dir).await,
-        "start" => browser::handle_browser_control("start", args, data_dir).await,
-        "stop" => browser::handle_browser_control("stop", args, data_dir).await,
+        "tabs" => browser::handle_browser_control("tabs", args, data_dir, pipe).await,
+        "navigate" => browser::handle_browser_control("navigate", args, data_dir, pipe).await,
+        "start" => browser::handle_browser_control("start", args, data_dir, pipe).await,
+        "stop" => browser::handle_browser_control("stop", args, data_dir, pipe).await,
         _ => McpToolResult::error(format!(
             "Unknown browser action: \"{}\". Valid actions: search, open, fetch, snapshot, screenshot, click, type, tabs, navigate, start, stop",
             action

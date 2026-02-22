@@ -34,6 +34,17 @@ pub enum McpToApp {
     },
     /// MCP binary connected and is ready.
     Ready,
+    /// Browser tool request from MCP to be processed by the Tauri app's native webview.
+    BrowserRequest {
+        /// Unique request ID for matching responses.
+        request_id: String,
+        /// The browser action: "navigate", "screenshot", "snapshot", "act",
+        /// "status", "tabs", "open", "close_tab", "focus", "reload",
+        /// "go_back", "go_forward", "console", "cookies", "storage"
+        action: String,
+        /// Action-specific arguments (tool input params).
+        args: serde_json::Value,
+    },
 }
 
 /// Messages sent FROM the Tauri app TO the MCP binary.
@@ -55,6 +66,19 @@ pub enum AppToMcp {
     },
     /// Request the MCP binary to shut down.
     Shutdown,
+    /// Response to a BrowserRequest.
+    BrowserResponse {
+        /// The request_id this is responding to.
+        request_id: String,
+        /// Whether the action succeeded.
+        success: bool,
+        /// Result data (action-specific JSON).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        result: Option<serde_json::Value>,
+        /// Error message if success is false.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -172,6 +196,73 @@ mod tests {
         let json = serde_json::to_string(&msg).unwrap();
         let parsed: AppToMcp = serde_json::from_str(&json).unwrap();
         assert!(matches!(parsed, AppToMcp::Shutdown));
+    }
+
+    #[test]
+    fn test_browser_request_roundtrip() {
+        let msg = McpToApp::BrowserRequest {
+            request_id: "br-123".into(),
+            action: "navigate".into(),
+            args: serde_json::json!({ "url": "https://example.com" }),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"BrowserRequest\""));
+        let parsed: McpToApp = serde_json::from_str(&json).unwrap();
+        match parsed {
+            McpToApp::BrowserRequest { request_id, action, args } => {
+                assert_eq!(request_id, "br-123");
+                assert_eq!(action, "navigate");
+                assert_eq!(args["url"], "https://example.com");
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_browser_response_success_roundtrip() {
+        let msg = AppToMcp::BrowserResponse {
+            request_id: "br-123".into(),
+            success: true,
+            result: Some(serde_json::json!({ "ok": true, "url": "https://example.com" })),
+            error: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"BrowserResponse\""));
+        // error field should be skipped when None
+        assert!(!json.contains("\"error\""));
+        let parsed: AppToMcp = serde_json::from_str(&json).unwrap();
+        match parsed {
+            AppToMcp::BrowserResponse { request_id, success, result, error } => {
+                assert_eq!(request_id, "br-123");
+                assert!(success);
+                assert!(result.is_some());
+                assert!(error.is_none());
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_browser_response_error_roundtrip() {
+        let msg = AppToMcp::BrowserResponse {
+            request_id: "br-456".into(),
+            success: false,
+            result: None,
+            error: Some("No webview active".into()),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        // result field should be skipped when None
+        assert!(!json.contains("\"result\""));
+        let parsed: AppToMcp = serde_json::from_str(&json).unwrap();
+        match parsed {
+            AppToMcp::BrowserResponse { request_id, success, result, error } => {
+                assert_eq!(request_id, "br-456");
+                assert!(!success);
+                assert!(result.is_none());
+                assert_eq!(error.unwrap(), "No webview active");
+            }
+            _ => panic!("wrong variant"),
+        }
     }
 
     #[tokio::test]

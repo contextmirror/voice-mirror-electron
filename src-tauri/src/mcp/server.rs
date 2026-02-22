@@ -15,7 +15,7 @@ use super::handlers;
 use super::handlers::McpToolResult;
 use super::tools::ToolRegistry;
 
-use crate::ipc::pipe_client::PipeClient;
+use crate::mcp::pipe_router::PipeRouter;
 
 // ---------------------------------------------------------------------------
 // JSON-RPC message types
@@ -93,8 +93,9 @@ impl JsonRpcResponse {
 pub struct McpServerState {
     registry: ToolRegistry,
     data_dir: std::path::PathBuf,
-    /// Optional named pipe client for fast IPC with the Tauri app.
-    pipe: Option<Arc<PipeClient>>,
+    /// Optional pipe router for fast IPC with the Tauri app.
+    /// Handles concurrent message routing (browser responses, user messages).
+    router: Option<Arc<PipeRouter>>,
     /// Flag set when tool list changes (load/unload/auto-unload).
     /// The main loop checks this after each request to send notifications.
     tools_changed: bool,
@@ -106,15 +107,15 @@ pub struct McpServerState {
 /// stdin, dispatches them, and writes responses to stdout. Diagnostic logs go
 /// to stderr.
 ///
-/// The optional `pipe` parameter enables fast named-pipe IPC for voice_send/voice_listen.
-/// When `None`, the server falls back to file-based IPC (inbox.json).
+/// The optional `router` parameter enables fast named-pipe IPC for voice_send/voice_listen
+/// and browser tool requests. When `None`, the server falls back to file-based IPC (inbox.json).
 ///
 /// The optional `enabled_groups` parameter (comma-separated group names from
 /// `ENABLED_GROUPS` env var) pre-loads tool groups at startup so they appear
 /// in the initial `tools/list` response.
 pub async fn run_server(
     data_dir: std::path::PathBuf,
-    pipe: Option<Arc<PipeClient>>,
+    router: Option<Arc<PipeRouter>>,
     enabled_groups: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Ensure data directory exists
@@ -131,7 +132,7 @@ pub async fn run_server(
     let state = Arc::new(Mutex::new(McpServerState {
         registry,
         data_dir,
-        pipe,
+        router,
         tools_changed: false,
     }));
 
@@ -255,7 +256,7 @@ fn handle_initialize(id: Value) -> JsonRpcResponse {
                 }
             },
             "serverInfo": {
-                "name": "voice-mirror-electron",
+                "name": "voice-mirror",
                 "version": "1.0.0"
             }
         }),
@@ -296,14 +297,14 @@ async fn handle_tools_call(
         return JsonRpcResponse::error(id, -32602, "Missing tool name in params");
     }
 
-    // Record tool call and get data_dir + pipe
-    let (data_dir, is_destructive, pipe) = {
+    // Record tool call and get data_dir + router
+    let (data_dir, is_destructive, router) = {
         let mut state = state.lock().await;
         state.registry.record_tool_call(&tool_name);
         (
             state.data_dir.clone(),
             state.registry.is_destructive(&tool_name),
-            state.pipe.clone(),
+            state.router.clone(),
         )
     };
 
@@ -322,7 +323,7 @@ async fn handle_tools_call(
     }
 
     // Route to handler
-    let result = route_tool_call(&tool_name, &args, &data_dir, state.clone(), pipe.as_ref()).await;
+    let result = route_tool_call(&tool_name, &args, &data_dir, state.clone(), router.as_ref()).await;
 
     // After tool execution, check for idle groups
     {
@@ -343,7 +344,7 @@ async fn route_tool_call(
     args: &Value,
     data_dir: &std::path::Path,
     state: Arc<Mutex<McpServerState>>,
-    pipe: Option<&Arc<PipeClient>>,
+    router: Option<&Arc<PipeRouter>>,
 ) -> McpToolResult {
     match name {
         // ---- Meta tools ----
@@ -399,7 +400,7 @@ async fn route_tool_call(
         }
 
         // ---- Core tools ----
-        "voice_send" => handlers::core::handle_voice_send(args, data_dir, pipe).await,
+        "voice_send" => handlers::core::handle_voice_send(args, data_dir, router).await,
         "voice_inbox" => {
             let result = handlers::core::handle_voice_inbox(args, data_dir).await;
             // Auto-load by intent based on inbox messages
@@ -407,7 +408,7 @@ async fn route_tool_call(
             //  The Node.js version does it inline.)
             result
         }
-        "voice_listen" => handlers::core::handle_voice_listen(args, data_dir, pipe).await,
+        "voice_listen" => handlers::core::handle_voice_listen(args, data_dir, router).await,
         "voice_status" => handlers::core::handle_voice_status(args, data_dir).await,
 
         // ---- Memory tools ----
@@ -422,22 +423,22 @@ async fn route_tool_call(
         "capture_screen" => handlers::screen::handle_capture_screen(args, data_dir).await,
 
         // ---- Browser tools ----
-        "browser_start" => handlers::browser::handle_browser_start(args, data_dir).await,
+        "browser_start" => handlers::browser::handle_browser_start(args, data_dir, router).await,
         "browser_stop" => handlers::browser::handle_browser_stop(args, data_dir).await,
-        "browser_status" => handlers::browser::handle_browser_status(args, data_dir).await,
-        "browser_tabs" => handlers::browser::handle_browser_tabs(args, data_dir).await,
-        "browser_open" => handlers::browser::handle_browser_open(args, data_dir).await,
-        "browser_close_tab" => handlers::browser::handle_browser_close_tab(args, data_dir).await,
-        "browser_focus" => handlers::browser::handle_browser_focus(args, data_dir).await,
-        "browser_navigate" => handlers::browser::handle_browser_navigate(args, data_dir).await,
-        "browser_screenshot" => handlers::browser::handle_browser_screenshot(args, data_dir).await,
-        "browser_snapshot" => handlers::browser::handle_browser_snapshot(args, data_dir).await,
-        "browser_act" => handlers::browser::handle_browser_act(args, data_dir).await,
-        "browser_console" => handlers::browser::handle_browser_console(args, data_dir).await,
+        "browser_status" => handlers::browser::handle_browser_status(args, data_dir, router).await,
+        "browser_tabs" => handlers::browser::handle_browser_tabs(args, data_dir, router).await,
+        "browser_open" => handlers::browser::handle_browser_open(args, data_dir, router).await,
+        "browser_close_tab" => handlers::browser::handle_browser_close_tab(args, data_dir, router).await,
+        "browser_focus" => handlers::browser::handle_browser_focus(args, data_dir, router).await,
+        "browser_navigate" => handlers::browser::handle_browser_navigate(args, data_dir, router).await,
+        "browser_screenshot" => handlers::browser::handle_browser_screenshot(args, data_dir, router).await,
+        "browser_snapshot" => handlers::browser::handle_browser_snapshot(args, data_dir, router).await,
+        "browser_act" => handlers::browser::handle_browser_act(args, data_dir, router).await,
+        "browser_console" => handlers::browser::handle_browser_console(args, data_dir, router).await,
         "browser_search" => handlers::browser::handle_browser_search(args, data_dir).await,
         "browser_fetch" => handlers::browser::handle_browser_fetch(args, data_dir).await,
-        "browser_cookies" => handlers::browser::handle_browser_cookies(args, data_dir).await,
-        "browser_storage" => handlers::browser::handle_browser_storage(args, data_dir).await,
+        "browser_cookies" => handlers::browser::handle_browser_cookies(args, data_dir, router).await,
+        "browser_storage" => handlers::browser::handle_browser_storage(args, data_dir, router).await,
 
         // ---- n8n tools ----
         "n8n_list_workflows" => handlers::n8n::handle_n8n_list_workflows(args, data_dir).await,
@@ -469,7 +470,7 @@ async fn route_tool_call(
         // ---- Facade tools (voice mode) ----
         "memory_manage" => handlers::facades::handle_memory_manage(args, data_dir).await,
         "n8n_manage" => handlers::facades::handle_n8n_manage(args, data_dir).await,
-        "browser_manage" => handlers::facades::handle_browser_manage(args, data_dir).await,
+        "browser_manage" => handlers::facades::handle_browser_manage(args, data_dir, router).await,
 
         // ---- Voice clone tools ----
         "clone_voice" => handlers::voice_clone::handle_clone_voice(args, data_dir).await,
@@ -553,7 +554,7 @@ mod tests {
         let state = McpServerState {
             registry: ToolRegistry::new(),
             data_dir: std::path::PathBuf::from("/tmp/test"),
-            pipe: None,
+            router: None,
             tools_changed: false,
         };
         let resp = handle_tools_list(json!(1), &state);
@@ -598,7 +599,7 @@ mod tests {
         let state = McpServerState {
             registry,
             data_dir: std::path::PathBuf::from("/tmp/test"),
-            pipe: None,
+            router: None,
             tools_changed: false,
         };
         let resp = handle_tools_list(json!(1), &state);

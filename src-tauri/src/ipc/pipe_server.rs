@@ -220,6 +220,45 @@ fn dispatch_message(msg: McpToApp, app_handle: &AppHandle) {
         McpToApp::Ready => {
             info!("[PipeServer] MCP binary ready (pipe handshake complete)");
         }
+        McpToApp::BrowserRequest { request_id, action, args } => {
+            info!(
+                "[PipeServer] Browser request: id={}, action={}",
+                request_id, action
+            );
+
+            let app = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                let result = crate::services::browser_bridge::handle_browser_action(
+                    &app, &action, &args,
+                )
+                .await;
+
+                let response = match result {
+                    Ok(value) => AppToMcp::BrowserResponse {
+                        request_id,
+                        success: true,
+                        result: Some(value),
+                        error: None,
+                    },
+                    Err(e) => AppToMcp::BrowserResponse {
+                        request_id,
+                        success: false,
+                        result: None,
+                        error: Some(e),
+                    },
+                };
+
+                // Send response back through the pipe via PipeServerState
+                use tauri::Manager;
+                if let Some(pipe_state) = app.try_state::<PipeServerState>() {
+                    if let Err(e) = pipe_state.send(response) {
+                        warn!("[PipeServer] Failed to send browser response: {}", e);
+                    }
+                } else {
+                    warn!("[PipeServer] PipeServerState not available for browser response");
+                }
+            });
+        }
     }
 }
 

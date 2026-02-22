@@ -1,3 +1,4 @@
+pub mod browser_bridge;
 pub mod file_watcher;
 pub mod inbox_watcher;
 pub mod input_hook;

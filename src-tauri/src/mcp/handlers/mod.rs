@@ -4,7 +4,7 @@
 //! - `core`        -- Voice I/O tools (voice_send, voice_inbox, voice_listen, voice_status)
 //! - `memory`      -- Memory system (search, remember, forget, get, stats, flush)
 //! - `screen`      -- Screen capture (capture_screen)
-//! - `browser`     -- Browser CDP control (16 tools, file-based IPC)
+//! - `browser`     -- Browser control (16 tools, pipe IPC)
 //! - `n8n`         -- n8n REST API integration (22 tools)
 //! - `diagnostic`  -- Pipeline tracing (trace_pipeline)
 //! - `facades`     -- Combined tools for voice mode (memory_manage, n8n_manage, browser_manage)
