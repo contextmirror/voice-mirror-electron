@@ -215,6 +215,9 @@ pub struct BehaviorConfig {
     pub dictation_key: String,
     #[serde(default = "default_stats_hotkey")]
     pub stats_hotkey: String,
+    /// Whether to show toast notifications (default: true).
+    #[serde(default = "default_true")]
+    pub show_toasts: bool,
 }
 
 impl Default for BehaviorConfig {
@@ -227,6 +230,7 @@ impl Default for BehaviorConfig {
             ptt_key: "MouseButton4".into(),
             dictation_key: "MouseButton5".into(),
             stats_hotkey: "CommandOrControl+Shift+M".into(),
+            show_toasts: true,
         }
     }
 }
@@ -250,6 +254,9 @@ pub struct WindowConfig {
     /// true = dashboard mode, false = orb mode.
     #[serde(default = "default_expanded")]
     pub expanded: bool,
+    /// Whether the window was maximized when last closed.
+    #[serde(default)]
+    pub maximized: bool,
 }
 
 fn default_expanded() -> bool {

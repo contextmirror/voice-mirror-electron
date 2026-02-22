@@ -235,12 +235,17 @@ describe('FileContextMenu.svelte -- file menu has New File/Folder', () => {
 });
 
 describe('FileContextMenu.svelte -- delete behavior', () => {
-  it('uses confirm dialog', () => {
-    assert.ok(src.includes('confirm('), 'Should use confirm dialog');
+  it('deletes silently without confirm dialog', () => {
+    assert.ok(!src.includes('confirm('), 'Should not use confirm dialog');
   });
 
-  it('mentions trash in confirmation', () => {
-    assert.ok(src.includes('trash'), 'Should mention trash in delete message');
+  it('shows toast after delete', () => {
+    assert.ok(src.includes('toastStore.addToast'), 'Should show toast notification');
+    assert.ok(src.includes('moved to trash'), 'Should mention trash in toast');
+  });
+
+  it('shows error toast on failure', () => {
+    assert.ok(src.includes("severity: 'error'"), 'Should show error toast on failure');
   });
 
   it('has danger class for delete', () => {

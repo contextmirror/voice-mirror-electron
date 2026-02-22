@@ -464,6 +464,12 @@ pub fn run() {
                             info!("Dashboard position ({},{}) off-screen, centering", x, y);
                         }
                     }
+
+                    // Restore maximized state (after position/size so unmaximize has correct bounds)
+                    if cfg.window.maximized {
+                        let _ = window.maximize();
+                        info!("Restored maximized state");
+                    }
                 } else {
                     // Orb mode: restore 120×120, always-on-top, not resizable
                     let size = tauri::PhysicalSize::new(120u32, 120u32);
@@ -514,6 +520,8 @@ pub fn run() {
                 use crate::config::persistence;
                 use crate::services::platform;
 
+                let is_maximized = _window.is_maximized().unwrap_or(false);
+
                 if let Ok(pos) = _window.outer_position() {
                     if let Ok(size) = _window.outer_size() {
                         let config_dir = platform::get_config_dir();
@@ -521,22 +529,33 @@ pub fn run() {
                         let current_config = commands::config::get_config_snapshot();
                         let is_dashboard = current_config.window.expanded;
 
+                        // Always save maximized state.
+                        // When maximized, skip saving position/size (they reflect the
+                        // maximized dimensions, not the user's chosen window bounds).
                         let patch = if is_dashboard {
-                            serde_json::json!({
-                                "window": {
-                                    "dashboardX": pos.x as f64,
-                                    "dashboardY": pos.y as f64,
-                                },
-                                "appearance": {
-                                    "panelWidth": size.width,
-                                    "panelHeight": size.height,
-                                }
-                            })
+                            if is_maximized {
+                                serde_json::json!({
+                                    "window": { "maximized": true }
+                                })
+                            } else {
+                                serde_json::json!({
+                                    "window": {
+                                        "dashboardX": pos.x as f64,
+                                        "dashboardY": pos.y as f64,
+                                        "maximized": false,
+                                    },
+                                    "appearance": {
+                                        "panelWidth": size.width,
+                                        "panelHeight": size.height,
+                                    }
+                                })
+                            }
                         } else {
                             serde_json::json!({
                                 "window": {
                                     "orbX": pos.x as f64,
                                     "orbY": pos.y as f64,
+                                    "maximized": false,
                                 }
                             })
                         };
@@ -546,9 +565,9 @@ pub fn run() {
                         if let Ok(updated) = serde_json::from_value::<crate::config::schema::AppConfig>(merged) {
                             let _ = persistence::save_config(&config_dir, &updated);
                             info!(
-                                "Saved {} bounds on close: pos=({},{}) size={}x{}",
+                                "Saved {} bounds on close: pos=({},{}) size={}x{} maximized={}",
                                 if is_dashboard { "dashboard" } else { "orb" },
-                                pos.x, pos.y, size.width, size.height
+                                pos.x, pos.y, size.width, size.height, is_maximized
                             );
                         }
                     }

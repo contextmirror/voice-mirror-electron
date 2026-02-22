@@ -154,13 +154,24 @@ describe('LensPreview.svelte', () => {
   });
 
   it('cleans up webview on unmount', () => {
-    // The cleanup function should call lensCloseWebview
-    const cleanupSection = src.split('return () =>').pop() || '';
-    assert.ok(cleanupSection.includes('lensCloseWebview'), 'Cleanup should close webview');
+    // The cleanup function should call lensCloseWebview in onDestroy
+    assert.ok(src.includes('lensCloseWebview'), 'Should close webview on cleanup');
+    assert.ok(src.includes('onDestroy'), 'Should use onDestroy for cleanup');
   });
 
-  it('uses $effect for lifecycle', () => {
-    assert.ok(src.includes('$effect'), 'Should use $effect for setup/cleanup');
+  it('uses onMount for lifecycle', () => {
+    assert.ok(src.includes('onMount'), 'Should use onMount for setup');
+  });
+
+  it('retries webview creation on failure', () => {
+    assert.ok(src.includes('MAX_RETRIES'), 'Should have retry limit');
+    assert.ok(src.includes('scheduleRetry'), 'Should have retry scheduler');
+    assert.ok(src.includes('RETRY_DELAY_MS'), 'Should have retry delay');
+  });
+
+  it('has loading timeout safety net', () => {
+    assert.ok(src.includes('LOADING_TIMEOUT_MS'), 'Should have loading timeout');
+    assert.ok(src.includes('startLoadingTimeout'), 'Should have timeout function');
   });
 
   it('throttles resize observer with rAF', () => {

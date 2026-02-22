@@ -63,18 +63,23 @@ function createLensStore() {
         await lensNavigate(normalized);
       } catch (err) {
         console.error('[lens] Navigation failed:', err);
+        loading = false;
       }
     },
 
     async goBack() {
+      loading = true;
       try { await lensGoBack(); } catch (err) {
         console.warn('[lens] Go back failed:', err);
+        loading = false;
       }
     },
 
     async goForward() {
+      loading = true;
       try { await lensGoForward(); } catch (err) {
         console.warn('[lens] Go forward failed:', err);
+        loading = false;
       }
     },
 
@@ -82,6 +87,7 @@ function createLensStore() {
       loading = true;
       try { await lensReload(); } catch (err) {
         console.warn('[lens] Reload failed:', err);
+        loading = false;
       }
     },
 

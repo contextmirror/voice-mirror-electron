@@ -305,23 +305,23 @@ export function deriveTheme(colors, fonts = /** @type {any} */ ({})) {
     '--cm-comment': c.muted,
     '--cm-function': isLight
       ? blend(darken(c.accent, 0.15), c.warn, 0.35)   // warm blue-brown, distinct from keywords
-      : lighten(c.accent, 0.08),
+      : blend(c.accent, c.textStrong, 0.35),           // lighter pastel accent — clearly different from keywords
     '--cm-property': isLight
       ? darken(c.danger, 0.1)                           // deep red for properties
       : lighten(c.danger, 0.08),
     '--cm-type': isLight ? darken(c.warn, 0.12) : c.warn,
     '--cm-number': isLight
       ? blend(c.ok, c.accent, 0.35)                    // teal — distinct from strings
-      : lighten(c.warn, 0.05),
+      : lighten(c.warn, 0.12),                          // brighter amber — clearly lighter than types
     '--cm-constant': isLight
       ? blend(c.accent, c.danger, 0.4)                 // deep purple — distinct from keywords
-      : lighten(c.warn, 0.08),
+      : blend(c.danger, c.warn, 0.5),                   // orange-red midpoint — unique from types & properties
     '--cm-operator': isLight ? darken(c.muted, 0.2) : lighten(c.muted, 0.2),
     '--cm-variable': c.text,
     '--cm-variable-def': c.textStrong,
     '--cm-punctuation': isLight ? darken(c.muted, 0.1) : lighten(c.muted, 0.1),
     '--cm-tag': isLight ? darken(c.danger, 0.08) : c.danger,
-    '--cm-attribute': isLight ? darken(c.warn, 0.08) : c.warn,
+    '--cm-attribute': isLight ? darken(c.warn, 0.08) : blend(c.warn, c.danger, 0.25),  // warm-red, distinct from types
     '--cm-link': c.accent,
     '--cm-invalid': c.danger,
   };

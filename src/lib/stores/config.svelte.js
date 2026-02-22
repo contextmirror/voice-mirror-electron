@@ -57,6 +57,7 @@ const DEFAULT_CONFIG = {
     pttKey: 'MouseButton4',
     statsHotkey: 'CommandOrControl+Shift+M',
     dictationKey: 'MouseButton5',
+    showToasts: true,
   },
   window: {
     orbX: null,
@@ -64,6 +65,7 @@ const DEFAULT_CONFIG = {
     dashboardX: null,
     dashboardY: null,
     expanded: true,
+    maximized: false,
   },
   overlay: {
     outputName: null,

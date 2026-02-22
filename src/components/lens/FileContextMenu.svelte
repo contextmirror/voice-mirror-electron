@@ -1,6 +1,7 @@
 <script>
   import { createFile, createDirectory, renameEntry, deleteEntry, revealInExplorer } from '../../lib/api.js';
   import { projectStore } from '../../lib/stores/project.svelte.js';
+  import { toastStore } from '../../lib/stores/toast.svelte.js';
 
   let {
     x = 0,
@@ -94,14 +95,23 @@
   async function handleDelete() {
     close();
     if (!entry) return;
-    const name = entry.name || entry.path;
-    if (!confirm(`Delete "${name}"? It will be moved to the trash.`)) return;
+    const name = entry.name || entry.path.split(/[/\\]/).pop();
+    const kind = isFolder ? 'Folder' : 'File';
     try {
       const root = projectStore.activeProject?.path || null;
       await deleteEntry(entry.path, root);
       onAction('delete', entry);
+      toastStore.addToast({
+        message: `${kind} "${name}" moved to trash`,
+        severity: 'info',
+        duration: 5000,
+      });
     } catch (err) {
       console.error('FileContextMenu: delete failed', err);
+      toastStore.addToast({
+        message: `Failed to delete ${kind.toLowerCase()} "${name}"`,
+        severity: 'error',
+      });
     }
   }
 
