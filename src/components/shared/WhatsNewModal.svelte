@@ -12,6 +12,7 @@
   import { fly, fade } from 'svelte/transition';
   import { renderMarkdown } from '../../lib/markdown.js';
 
+  /** @type {{ version?: string, onDismiss?: () => void }} */
   let {
     version = '0.1.0',
     onDismiss = () => {},

@@ -51,9 +51,16 @@ pub fn init() {
         .with_target(true)
         .compact();
 
-    // Environment filter: RUST_LOG env var, defaulting to info
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    // Environment filter: RUST_LOG env var, defaulting to info.
+    // Suppress noisy third-party crates that spam startup logs:
+    //   ort        — ONNX Runtime: 200+ lines of graph optimizer / memory alloc
+    //   tao        — window event loop internals
+    //   reqwest    — HTTP client internals
+    //   mio        — async I/O polling
+    //   hyper      — HTTP protocol internals
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        EnvFilter::new("info,ort=warn,tao=warn,reqwest=warn,mio=warn,hyper=warn")
+    });
 
     tracing_subscriber::registry()
         .with(filter)

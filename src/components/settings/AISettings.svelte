@@ -226,6 +226,7 @@
     availableModels = [];
     try {
       const result = await apiListModels(providerType, baseUrl || undefined);
+      /** @type {any} */
       const data = result?.data || result || {};
       if (data.online && data.models?.length > 0) {
         availableModels = data.models;
@@ -401,7 +402,7 @@
                 class="model-select"
                 value={model}
                 disabled={loadingModels}
-                onchange={(e) => (model = e.target.value)}
+                onchange={(e) => (model = /** @type {HTMLSelectElement} */ (e.target).value)}
               >
                 <option value="">Auto (default)</option>
                 {#each availableModels as m}

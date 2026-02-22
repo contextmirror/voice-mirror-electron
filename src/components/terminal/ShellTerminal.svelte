@@ -139,8 +139,11 @@
     }
   }
 
-  // Register toolbar actions for parent TerminalTabs
-  onRegisterActions?.({ clear: handleClear, copy: handleCopy, paste: handlePaste });
+  // Register toolbar actions for parent TerminalTabs.
+  // Wrapped in $effect so we capture the latest prop value (not just initial).
+  $effect(() => {
+    onRegisterActions?.({ clear: handleClear, copy: handleCopy, paste: handlePaste });
+  });
 
   // ---- Shell output handler ----
 
@@ -369,12 +372,14 @@
     height: 100%;
     overflow: hidden;
     background: var(--bg);
+    /* Visual spacing around terminal — applied here (not on inner container)
+       so ghostty-web's canvas fills the container exactly without clipping */
+    padding: 4px;
   }
 
   .shell-terminal-container {
     flex: 1;
     overflow: hidden;
-    padding: 4px;
     min-height: 0;
     position: relative;
     contain: strict;

@@ -109,13 +109,15 @@
     align-self: flex-start;
     word-wrap: break-word;
     overflow-wrap: break-word;
+    overflow: hidden;
+    min-width: 0;
     position: relative;
   }
 
   .chat-bubble.user {
     align-self: flex-end;
-    width: max-content;
-    max-width: 600px;
+    width: fit-content;
+    max-width: min(100%, 600px);
     background: var(--msg-user-bg);
     border-color: var(--msg-user-border);
     border-radius: var(--msg-user-radius);
@@ -132,6 +134,12 @@
 
   .chat-bubble.assistant {
     box-shadow: var(--shadow-sm), inset 0 1px 0 var(--card-highlight);
+  }
+
+  .bubble-content {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
   }
 
   /* Markdown content styling */
@@ -158,6 +166,50 @@
     padding: 0;
     font-size: 0.85em;
     line-height: 1.5;
+  }
+
+  /* Collapsible code blocks (>10 lines) */
+  .bubble-content :global(details.code-collapse) {
+    margin: 8px 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+
+  .bubble-content :global(details.code-collapse summary) {
+    padding: 6px 12px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--muted);
+    background: var(--bg);
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .bubble-content :global(details.code-collapse summary::before) {
+    content: '▶';
+    font-size: 9px;
+    transition: transform var(--duration-fast) var(--ease-in-out);
+  }
+
+  .bubble-content :global(details.code-collapse[open] summary::before) {
+    transform: rotate(90deg);
+  }
+
+  .bubble-content :global(details.code-collapse summary:hover) {
+    color: var(--text);
+    background: var(--bg-hover, var(--bg));
+  }
+
+  .bubble-content :global(details.code-collapse pre) {
+    margin: 0;
+    border: none;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
   }
 
   .bubble-content :global(code) {

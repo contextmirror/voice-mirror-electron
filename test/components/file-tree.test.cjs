@@ -35,6 +35,32 @@ describe('FileTree.svelte', () => {
     assert.ok(src.includes('$props()'), 'Should use $props()');
   });
 
+  it('accepts onFileDblClick prop', () => {
+    assert.ok(src.includes('onFileDblClick'), 'Should have onFileDblClick prop');
+  });
+
+  it('accepts onChangeClick prop', () => {
+    assert.ok(src.includes('onChangeClick'), 'Should have onChangeClick prop');
+  });
+
+  it('has ondblclick on file items', () => {
+    assert.ok(src.includes('ondblclick'), 'Should have double-click handler on files');
+  });
+
+  it('change items are clickable buttons', () => {
+    assert.ok(
+      src.includes('class="change-item"') && src.includes('<button'),
+      'Change items should be button elements'
+    );
+  });
+
+  it('calls onChangeClick when change item is clicked', () => {
+    assert.ok(
+      src.includes('onChangeClick(change)'),
+      'Should call onChangeClick with change object'
+    );
+  });
+
   // ── State management ──
 
   it('uses $state for activeTab', () => {
@@ -88,6 +114,11 @@ describe('FileTree.svelte', () => {
   it('tracks active tab with class:active', () => {
     assert.ok(src.includes("class:active={activeTab === 'files'}"), 'files tab has active class');
     assert.ok(src.includes("class:active={activeTab === 'changes'}"), 'changes tab has active class');
+  });
+
+  it('imports and renders StatusDropdown in header', () => {
+    assert.ok(src.includes("import StatusDropdown from"), 'Should import StatusDropdown');
+    assert.ok(src.includes('<StatusDropdown'), 'Should render StatusDropdown in header');
   });
 
   // ── UI: Tree structure ──
@@ -237,5 +268,243 @@ describe('FileTree.svelte', () => {
       src.includes('getGitChanges(root') || src.includes('getGitChanges(projectRoot'),
       'Should pass root parameter to getGitChanges'
     );
+  });
+});
+
+describe('FileTree.svelte -- context menu', () => {
+  it('imports FileContextMenu component', () => {
+    assert.ok(src.includes("import FileContextMenu from"), 'Should import FileContextMenu');
+  });
+
+  it('renders FileContextMenu component', () => {
+    assert.ok(src.includes('<FileContextMenu'), 'Should render FileContextMenu');
+  });
+
+  it('has contextMenu state', () => {
+    assert.ok(src.includes('contextMenu = $state('), 'Should have contextMenu state');
+  });
+
+  it('handles oncontextmenu on tree items', () => {
+    assert.ok(src.includes('oncontextmenu'), 'Should have contextmenu handlers');
+  });
+
+  it('has handleContextMenu function', () => {
+    assert.ok(src.includes('handleContextMenu'), 'Should have handleContextMenu');
+  });
+
+  it('prevents default context menu', () => {
+    assert.ok(src.includes('e.preventDefault()'), 'Should prevent default');
+  });
+
+  it('has closeContextMenu function', () => {
+    assert.ok(src.includes('closeContextMenu'), 'Should have closeContextMenu');
+  });
+
+  it('passes context menu props to FileContextMenu', () => {
+    assert.ok(src.includes('x={contextMenu.x}'), 'Should pass x');
+    assert.ok(src.includes('y={contextMenu.y}'), 'Should pass y');
+    assert.ok(src.includes('visible={contextMenu.visible}'), 'Should pass visible');
+  });
+
+  it('has separate context for files, folders, and changes', () => {
+    assert.ok(src.includes('isFolder'), 'Should distinguish folders');
+    assert.ok(src.includes('isChange'), 'Should distinguish changes');
+  });
+
+  it('has handleEmptyContextMenu for blank space', () => {
+    assert.ok(src.includes('handleEmptyContextMenu'), 'Should have empty space context handler');
+  });
+
+  it('attaches empty context menu to tree-scroll', () => {
+    assert.ok(src.includes('oncontextmenu={handleEmptyContextMenu}'), 'Should handle right-click on empty space');
+  });
+});
+
+describe('FileTree.svelte -- inline rename', () => {
+  it('has editingEntry state', () => {
+    assert.ok(src.includes('editingEntry = $state('), 'Should have editingEntry state');
+  });
+
+  it('has startRename function', () => {
+    assert.ok(src.includes('startRename'), 'Should have startRename');
+  });
+
+  it('has saveRename function', () => {
+    assert.ok(src.includes('saveRename'), 'Should have saveRename');
+  });
+
+  it('has cancelRename function', () => {
+    assert.ok(src.includes('cancelRename'), 'Should have cancelRename');
+  });
+
+  it('has rename input class', () => {
+    assert.ok(src.includes('tree-rename-input'), 'Should have rename input class');
+  });
+
+  it('calls renameEntry API', () => {
+    assert.ok(src.includes('renameEntry('), 'Should call renameEntry');
+  });
+
+  it('imports renameEntry from api', () => {
+    assert.ok(src.includes('renameEntry'), 'Should import renameEntry');
+  });
+
+  it('handles Enter key for save', () => {
+    assert.ok(src.includes("e.key === 'Enter'"), 'Should save on Enter');
+  });
+
+  it('handles Escape key for cancel', () => {
+    assert.ok(src.includes("e.key === 'Escape'"), 'Should cancel on Escape');
+  });
+
+  it('uses autofocus action', () => {
+    assert.ok(src.includes('use:autofocus'), 'Should autofocus rename input');
+  });
+
+  it('selects filename without extension', () => {
+    assert.ok(src.includes('setSelectionRange'), 'Should select filename part');
+  });
+});
+
+describe('FileTree.svelte -- inline create', () => {
+  it('has creatingIn state', () => {
+    assert.ok(src.includes('creatingIn = $state('), 'Should have creatingIn state');
+  });
+
+  it('has startNewFile function', () => {
+    assert.ok(src.includes('startNewFile'), 'Should have startNewFile');
+  });
+
+  it('has startNewFolder function', () => {
+    assert.ok(src.includes('startNewFolder'), 'Should have startNewFolder');
+  });
+
+  it('has saveCreate function', () => {
+    assert.ok(src.includes('saveCreate'), 'Should have saveCreate');
+  });
+
+  it('has cancelCreate function', () => {
+    assert.ok(src.includes('cancelCreate'), 'Should have cancelCreate');
+  });
+
+  it('imports createFile from api', () => {
+    assert.ok(src.includes('createFile'), 'Should import createFile');
+  });
+
+  it('imports createDirectory from api', () => {
+    assert.ok(src.includes('createDirectory'), 'Should import createDirectory');
+  });
+
+  it('has getParentPath helper for file vs folder', () => {
+    assert.ok(src.includes('getParentPath'), 'Should have getParentPath helper');
+  });
+});
+
+describe('FileTree.svelte -- F2 keyboard shortcut', () => {
+  it('has selectedEntry state', () => {
+    assert.ok(src.includes('selectedEntry = $state('), 'Should have selectedEntry state');
+  });
+
+  it('listens for F2 key', () => {
+    assert.ok(src.includes("e.key === 'F2'"), 'Should listen for F2');
+  });
+
+  it('has handleKeydown function', () => {
+    assert.ok(src.includes('handleKeydown'), 'Should have handleKeydown');
+  });
+
+  it('uses svelte:window for keyboard', () => {
+    assert.ok(src.includes('svelte:window'), 'Should use svelte:window');
+  });
+});
+
+describe('FileTree.svelte -- file watcher integration', () => {
+  it('imports listen from @tauri-apps/api/event', () => {
+    assert.ok(src.includes("import { listen }") || src.includes("{ listen }"), 'Should import listen');
+    assert.ok(src.includes("@tauri-apps/api/event"), 'Should import from @tauri-apps/api/event');
+  });
+
+  it('listens for fs-tree-changed event', () => {
+    assert.ok(
+      src.includes("'fs-tree-changed'"),
+      'Should listen for fs-tree-changed event'
+    );
+  });
+
+  it('listens for fs-git-changed event', () => {
+    assert.ok(
+      src.includes("'fs-git-changed'"),
+      'Should listen for fs-git-changed event'
+    );
+  });
+
+  it('has handleTreeChanged function', () => {
+    assert.ok(
+      src.includes('handleTreeChanged'),
+      'Should have handleTreeChanged function'
+    );
+  });
+
+  it('has handleGitChanged function', () => {
+    assert.ok(
+      src.includes('handleGitChanged'),
+      'Should have handleGitChanged function'
+    );
+  });
+
+  it('only refreshes expanded directories on tree change', () => {
+    assert.ok(
+      src.includes('expandedDirs.has(dir)'),
+      'Should check expandedDirs.has before refreshing a directory'
+    );
+  });
+
+  it('cleans up event listeners on unmount', () => {
+    assert.ok(src.includes('unlistenTree'), 'Should store tree unlisten function');
+    assert.ok(src.includes('unlistenGit'), 'Should store git unlisten function');
+    assert.ok(
+      src.includes('unlistenTree?.()') || src.includes('unlistenTree()'),
+      'Should call unlistenTree on cleanup'
+    );
+    assert.ok(
+      src.includes('unlistenGit?.()') || src.includes('unlistenGit()'),
+      'Should call unlistenGit on cleanup'
+    );
+  });
+
+  it('uses $effect with cleanup return for listener lifecycle', () => {
+    // The listener setup should be inside a $effect that returns a cleanup function
+    const effectIdx = src.indexOf('$effect', src.indexOf('unlistenTree'));
+    // Check that there's a return statement in the effect for cleanup
+    assert.ok(src.includes('return () =>'), 'Should return cleanup function from $effect');
+  });
+
+  it('reloads root when rootChanged flag is true', () => {
+    // handleTreeChanged should call loadRoot when root flag is set
+    const handlerStart = src.indexOf('async function handleTreeChanged');
+    const handlerEnd = src.indexOf('async function handleGitChanged');
+    const handlerBody = src.slice(handlerStart, handlerEnd);
+    assert.ok(handlerBody.includes('loadRoot'), 'Should call loadRoot when root changed');
+  });
+
+  it('handleGitChanged calls loadGitChanges', () => {
+    const handlerStart = src.indexOf('function handleGitChanged');
+    const handlerEnd = src.indexOf('}', handlerStart + 10);
+    const handlerBody = src.slice(handlerStart, handlerEnd);
+    assert.ok(handlerBody.includes('loadGitChanges'), 'Should call loadGitChanges');
+  });
+});
+
+describe('FileTree.svelte -- tree refresh', () => {
+  it('has refreshParent function', () => {
+    assert.ok(src.includes('refreshParent'), 'Should have refreshParent');
+  });
+
+  it('refreshes git changes after mutations', () => {
+    // refreshParent should call loadGitChanges
+    const refreshStart = src.indexOf('async function refreshParent');
+    const refreshEnd = src.indexOf('}', src.indexOf('loadGitChanges', refreshStart));
+    const refreshBody = src.slice(refreshStart, refreshEnd);
+    assert.ok(refreshBody.includes('loadGitChanges'), 'Should refresh git changes');
   });
 });

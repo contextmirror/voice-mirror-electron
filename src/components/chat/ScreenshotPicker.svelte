@@ -10,6 +10,7 @@
   import { listMonitors, listWindows, captureMonitor, captureWindow } from '../../lib/api.js';
   import { lensStore } from '../../lib/stores/lens.svelte.js';
 
+  /** @type {{ onCapture?: (path: string, dataUrl?: string|null) => void, onClose?: () => void, browserSnapshot?: any }} */
   let {
     onCapture = () => {},
     onClose = () => {},
@@ -124,10 +125,10 @@
     if (e.target === e.currentTarget) onClose();
   }
 
-  // Hide the native webview so this modal renders above it
+  // Freeze the webview so this modal renders above it (screenshot replaces black area)
   $effect(() => {
-    lensStore.setHidden(true);
-    return () => lensStore.setHidden(false);
+    lensStore.freeze();
+    return () => lensStore.unfreeze();
   });
 
   // Load initial data for the default tab

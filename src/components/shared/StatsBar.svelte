@@ -10,7 +10,9 @@
 
   let { visible = $bindable() } = $props();
 
+  /** @type {string|number} */
   let cpu = $state('--');
+  /** @type {string|number} */
   let mem = $state('--');
 
   $effect(() => {

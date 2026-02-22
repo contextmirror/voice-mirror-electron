@@ -1,6 +1,7 @@
 <script>
   import { overlayStore } from '../../lib/stores/overlay.svelte.js';
   import { navigationStore } from '../../lib/stores/navigation.svelte.js';
+  import Orb from '../overlay/Orb.svelte';
 
   let appMode = $derived(navigationStore.appMode);
 
@@ -8,8 +9,8 @@
     navigationStore.setMode(mode);
   }
 
-  /** @type {{ centerContent?: import('svelte').Snippet }} */
-  let { centerContent } = $props();
+  /** @type {{ centerContent?: import('svelte').Snippet, rightContent?: import('svelte').Snippet }} */
+  let { centerContent, rightContent } = $props();
 
   async function handleCompact() {
     try {
@@ -54,15 +55,16 @@
   {/if}
 
   <div class="window-controls">
+    {#if rightContent}
+      {@render rightContent()}
+    {/if}
     <button
       class="win-btn win-compact"
       onclick={handleCompact}
       aria-label="Collapse to orb"
       title="Collapse to orb"
     >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="5"/>
-      </svg>
+      <Orb size={16} isStatic={true} />
     </button>
     <!-- Native window controls injected by tauri-plugin-decorum on Windows -->
     <div class="native-controls-spacer"></div>
@@ -143,6 +145,7 @@
     transform: translateX(-50%);
     display: flex;
     align-items: center;
+    gap: 16px;
     pointer-events: auto;
     -webkit-app-region: no-drag;
   }

@@ -77,6 +77,11 @@ export const IN_APP_SHORTCUTS = {
     label: 'Close current panel/modal',
     category: 'in-app',
   },
+  'open-file-search': {
+    keys: 'F1',
+    label: 'Search files and commands',
+    category: 'in-app',
+  },
 };
 
 // ============ Action Handlers ============
@@ -396,6 +401,13 @@ export function setupInAppShortcuts() {
     if (ctrl && event.key === 't') {
       event.preventDefault();
       actionHandlers['switch-terminal']?.();
+      return;
+    }
+
+    // F1 -> Open file search / command palette
+    if (event.key === 'F1') {
+      event.preventDefault();
+      actionHandlers['open-file-search']?.();
       return;
     }
 

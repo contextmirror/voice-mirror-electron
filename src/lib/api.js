@@ -435,6 +435,85 @@ export async function writeFile(path, content, root) {
   return invoke('write_file', { path, content, root: root || null });
 }
 
+/**
+ * Get the HEAD (committed) version of a file's content from git.
+ * Returns { content, path, isNew } for text files, { binary, path } for binary.
+ * For new/untracked files, content is "" and isNew is true.
+ * @param {string} path - File path relative to project root
+ * @param {string} [root] - Optional project root override
+ */
+export async function getFileGitContent(path, root) {
+  return invoke('get_file_git_content', { path, root: root || null });
+}
+
+/**
+ * Create a new file with optional content.
+ * Errors if the file already exists. Creates parent directories as needed.
+ * @param {string} path - File path relative to project root
+ * @param {string} [content] - Optional initial content
+ * @param {string} [root] - Optional project root override
+ */
+export async function createFile(path, content, root) {
+  return invoke('create_file', { path, content: content || null, root: root || null });
+}
+
+/**
+ * Create a new directory (including parents).
+ * Errors if the directory already exists.
+ * @param {string} path - Directory path relative to project root
+ * @param {string} [root] - Optional project root override
+ */
+export async function createDirectory(path, root) {
+  return invoke('create_directory', { path, root: root || null });
+}
+
+/**
+ * Rename (move) a file or directory within the project root.
+ * @param {string} oldPath - Current path relative to project root
+ * @param {string} newPath - New path relative to project root
+ * @param {string} [root] - Optional project root override
+ */
+export async function renameEntry(oldPath, newPath, root) {
+  return invoke('rename_entry', { oldPath, newPath, root: root || null });
+}
+
+/**
+ * Delete a file or directory by moving it to the OS trash.
+ * Falls back to permanent delete if trash is unavailable.
+ * @param {string} path - Path relative to project root
+ * @param {string} [root] - Optional project root override
+ */
+export async function deleteEntry(path, root) {
+  return invoke('delete_entry', { path, root: root || null });
+}
+
+/**
+ * Reveal a file or directory in the system file explorer.
+ * @param {string} path - Path relative to project root
+ * @param {string} [root] - Optional project root override
+ */
+export async function revealInExplorer(path, root) {
+  return invoke('reveal_in_explorer', { path, root: root || null });
+}
+
+/**
+ * Recursively list all files in the project (respects .gitignore).
+ * Returns an array of relative file paths.
+ * @param {string} [root] - Project root override.
+ * @returns {Promise<{success: boolean, data?: string[], error?: string}>}
+ */
+export async function searchFiles(root) {
+  return invoke('search_files', { root: root || null });
+}
+
+export async function startFileWatching(projectRoot) {
+  return invoke('start_file_watching', { projectRoot });
+}
+
+export async function stopFileWatching() {
+  return invoke('stop_file_watching');
+}
+
 // ============ Shell Terminals ============
 
 /**
@@ -489,4 +568,42 @@ export async function shellKill(id) {
  */
 export async function shellList() {
   return invoke('shell_list');
+}
+
+// ============ LSP ============
+
+export async function lspOpenFile(path, content, projectRoot) {
+  return invoke('lsp_open_file', { path, content, projectRoot });
+}
+
+export async function lspCloseFile(path, projectRoot) {
+  return invoke('lsp_close_file', { path, projectRoot });
+}
+
+export async function lspChangeFile(path, content, version, projectRoot) {
+  return invoke('lsp_change_file', { path, content, version, projectRoot });
+}
+
+export async function lspSaveFile(path, content, projectRoot) {
+  return invoke('lsp_save_file', { path, content, projectRoot });
+}
+
+export async function lspRequestCompletion(path, line, character, projectRoot) {
+  return invoke('lsp_request_completion', { path, line, character, projectRoot });
+}
+
+export async function lspRequestHover(path, line, character, projectRoot) {
+  return invoke('lsp_request_hover', { path, line, character, projectRoot });
+}
+
+export async function lspRequestDefinition(path, line, character, projectRoot) {
+  return invoke('lsp_request_definition', { path, line, character, projectRoot });
+}
+
+export async function lspGetStatus() {
+  return invoke('lsp_get_status');
+}
+
+export async function lspShutdown() {
+  return invoke('lsp_shutdown');
 }

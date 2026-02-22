@@ -78,6 +78,10 @@ function createAiStatusStore() {
     _setStarting() {
       starting = true;
       error = null;
+      // Synchronous DOM event so Terminal.svelte can reset BEFORE
+      // any new-provider stdout arrives via the async Tauri IPC.
+      // ($effect is deferred and loses the race.)
+      window.dispatchEvent(new CustomEvent('ai-provider-switching'));
     },
   };
 }

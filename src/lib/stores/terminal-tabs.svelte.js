@@ -16,6 +16,22 @@ function createTerminalTabsStore() {
   ]);
   let activeTabId = $state('ai');
 
+  /**
+   * Find the next available shell number, filling gaps.
+   * If Shell 1 and Shell 3 exist, returns 2.
+   */
+  function nextShellNumber() {
+    const existing = new Set(
+      tabs.filter(t => t.type === 'shell').map(t => {
+        const match = t.title.match(/^Shell (\d+)$/);
+        return match ? parseInt(match[1]) : null;
+      }).filter(n => n !== null)
+    );
+    let num = 1;
+    while (existing.has(num)) num++;
+    return num;
+  }
+
   return {
     get tabs() { return tabs; },
     get activeTabId() { return activeTabId; },
@@ -32,7 +48,54 @@ function createTerminalTabsStore() {
     },
 
     /**
+     * Cycle to the next tab (wraps around).
+     */
+    nextTab() {
+      const idx = tabs.findIndex(t => t.id === activeTabId);
+      if (idx === -1) return;
+      activeTabId = tabs[(idx + 1) % tabs.length].id;
+    },
+
+    /**
+     * Cycle to the previous tab (wraps around).
+     */
+    prevTab() {
+      const idx = tabs.findIndex(t => t.id === activeTabId);
+      if (idx === -1) return;
+      activeTabId = tabs[idx === 0 ? tabs.length - 1 : idx - 1].id;
+    },
+
+    /**
+     * Move a tab to before another tab. AI tab cannot be moved.
+     * Uses tab IDs (not indices) so the operation is correct after splice.
+     * @param {string} id - Tab ID to move
+     * @param {string|null} beforeId - Insert before this tab, or null to append
+     */
+    moveTab(id, beforeId) {
+      if (id === 'ai' || id === beforeId) return;
+      const fromIndex = tabs.findIndex(t => t.id === id);
+      if (fromIndex === -1) return;
+
+      const [tab] = tabs.splice(fromIndex, 1);
+
+      if (beforeId === null) {
+        tabs.push(tab);
+      } else {
+        const toIndex = tabs.findIndex(t => t.id === beforeId);
+        if (toIndex <= 0) {
+          // Can't insert before AI tab — put at index 1
+          tabs.splice(1, 0, tab);
+        } else if (toIndex === -1) {
+          tabs.push(tab);
+        } else {
+          tabs.splice(toIndex, 0, tab);
+        }
+      }
+    },
+
+    /**
      * Add a new shell tab. Spawns a PTY on the backend.
+     * Uses smart numbering that fills gaps (e.g. Shell 1, Shell 3 → next is Shell 2).
      * @param {Object} [options]
      * @param {number} [options.cols]
      * @param {number} [options.rows]
@@ -47,7 +110,7 @@ function createTerminalTabsStore() {
           return null;
         }
         const shellId = result.data.id;
-        const tabNum = tabs.filter(t => t.type === 'shell').length + 1;
+        const tabNum = nextShellNumber();
         const tab = {
           id: shellId,
           type: 'shell',

@@ -7,6 +7,7 @@ pub mod services;
 pub mod util;
 pub mod voice;
 pub mod shell;
+pub mod lsp;
 
 use commands::ai as ai_cmds;
 use commands::chat as chat_cmds;
@@ -19,6 +20,7 @@ use commands::window as window_cmds;
 use commands::files as files_cmds;
 use commands::lens as lens_cmds;
 use commands::shell as shell_cmds;
+use commands::lsp as lsp_cmds;
 
 use providers::manager::AiManager;
 use providers::ProviderEvent;
@@ -58,6 +60,47 @@ pub fn run() {
             info!("Second instance detected, focusing existing window");
         }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        // Custom URI scheme for forwarding keyboard shortcuts from the lens
+        // child webview back to the app.  Child WebView2 instances are separate
+        // processes (NOT iframes), so window.top.postMessage() doesn't work.
+        // Instead the injected JS fires `new Image().src` to this scheme,
+        // Rust intercepts it here and emits a Tauri event the frontend listens to.
+        .register_uri_scheme_protocol("lens-shortcut", |ctx, request| {
+            let uri = request.uri().to_string();
+            // URL format — Windows: https://lens-shortcut.localhost/{key}?t=...
+            //               macOS/Linux: lens-shortcut://localhost/{key}?t=...
+            let path = uri
+                .split("localhost")
+                .nth(1)
+                .unwrap_or("")
+                .trim_start_matches('/')
+                .trim_start_matches(':');
+            let key = path
+                .split('?')
+                .next()
+                .unwrap_or("")
+                .trim_matches('/');
+
+            if !key.is_empty() {
+                info!("[lens-shortcut] Forwarding shortcut key: {}", key);
+                let _ = ctx.app_handle().emit("lens-shortcut", serde_json::json!({ "key": key }));
+            }
+
+            // Return 1×1 transparent GIF so the Image() load succeeds silently
+            tauri::http::Response::builder()
+                .status(200)
+                .header("content-type", "image/gif")
+                .header("access-control-allow-origin", "*")
+                .body(vec![
+                    0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00,
+                    0x01, 0x00, 0x80, 0x00, 0x00, 0xff, 0xff, 0xff,
+                    0x00, 0x00, 0x00, 0x21, 0xf9, 0x04, 0x00, 0x00,
+                    0x00, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00,
+                    0x01, 0x00, 0x01, 0x00, 0x00, 0x02, 0x02, 0x44,
+                    0x01, 0x00, 0x3b,
+                ])
+                .unwrap()
+        })
         .manage(ai_cmds::AiManagerState(std::sync::Mutex::new(
             AiManager::new(),
         )))
@@ -70,6 +113,9 @@ pub fn run() {
         .manage(lens_cmds::LensState {
             webview_label: std::sync::Mutex::new(None),
             bounds: std::sync::Mutex::new(None),
+        })
+        .manage(services::file_watcher::FileWatcherState {
+            handle: std::sync::Mutex::new(None),
         })
         .manage(shell_cmds::ShellManagerState(std::sync::Mutex::new(
             crate::shell::ShellManager::new(),
@@ -159,14 +205,37 @@ pub fn run() {
             files_cmds::get_project_root,
             files_cmds::read_file,
             files_cmds::write_file,
+            files_cmds::get_file_git_content,
+            files_cmds::create_file,
+            files_cmds::create_directory,
+            files_cmds::rename_entry,
+            files_cmds::delete_entry,
+            files_cmds::reveal_in_explorer,
+            files_cmds::search_files,
             // Shell terminals
             shell_cmds::shell_spawn,
             shell_cmds::shell_input,
             shell_cmds::shell_resize,
             shell_cmds::shell_kill,
             shell_cmds::shell_list,
+            // File watcher
+            services::file_watcher::start_file_watching,
+            services::file_watcher::stop_file_watching,
+            // LSP
+            lsp_cmds::lsp_open_file,
+            lsp_cmds::lsp_close_file,
+            lsp_cmds::lsp_change_file,
+            lsp_cmds::lsp_save_file,
+            lsp_cmds::lsp_request_completion,
+            lsp_cmds::lsp_request_hover,
+            lsp_cmds::lsp_request_definition,
+            lsp_cmds::lsp_get_status,
+            lsp_cmds::lsp_shutdown,
         ])
         .setup(|app| {
+            // Initialize LSP manager state (needs AppHandle)
+            app.manage(lsp::LspManagerState::new(app.handle().clone()));
+
             // Clear stale listener locks from previous sessions.
             // When the app starts fresh, any lock left by a prior MCP binary is stale.
             {
@@ -438,6 +507,9 @@ pub fn run() {
                         manager.kill_all();
                     }
                 }
+
+                // LSP servers are cleaned up automatically when the process exits.
+                // The tokio::process::Child handles are dropped, which kills the servers.
 
                 use crate::config::persistence;
                 use crate::services::platform;

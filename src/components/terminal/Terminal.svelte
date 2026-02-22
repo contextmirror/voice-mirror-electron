@@ -28,6 +28,15 @@
   let lastPtyRows = $state(0);
   let initialized = $state(false);
   let pendingEvents = [];
+  let providerSwitchHandler = null;
+
+  // Provider switch: hide the canvas via direct DOM style during the transition
+  // so the user never sees garbled partial-frame renders from the TUI setup.
+  // We use direct DOM manipulation (not Svelte $state) because Svelte batches
+  // reactive DOM updates to the next microtask — by then the render loop has
+  // already painted garbled frames.
+  let switchRevealTimer = null;
+  let isSwitching = false;
 
   // ---- CSS token -> ghostty-web theme mapping ----
 
@@ -150,6 +159,19 @@
   // ---- AI output handler ----
 
   /**
+   * Strip SGR mouse event echoes from PTY output.
+   * On Windows, ConPTY can echo mouse tracking input back as output,
+   * with ESC and/or [ stripped. Cross-chunk splitting means a sequence
+   * like \x1b[<32;62;11M can arrive as "[" at the end of chunk N
+   * and "<32;62;11M" at the start of chunk N+1. Making both \x1b and [
+   * optional catches all variants:
+   *   \x1b[<btn;col;rowM  (full SGR sequence)
+   *   [<btn;col;rowM       (ESC stripped)
+   *   <btn;col;rowM         (ESC and [ stripped — cross-chunk split)
+   */
+  const SGR_MOUSE_ECHO_RE = /\x1b?\[?<\d+;\d+;\d+[Mm]/g;
+
+  /**
    * Process a single ai-output event payload.
    * Extracted so it can be called both from the live listener and
    * when draining events buffered during the initialization gap.
@@ -163,29 +185,54 @@
         term.write('\x1b[2J\x1b[3J\x1b[H');
         break;
       case 'start':
-        // Clear stale content from previous provider before writing new info
-        term.clear();
-        if (data.text) {
-          term.writeln(`\x1b[34m${data.text}\x1b[0m`);
-        }
-        // Fit after provider starts
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
+        // Provider is ready. Reveal the terminal after a delay to let
+        // the TUI finish drawing. Uses direct DOM to bypass Svelte batching.
+        isSwitching = false;
+        if (switchRevealTimer) clearTimeout(switchRevealTimer);
+        switchRevealTimer = setTimeout(() => {
+          switchRevealTimer = null;
+          if (term) {
             fitTerminal();
             resizePtyIfChanged();
-          });
-        });
+            // Force a full canvas resize + redraw cycle. This resets
+            // canvas.width/height + ctx.scale() for DPI + forceAll render.
+            // Same thing that happens when you move/resize the window.
+            if (term.refresh) term.refresh();
+          }
+          if (containerEl) containerEl.style.visibility = '';
+        }, 500);
         break;
       case 'stdout':
       case 'tui':
       case 'stderr':
         if (data.text) {
-          term.write(data.text);
+          const cleaned = data.text.replace(SGR_MOUSE_ECHO_RE, '');
+          if (cleaned) term.write(cleaned);
         }
         break;
       case 'exit':
+        // Reset terminal modes on provider exit so stale state
+        // (mouse tracking, alt screen) doesn't leak to next provider.
+        // Use escape sequences here (not term.reset()) to preserve the
+        // exit message in the scrollback for user visibility.
+        term.write(
+          '\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l' + // Disable mouse tracking
+          '\x1b[?1049l' +  // Exit alternate screen
+          '\x1b[0m'        // Reset attributes
+        );
         term.writeln('');
         term.writeln(`\x1b[33m[Process exited with code ${data.code ?? '?'}]\x1b[0m`);
+        // Only reveal the terminal if this is a standalone exit (not a switch).
+        // During a provider switch, the container stays hidden until the
+        // 'start' handler's reveal timer fires — otherwise the user sees
+        // garbled partial-frame renders from the new TUI's initialization.
+        if (!isSwitching) {
+          if (switchRevealTimer) {
+            clearTimeout(switchRevealTimer);
+            switchRevealTimer = null;
+          }
+          if (containerEl) containerEl.style.visibility = '';
+        }
         break;
     }
   }
@@ -232,8 +279,18 @@
       term = ghosttyTerm;
       fitAddon = fit;
 
-      // Send keyboard input to PTY
+      // Send keyboard input to PTY.
+      // Suppress SGR mouse MOTION events (button 32-63) — ConPTY on Windows
+      // echoes these back as stdout, corrupting the terminal display.
+      // Clicks (button 0-31), releases (lowercase m), and scroll (button 64+)
+      // are still sent. Motion events are cosmetic (hover feedback) and not
+      // needed for TUI interaction.
       ghosttyTerm.onData((data) => {
+        const motionMatch = data.match(/^\x1b\[<(\d+);\d+;\d+M$/);
+        if (motionMatch) {
+          const btn = parseInt(motionMatch[1], 10);
+          if (btn >= 32 && btn < 64) return; // Mouse motion — suppress
+        }
         aiRawInput(data).catch((err) => {
           console.warn('[Terminal] PTY input failed:', err);
         });
@@ -293,20 +350,38 @@
 
       unlistenAiOutput = unlisten;
 
+      // Pre-emptive canvas hide on provider switch.
+      // When the user switches providers, the new CLI process starts outputting
+      // immediately (startup banner, TUI setup), causing garbled partial-frame
+      // renders. Instead of trying to control the renderer, we simply hide the
+      // canvas container with CSS and reveal it once the provider is ready.
+      // This handler fires SYNCHRONOUSLY (dispatchEvent is sync) from _setStarting()
+      // in ai-status.svelte.js, BEFORE the Tauri command and BEFORE any stdout events.
+      providerSwitchHandler = () => {
+        if (!containerEl || !initialized) return;
+        // Hide the canvas INSTANTLY via direct DOM — bypasses Svelte's
+        // deferred reactive batching so the hide is synchronous.
+        containerEl.style.visibility = 'hidden';
+        isSwitching = true;
+        if (switchRevealTimer) {
+          clearTimeout(switchRevealTimer);
+          switchRevealTimer = null;
+        }
+        // Nuclear reset: free the old WASM terminal, create a fresh one,
+        // clear the canvas, restart the render loop. This puts the terminal
+        // in the exact same state as initial startup — which always renders
+        // cleanly. Without this, the old provider's canvas pixels, dirty-row
+        // tracking, and WASM buffer state leak into the new provider's render.
+        if (term) term.reset();
+      };
+      window.addEventListener('ai-provider-switching', providerSwitchHandler);
+
       // Observe container resize for auto-fitting
       const observer = new ResizeObserver(() => {
         if (resizeTimeout) clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(() => {
           fitTerminal();
           resizePtyIfChanged();
-          // Force a full canvas redraw on the next frame to prevent artifacts
-          // after resize. The resize changes canvas dimensions but the render
-          // loop may not mark all rows dirty -- writing a no-op ensures it does.
-          if (term) {
-            requestAnimationFrame(() => {
-              term.write('');
-            });
-          }
         }, 150);
       });
       observer.observe(containerEl);
@@ -337,10 +412,16 @@
       cancelled = true;
       // Immediately gate off event handlers before tearing down resources
       initialized = false;
+      isSwitching = false;
       if (resizeTimeout) clearTimeout(resizeTimeout);
+      if (switchRevealTimer) clearTimeout(switchRevealTimer);
       if (resizeObserver) {
         resizeObserver.disconnect();
         resizeObserver = null;
+      }
+      if (providerSwitchHandler) {
+        window.removeEventListener('ai-provider-switching', providerSwitchHandler);
+        providerSwitchHandler = null;
       }
       if (unlistenAiOutput) {
         unlistenAiOutput();
@@ -393,12 +474,14 @@
     height: 100%;
     overflow: hidden;
     background: var(--bg);
+    /* Visual spacing around terminal — applied here (not on inner container)
+       so ghostty-web's canvas fills the container exactly without clipping */
+    padding: 4px;
   }
 
   .terminal-container {
     flex: 1;
     overflow: hidden;
-    padding: 4px;
     /* Ensure ghostty-web fills the container */
     min-height: 0;
     position: relative;

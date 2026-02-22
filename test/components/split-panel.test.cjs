@@ -83,6 +83,19 @@ describe('SplitPanel.svelte', () => {
     assert.ok(src.includes('Math.min'), 'Should clamp with Math.min');
   });
 
+  it('accepts collapseA and collapseB props', () => {
+    assert.ok(src.includes('collapseA'), 'Should accept collapseA prop');
+    assert.ok(src.includes('collapseB'), 'Should accept collapseB prop');
+  });
+
+  it('computes effectiveRatio from collapse state', () => {
+    assert.ok(src.includes('effectiveRatio'), 'Should have effectiveRatio derived');
+  });
+
+  it('hides handle when collapsed', () => {
+    assert.ok(src.includes('handleHidden'), 'Should track handleHidden');
+  });
+
   it('split panels are flex containers for children', () => {
     // .split-panel needs display:flex so children using flex:1 get proper sizing
     const panelCSS = src.split('.split-panel')[1]?.split('}')[0] || '';

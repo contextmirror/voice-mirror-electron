@@ -2,11 +2,13 @@
   /**
    * TerminalTabs.svelte -- Tabbed terminal container with unified tab bar.
    *
-   * Single bar: tabs on the left (AI + shell tabs + "+" button),
-   * toolbar actions on the right (voice button, clear, copy, paste).
-   *
-   * Below the bar, renders one terminal per tab but only the active one is visible.
-   * Inactive terminals remain mounted (hidden via CSS) to preserve scrollback.
+   * Features:
+   * - Single bar: tabs (left) + toolbar actions (right)
+   * - Double-click tab to rename (inline input)
+   * - Right-click context menu (rename, clear, close)
+   * - Drag-to-reorder shell tabs (AI tab pinned at index 0)
+   * - Ctrl+Tab / Ctrl+Shift+Tab to cycle tabs
+   * - Smart shell numbering (fills gaps)
    */
   import Terminal from './Terminal.svelte';
   import ShellTerminal from './ShellTerminal.svelte';
@@ -14,13 +16,12 @@
   import { projectStore } from '../../lib/stores/project.svelte.js';
   import { sendVoiceLoop } from '../../lib/api.js';
   import { voiceStore } from '../../lib/stores/voice.svelte.js';
-  import { aiStatusStore } from '../../lib/stores/ai-status.svelte.js';
-  import { configStore } from '../../lib/stores/config.svelte.js';
+  import { aiStatusStore, switchProvider, stopProvider } from '../../lib/stores/ai-status.svelte.js';
+  import { configStore, updateConfig } from '../../lib/stores/config.svelte.js';
   import { toastStore } from '../../lib/stores/toast.svelte.js';
+  import { PROVIDER_GROUPS, PROVIDER_ICONS, PROVIDER_NAMES } from '../../lib/providers.js';
 
   // ---- Terminal action registration ----
-  // Each terminal (AI + shells) registers its clear/copy/paste actions here.
-  // TerminalTabs calls the active terminal's actions when toolbar buttons are clicked.
   let termActions = {};
 
   function handleClear() {
@@ -76,17 +77,234 @@
     const cwd = projectStore.activeProject?.path || null;
     await terminalTabsStore.addShellTab({ cwd });
   }
+
+  // ---- Tab renaming (double-click) ----
+
+  let editingTabId = $state(null);
+  let editValue = $state('');
+
+  function startRename(tabId) {
+    const tab = terminalTabsStore.tabs.find(t => t.id === tabId);
+    if (!tab) return;
+    editValue = tab.title;
+    editingTabId = tabId;
+  }
+
+  function saveRename() {
+    if (!editingTabId) return;
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== terminalTabsStore.tabs.find(t => t.id === editingTabId)?.title) {
+      terminalTabsStore.renameTab(editingTabId, trimmed);
+    }
+    editingTabId = null;
+  }
+
+  function cancelRename() {
+    editingTabId = null;
+  }
+
+  function handleRenameKeydown(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveRename();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelRename();
+    }
+  }
+
+  /** Svelte action: auto-focus and select input text on mount */
+  function autofocus(node) {
+    node.focus();
+    node.select();
+  }
+
+  // ---- Right-click context menu ----
+
+  let contextMenu = $state({ visible: false, x: 0, y: 0, tabId: null });
+
+  function showContextMenu(e, tabId) {
+    e.preventDefault();
+    const estimatedHeight = tabId === 'ai' ? 380 : 140;
+    const maxY = window.innerHeight - estimatedHeight;
+    const y = Math.min(e.clientY, Math.max(0, maxY));
+    contextMenu = { visible: true, x: e.clientX, y, tabId };
+  }
+
+  function closeContextMenu() {
+    contextMenu = { ...contextMenu, visible: false };
+  }
+
+  function contextRename() {
+    startRename(contextMenu.tabId);
+    closeContextMenu();
+  }
+
+  function contextClear() {
+    termActions[contextMenu.tabId]?.clear();
+    closeContextMenu();
+  }
+
+  function contextClose() {
+    if (contextMenu.tabId !== 'ai') {
+      terminalTabsStore.closeTab(contextMenu.tabId);
+    }
+    closeContextMenu();
+  }
+
+  async function contextSwitchProvider(providerId) {
+    if (providerId === aiStatusStore.providerType) {
+      closeContextMenu();
+      return;
+    }
+    closeContextMenu();
+    try {
+      await updateConfig({ ai: { provider: providerId } });
+      const cfg = configStore.value;
+      const endpoints = cfg?.ai?.endpoints || {};
+      const apiKeys = cfg?.ai?.apiKeys || {};
+      await switchProvider(providerId, {
+        model: cfg?.ai?.model || undefined,
+        baseUrl: endpoints[providerId] || undefined,
+        apiKey: apiKeys[providerId] || undefined,
+        contextLength: cfg?.ai?.contextLength || undefined,
+      });
+      toastStore.addToast({
+        message: `Switched to ${PROVIDER_NAMES[providerId] || providerId}`,
+        severity: 'success',
+        duration: 3000,
+      });
+    } catch (err) {
+      console.error('[TerminalTabs] Provider switch failed:', err);
+      toastStore.addToast({
+        message: `Failed to switch provider: ${err?.message || err}`,
+        severity: 'error',
+      });
+    }
+  }
+
+  async function contextStopProvider() {
+    closeContextMenu();
+    try {
+      await stopProvider();
+      toastStore.addToast({
+        message: 'Provider stopped',
+        severity: 'success',
+        duration: 3000,
+      });
+    } catch (err) {
+      console.error('[TerminalTabs] Stop provider failed:', err);
+      toastStore.addToast({
+        message: 'Failed to stop provider',
+        severity: 'error',
+      });
+    }
+  }
+
+  // Close context menu on outside click
+  $effect(() => {
+    if (!contextMenu.visible) return;
+    function handleClick() { closeContextMenu(); }
+    // Delay so the right-click itself doesn't close it
+    const timer = setTimeout(() => {
+      window.addEventListener('click', handleClick);
+      window.addEventListener('contextmenu', handleClick);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('click', handleClick);
+      window.removeEventListener('contextmenu', handleClick);
+    };
+  });
+
+  // ---- Drag-to-reorder (pointer-based) ----
+
+  let dragTabId = $state(null);
+  let dragOverTabId = $state(null);
+  let dragStartX = 0;
+  let dragActive = false;
+
+  function handleTabMousedown(e, tabId) {
+    // Only left-click, only shell tabs
+    if (e.button !== 0 || tabId === 'ai') return;
+    dragStartX = e.clientX;
+    dragActive = false;
+
+    const onMousemove = (/** @type {MouseEvent} */ moveEvt) => {
+      // 5px threshold before activating drag
+      if (!dragActive && Math.abs(moveEvt.clientX - dragStartX) < 5) return;
+      if (!dragActive) {
+        dragActive = true;
+        dragTabId = tabId;
+      }
+
+      // Find the tab element being hovered over
+      const els = document.elementsFromPoint(moveEvt.clientX, moveEvt.clientY);
+      const tabEl = els.find(el => el.closest?.('[data-tab-id]'));
+      const hoverTabEl = tabEl?.closest?.('[data-tab-id]') || tabEl;
+      const hoverId = hoverTabEl?.getAttribute?.('data-tab-id') || null;
+
+      if (hoverId && hoverId !== 'ai' && hoverId !== tabId) {
+        dragOverTabId = hoverId;
+      } else {
+        dragOverTabId = null;
+      }
+    };
+
+    const onMouseup = () => {
+      window.removeEventListener('mousemove', onMousemove);
+      window.removeEventListener('mouseup', onMouseup);
+
+      if (dragActive && dragOverTabId) {
+        terminalTabsStore.moveTab(dragTabId, dragOverTabId);
+      }
+      dragTabId = null;
+      dragOverTabId = null;
+      dragActive = false;
+    };
+
+    window.addEventListener('mousemove', onMousemove);
+    window.addEventListener('mouseup', onMouseup);
+  }
+
+  // ---- Keyboard tab cycling (Ctrl+Tab / Ctrl+Shift+Tab) ----
+
+  $effect(() => {
+    function handleKeydown(e) {
+      if (e.ctrlKey && e.key === 'Tab') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.shiftKey) {
+          terminalTabsStore.prevTab();
+        } else {
+          terminalTabsStore.nextTab();
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeydown, true);
+    return () => window.removeEventListener('keydown', handleKeydown, true);
+  });
 </script>
 
 <div class="terminal-tabs-container">
   <!-- Unified tab bar: tabs (left) + toolbar actions (right) -->
   <div class="terminal-tab-bar">
     {#each terminalTabsStore.tabs as tab (tab.id)}
-      <button
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
         class="terminal-tab"
         class:active={terminalTabsStore.activeTabId === tab.id}
         class:exited={!tab.running}
+        class:drag-over={dragOverTabId === tab.id && dragTabId !== tab.id}
+        class:dragging={dragTabId === tab.id}
+        role="tab"
+        tabindex="0"
+        aria-selected={terminalTabsStore.activeTabId === tab.id}
+        data-tab-id={tab.id}
         onclick={() => terminalTabsStore.setActive(tab.id)}
+        oncontextmenu={(e) => showContextMenu(e, tab.id)}
+        onmousedown={(e) => handleTabMousedown(e, tab.id)}
+        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') terminalTabsStore.setActive(tab.id); }}
         title={tab.title}
       >
         {#if tab.type === 'ai'}
@@ -98,8 +316,28 @@
             <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
           </svg>
         {/if}
-        <span class="tab-label">{tab.title}</span>
-        {#if tab.type === 'shell'}
+
+        {#if editingTabId === tab.id}
+          <!-- Inline rename input -->
+          <input
+            class="tab-rename-input"
+            type="text"
+            bind:value={editValue}
+            onkeydown={handleRenameKeydown}
+            onblur={saveRename}
+            onclick={(e) => e.stopPropagation()}
+            use:autofocus
+          />
+        {:else}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <span
+            class="tab-label"
+            role="textbox"
+            ondblclick={(e) => { e.preventDefault(); startRename(tab.id); }}
+          >{tab.title}</span>
+        {/if}
+
+        {#if tab.type === 'shell' && editingTabId !== tab.id}
           <button
             class="tab-close"
             onclick={(e) => { e.stopPropagation(); terminalTabsStore.closeTab(tab.id); }}
@@ -110,7 +348,7 @@
             </svg>
           </button>
         {/if}
-      </button>
+      </div>
     {/each}
 
     <button class="tab-add" onclick={handleAddShell} title="New shell terminal" aria-label="New terminal">
@@ -169,6 +407,79 @@
     </div>
   </div>
 
+  <!-- Context menu -->
+  {#if contextMenu.visible}
+    <div
+      class="context-menu"
+      class:wide={contextMenu.tabId === 'ai'}
+      style="left: {contextMenu.x}px; top: {contextMenu.y}px;"
+    >
+      <button class="context-menu-item" onclick={contextRename}>
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+        </svg>
+        Rename
+      </button>
+      <button class="context-menu-item" onclick={contextClear}>
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/>
+          <line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/>
+        </svg>
+        Clear
+      </button>
+
+      {#if contextMenu.tabId === 'ai'}
+        <div class="context-menu-divider"></div>
+        {#each PROVIDER_GROUPS as group}
+          <div class="context-menu-group-label">{group.label}</div>
+          {#each group.providers as opt}
+            <button
+              class="context-menu-item provider-item"
+              class:current={aiStatusStore.providerType === opt.value}
+              onclick={() => contextSwitchProvider(opt.value)}
+            >
+              {#if PROVIDER_ICONS[opt.value]?.type === 'cover'}
+                <span class="ctx-provider-icon" style="background: url({PROVIDER_ICONS[opt.value].src}) center/cover no-repeat; border-radius: 3px;"></span>
+              {:else if PROVIDER_ICONS[opt.value]}
+                <span class="ctx-provider-icon" style="background: {PROVIDER_ICONS[opt.value].bg};">
+                  <img src={PROVIDER_ICONS[opt.value].src} alt="" class="ctx-provider-icon-inner" />
+                </span>
+              {/if}
+              <span class="ctx-provider-label">{opt.label}</span>
+              {#if aiStatusStore.providerType === opt.value}
+                {#if aiStatusStore.starting}
+                  <span class="ctx-provider-status">Starting...</span>
+                {:else}
+                  <svg class="ctx-check" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                {/if}
+              {/if}
+            </button>
+          {/each}
+        {/each}
+
+        {#if aiStatusStore.running || aiStatusStore.starting}
+          <div class="context-menu-divider"></div>
+          <button class="context-menu-item danger" onclick={contextStopProvider}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+            </svg>
+            Stop Provider
+          </button>
+        {/if}
+      {:else}
+        <div class="context-menu-divider"></div>
+        <button class="context-menu-item danger" onclick={contextClose}>
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+          Close
+        </button>
+      {/if}
+    </div>
+  {/if}
+
   <!-- Terminal panels -->
   <div class="terminal-panels">
     <!-- AI terminal (always mounted) -->
@@ -195,6 +506,7 @@
     flex-direction: column;
     height: 100%;
     overflow: hidden;
+    position: relative;
   }
 
   /* ── Unified tab bar ── */
@@ -264,6 +576,15 @@
     opacity: 0.5;
   }
 
+  .terminal-tab.dragging {
+    opacity: 0.4;
+  }
+
+  .terminal-tab.drag-over {
+    border-left: 2px solid var(--accent);
+    padding-left: 8px;
+  }
+
   .tab-icon {
     flex-shrink: 0;
   }
@@ -271,6 +592,21 @@
   .tab-label {
     overflow: hidden;
     text-overflow: ellipsis;
+    cursor: inherit;
+  }
+
+  /* ── Inline rename input ── */
+
+  .tab-rename-input {
+    background: var(--bg);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    color: var(--text);
+    font-size: 12px;
+    font-family: var(--font-family);
+    padding: 1px 4px;
+    width: 80px;
+    outline: none;
   }
 
   .tab-close {
@@ -399,6 +735,110 @@
   @keyframes voice-pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
+  }
+
+  /* ── Context menu ── */
+
+  .context-menu {
+    position: fixed;
+    z-index: 10000;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border, rgba(255,255,255,0.1));
+    border-radius: 6px;
+    padding: 4px;
+    min-width: 140px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  }
+
+  .context-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 10px;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 12px;
+    font-family: var(--font-family);
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+
+  .context-menu-item:hover {
+    background: rgba(255,255,255,0.06);
+  }
+
+  .context-menu-item.danger {
+    color: var(--danger, #ef4444);
+  }
+
+  .context-menu-item.danger:hover {
+    background: color-mix(in srgb, var(--danger, #ef4444) 12%, transparent);
+  }
+
+  .context-menu-divider {
+    height: 1px;
+    background: var(--border, rgba(255,255,255,0.06));
+    margin: 4px 0;
+  }
+
+  .context-menu.wide {
+    min-width: 200px;
+  }
+
+  .context-menu-group-label {
+    padding: 6px 10px 3px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--muted);
+    pointer-events: none;
+  }
+
+  .context-menu-item.provider-item {
+    gap: 6px;
+    padding: 5px 10px;
+  }
+
+  .context-menu-item.current {
+    color: var(--accent);
+  }
+
+  .ctx-provider-icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+
+  .ctx-provider-icon-inner {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  .ctx-provider-label {
+    flex: 1;
+  }
+
+  .ctx-check {
+    flex-shrink: 0;
+    color: var(--accent);
+  }
+
+  .ctx-provider-status {
+    font-size: 10px;
+    color: var(--muted);
+    font-style: italic;
+    flex-shrink: 0;
   }
 
   /* ── Terminal panels ── */

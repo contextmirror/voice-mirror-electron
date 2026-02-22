@@ -1,17 +1,9 @@
 <script>
   import { navigationStore } from '../../lib/stores/navigation.svelte.js';
-  import { aiStatusStore } from '../../lib/stores/ai-status.svelte.js';
   import { voiceStore } from '../../lib/stores/voice.svelte.js';
-  import { PROVIDER_ICONS } from '../../lib/providers.js';
   import ChatList from './ChatList.svelte';
   import ProjectStrip from './ProjectStrip.svelte';
   import SessionPanel from './SessionPanel.svelte';
-
-  let aiDisplayName = $derived(aiStatusStore.displayName || 'AI Provider');
-  let aiRunning = $derived(aiStatusStore.running);
-  let aiStarting = $derived(aiStatusStore.starting);
-  let aiProviderType = $derived(aiStatusStore.providerType || 'claude');
-  let providerIcon = $derived(PROVIDER_ICONS[aiProviderType] || null);
 
   const collapsed = $derived(navigationStore.sidebarCollapsed);
   const activeView = $derived(navigationStore.activeView);
@@ -40,28 +32,6 @@
 </script>
 
 <aside class="sidebar" class:collapsed={collapsed}>
-  <!-- AI Status Indicator -->
-  <div class="sidebar-status" data-tooltip={collapsed ? `${aiDisplayName} — ${aiRunning ? 'Running' : aiStarting ? 'Starting...' : 'Stopped'}` : undefined}>
-    <div class="provider-icon-wrapper">
-      {#if providerIcon?.type === 'cover'}
-        <span class="sidebar-provider-icon" style="background: url({providerIcon.src}) center/cover no-repeat; border-radius: 4px;"></span>
-      {:else if providerIcon}
-        <span class="sidebar-provider-icon" style="background: {providerIcon.bg};">
-          <img class="sidebar-provider-icon-inner" src={providerIcon.src} alt="" />
-        </span>
-      {:else}
-        <span class="sidebar-provider-icon placeholder"></span>
-      {/if}
-      <span class="status-dot" class:running={aiRunning} class:starting={aiStarting}></span>
-    </div>
-    {#if !collapsed}
-      <span class="status-provider">{aiDisplayName}</span>
-      <span class="status-label" class:running={aiRunning} class:starting={aiStarting}>
-        {aiRunning ? 'Running' : aiStarting ? 'Starting...' : 'Stopped'}
-      </span>
-    {/if}
-  </div>
-
   {#if appMode === 'mirror'}
     <!-- Chat List (only visible when on chat view and expanded) -->
     {#if activeView === 'chat' && !collapsed}
@@ -146,12 +116,11 @@
 <style>
   /* ========== Sidebar Container ========== */
   .sidebar {
-    width: 200px;
-    min-width: 200px;
+    width: 220px;
+    min-width: 220px;
     display: flex;
     flex-direction: column;
     background: var(--bg-elevated);
-    border-right: 1px solid var(--border);
     transition: width var(--duration-normal) var(--ease-out),
                 min-width var(--duration-normal) var(--ease-out);
     overflow: hidden;
@@ -167,133 +136,6 @@
     .sidebar {
       transition: none;
     }
-  }
-
-  /* ========== AI Status Indicator ========== */
-  .sidebar-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px;
-    border-bottom: 1px solid var(--border);
-    min-height: 44px;
-    position: relative;
-  }
-
-  .collapsed .sidebar-status {
-    justify-content: center;
-    padding: 12px 8px;
-  }
-
-  /* Tooltip for collapsed state */
-  .collapsed .sidebar-status::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    left: 100%;
-    top: 50%;
-    transform: translateY(-50%);
-    margin-left: 8px;
-    padding: 6px 10px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text);
-    font-size: 12px;
-    white-space: nowrap;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity var(--duration-fast) var(--ease-out);
-    z-index: 1000;
-    box-shadow: var(--shadow-md);
-  }
-
-  .collapsed .sidebar-status:hover::after {
-    opacity: 1;
-  }
-
-  /* Provider icon + status dot wrapper */
-  .provider-icon-wrapper {
-    position: relative;
-    flex-shrink: 0;
-    width: 24px;
-    height: 24px;
-  }
-
-  .sidebar-provider-icon {
-    width: 24px;
-    height: 24px;
-    border-radius: 5px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-  }
-
-  .sidebar-provider-icon.placeholder {
-    background: var(--bg-hover);
-    border: 1px solid var(--border);
-  }
-
-  .sidebar-provider-icon-inner {
-    width: 65%;
-    height: 65%;
-    object-fit: contain;
-  }
-
-  /* Status dot — overlaid on bottom-right of provider icon */
-  .status-dot {
-    position: absolute;
-    bottom: -2px;
-    right: -2px;
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: #ef4444;
-    border: 2px solid var(--bg-elevated);
-    flex-shrink: 0;
-    transition: background var(--duration-fast) var(--ease-out),
-                box-shadow var(--duration-fast) var(--ease-out);
-  }
-
-  .status-dot.running {
-    background: #22c55e;
-    box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
-  }
-
-  .status-dot.starting {
-    background: #f59e0b;
-    box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
-    animation: status-pulse 1s ease-in-out infinite;
-  }
-
-  @keyframes status-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-  }
-
-  .status-provider {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-strong);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .status-label {
-    font-size: 11px;
-    color: var(--muted);
-    flex-shrink: 0;
-  }
-
-  .status-label.running {
-    color: #22c55e;
-  }
-
-  .status-label.starting {
-    color: #f59e0b;
   }
 
   /* ========== Lens Sidebar ========== */
@@ -318,7 +160,7 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 8px;
+    padding: 8px 10px;
     gap: 2px;
     overflow-y: auto;
     overflow-x: hidden;
@@ -408,27 +250,30 @@
 
   @media (prefers-reduced-motion: reduce) {
     .nav-item,
-    .nav-label,
-    .status-dot {
+    .nav-label {
       transition: none;
     }
   }
 
   /* ========== Settings (pinned to bottom) ========== */
   .settings-item {
-    margin: 0 8px 0;
-    width: calc(100% - 16px);
+    margin: 4px 10px 0;
+    width: calc(100% - 20px);
     flex-shrink: 0;
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
   }
 
   .collapsed .settings-item {
-    margin: 0 4px 0;
+    margin: 4px 4px 0;
     width: calc(100% - 8px);
+    border-top: none;
+    padding-top: 4px;
   }
 
   /* ========== Footer ========== */
   .sidebar-footer {
-    padding: 8px;
+    padding: 10px;
     border-top: 1px solid var(--border);
     display: flex;
     flex-direction: column;
@@ -436,7 +281,8 @@
   }
 
   .collapsed .sidebar-footer {
-    padding: 4px;
+    padding: 6px 4px;
+    border-top: none;
   }
 
   /* ========== Voice Status ========== */
@@ -500,11 +346,11 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    padding: 8px 12px;
+    padding: 6px;
     color: var(--muted);
     background: transparent;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
+    border: none;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     font-size: 12px;
     font-family: var(--font-family);
@@ -515,7 +361,6 @@
   .collapse-btn:hover {
     background: var(--bg-hover);
     color: var(--text);
-    border-color: var(--border-strong);
   }
 
   .collapse-btn svg {

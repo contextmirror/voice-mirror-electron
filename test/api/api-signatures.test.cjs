@@ -125,6 +125,12 @@ describe('api.js -- critical Tauri command names', () => {
     'get_project_root',
     'read_file',
     'write_file',
+    'create_file',
+    'create_directory',
+    'rename_entry',
+    'delete_entry',
+    'reveal_in_explorer',
+    'search_files',
   ];
 
   for (const cmd of criticalCommands) {
@@ -225,12 +231,31 @@ describe('api.js -- exported async functions', () => {
     'getProjectRoot',
     'readFile',
     'writeFile',
+    'getFileGitContent',
+    'createFile',
+    'createDirectory',
+    'renameEntry',
+    'deleteEntry',
+    'revealInExplorer',
+    'searchFiles',
+    'startFileWatching',
+    'stopFileWatching',
     // Shell Terminals
     'shellSpawn',
     'shellInput',
     'shellResize',
     'shellKill',
     'shellList',
+    // LSP
+    'lspOpenFile',
+    'lspCloseFile',
+    'lspChangeFile',
+    'lspSaveFile',
+    'lspRequestCompletion',
+    'lspRequestHover',
+    'lspRequestDefinition',
+    'lspGetStatus',
+    'lspShutdown',
   ];
 
   for (const fn of expectedExports) {
