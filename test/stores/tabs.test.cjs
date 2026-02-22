@@ -110,6 +110,22 @@ describe('tabs.svelte.js: browser tab protection', () => {
   });
 });
 
+describe('tabs.svelte.js: external/readOnly file support', () => {
+  it('openFile propagates readOnly flag', () => {
+    assert.ok(
+      src.includes('readOnly: entry.readOnly || false'),
+      'Should pass readOnly from entry'
+    );
+  });
+
+  it('openFile propagates external flag', () => {
+    assert.ok(
+      src.includes('external: entry.external || false'),
+      'Should pass external from entry'
+    );
+  });
+});
+
 describe('tabs.svelte.js: tab switching on close', () => {
   it('switches to neighbor when closing active tab', () => {
     assert.ok(

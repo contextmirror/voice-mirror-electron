@@ -134,6 +134,29 @@ describe('api.js -- readFile', () => {
   });
 });
 
+describe('api.js -- readExternalFile', () => {
+  it('exports async function readExternalFile', () => {
+    assert.ok(
+      src.includes('export async function readExternalFile('),
+      'Should export readExternalFile'
+    );
+  });
+
+  it('invokes read_external_file command', () => {
+    assert.ok(
+      src.includes("invoke('read_external_file'"),
+      'Should call invoke with read_external_file'
+    );
+  });
+
+  it('accepts path parameter', () => {
+    assert.ok(
+      src.includes('readExternalFile(path)'),
+      'Should accept path parameter'
+    );
+  });
+});
+
 describe('api.js -- writeFile', () => {
   it('exports async function writeFile', () => {
     assert.ok(

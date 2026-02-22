@@ -170,11 +170,12 @@ describe('FileEditor.svelte: autocomplete', () => {
 });
 
 describe('FileEditor.svelte: go-to-definition navigation', () => {
-  it('wraps path in object for openFile', () => {
+  it('wraps path in object for openFile with readOnly/external flags', () => {
     // BUG-002 fix: openFile expects { name, path }, not a raw string
+    // External file support: passes readOnly and external flags
     assert.ok(
-      src.includes('tabsStore.openFile({ name: fileName, path: locPath })'),
-      'Should pass { name, path } object to openFile'
+      src.includes('tabsStore.openFile({ name: fileName, path: resolved.path, readOnly: resolved.external, external: resolved.external })'),
+      'Should pass { name, path, readOnly, external } object to openFile'
     );
   });
 
@@ -182,6 +183,72 @@ describe('FileEditor.svelte: go-to-definition navigation', () => {
     assert.ok(
       src.includes(".split(/[/\\\\]/).pop()"),
       'Should extract filename from path for display'
+    );
+  });
+});
+
+describe('FileEditor.svelte: external file support', () => {
+  it('imports readExternalFile from api', () => {
+    assert.ok(src.includes('readExternalFile'), 'Should import readExternalFile');
+  });
+
+  it('uriToRelativePath returns { path, external } object', () => {
+    assert.ok(
+      src.includes('external: false') && src.includes('external: true'),
+      'Should distinguish internal vs external paths'
+    );
+  });
+
+  it('checks tab.external flag to choose read method', () => {
+    assert.ok(
+      src.includes('isExternal') && src.includes('tab?.external'),
+      'Should check external flag'
+    );
+  });
+
+  it('uses readExternalFile for external files', () => {
+    assert.ok(
+      src.includes('readExternalFile(filePath)'),
+      'Should call readExternalFile for external files'
+    );
+  });
+
+  it('disables LSP for external files', () => {
+    assert.ok(
+      src.includes('!isExternal && LSP_EXTENSIONS'),
+      'Should skip LSP for external files'
+    );
+  });
+
+  it('applies readOnly extension for read-only tabs', () => {
+    assert.ok(
+      src.includes('EditorState.readOnly.of(true)'),
+      'Should add readOnly extension when tab is readOnly'
+    );
+  });
+
+  it('shows read-only banner for readOnly tabs', () => {
+    assert.ok(src.includes('readonly-banner'), 'Should have readonly-banner class');
+    assert.ok(
+      src.includes("tab?.readOnly"),
+      'Should conditionally show banner for readOnly tabs'
+    );
+  });
+
+  it('shows external file label in banner', () => {
+    assert.ok(
+      src.includes('external file'),
+      'Should show external file label'
+    );
+  });
+
+  it('has lock icon in read-only banner', () => {
+    // Lock icon SVG: rect for body + path for shackle
+    const bannerIdx = src.indexOf('readonly-banner');
+    const chunk = src.slice(bannerIdx, bannerIdx + 300);
+    assert.ok(
+      chunk.includes('M7 11V7a5 5 0 0 1 10 0v4'),
+      'Should have lock icon SVG path'
     );
   });
 });

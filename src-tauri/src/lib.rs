@@ -204,6 +204,7 @@ pub fn run() {
             files_cmds::get_git_changes,
             files_cmds::get_project_root,
             files_cmds::read_file,
+            files_cmds::read_external_file,
             files_cmds::write_file,
             files_cmds::get_file_git_content,
             files_cmds::create_file,

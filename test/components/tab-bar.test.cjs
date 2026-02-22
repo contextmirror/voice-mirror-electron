@@ -151,6 +151,27 @@ describe('TabBar.svelte: close all tabs', () => {
   });
 });
 
+describe('TabBar.svelte: read-only tab indicator', () => {
+  it('shows lock icon for readOnly tabs', () => {
+    assert.ok(src.includes('tab.readOnly'), 'Should check tab.readOnly');
+    assert.ok(src.includes('tab-lock'), 'Should have tab-lock class');
+  });
+
+  it('has lock SVG with correct path', () => {
+    assert.ok(
+      src.includes('M7 11V7a5 5 0 0 1 10 0v4'),
+      'Should render lock icon SVG'
+    );
+  });
+
+  it('has aria-label on lock icon', () => {
+    assert.ok(
+      src.includes('aria-label="Read-only"'),
+      'Should have accessible label on lock icon'
+    );
+  });
+});
+
 describe('TabBar.svelte: diff tab support', () => {
   it('has diff tab badge', () => {
     assert.ok(src.includes('tab-diff-badge'), 'Should have diff badge class');
