@@ -193,8 +193,18 @@ pub fn lens_go_back(
         Err(e) => return e,
     };
 
-    match webview.eval("history.back()") {
-        Ok(()) => IpcResponse::ok_empty(),
+    // Inject a script that navigates back and then reports the new URL
+    // so the frontend can clear the loading state.
+    let notify_script = format!(
+        r#"history.back(); setTimeout(function(){{ try {{ (new Image()).src = '{}url-changed?url=' + encodeURIComponent(location.href); }} catch(e){{}} }}, 300);"#,
+        if cfg!(target_os = "windows") { "https://lens-shortcut.localhost/" } else { "lens-shortcut://localhost/" }
+    );
+    match webview.eval(&notify_script) {
+        Ok(()) => {
+            // Also emit immediately so loading clears even if the image trick fails
+            let _ = app.emit("lens-url-changed", serde_json::json!({}));
+            IpcResponse::ok_empty()
+        }
         Err(e) => IpcResponse::err(format!("Failed to go back: {}", e)),
     }
 }
@@ -210,8 +220,15 @@ pub fn lens_go_forward(
         Err(e) => return e,
     };
 
-    match webview.eval("history.forward()") {
-        Ok(()) => IpcResponse::ok_empty(),
+    let notify_script = format!(
+        r#"history.forward(); setTimeout(function(){{ try {{ (new Image()).src = '{}url-changed?url=' + encodeURIComponent(location.href); }} catch(e){{}} }}, 300);"#,
+        if cfg!(target_os = "windows") { "https://lens-shortcut.localhost/" } else { "lens-shortcut://localhost/" }
+    );
+    match webview.eval(&notify_script) {
+        Ok(()) => {
+            let _ = app.emit("lens-url-changed", serde_json::json!({}));
+            IpcResponse::ok_empty()
+        }
         Err(e) => IpcResponse::err(format!("Failed to go forward: {}", e)),
     }
 }
@@ -228,7 +245,11 @@ pub fn lens_reload(
     };
 
     match webview.eval("location.reload()") {
-        Ok(()) => IpcResponse::ok_empty(),
+        Ok(()) => {
+            // Emit event so frontend clears loading state
+            let _ = app.emit("lens-url-changed", serde_json::json!({}));
+            IpcResponse::ok_empty()
+        }
         Err(e) => IpcResponse::err(format!("Failed to reload: {}", e)),
     }
 }

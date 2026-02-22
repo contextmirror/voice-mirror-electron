@@ -455,10 +455,11 @@ describe('ToastContainer.svelte', () => {
     assert.ok(src.includes('.toast-container'), 'Should have toast-container CSS');
   });
 
-  it('is fixed positioned at bottom-right', () => {
+  it('is fixed positioned at bottom-center', () => {
     assert.ok(src.includes('position: fixed'), 'Should be fixed positioned');
     assert.ok(src.includes('bottom:'), 'Should be at bottom');
-    assert.ok(src.includes('right:'), 'Should be at right');
+    assert.ok(src.includes('left: 50%'), 'Should be centered horizontally');
+    assert.ok(src.includes('translateX(-50%)'), 'Should use transform to center');
   });
 
   it('has z-index: 10002 (above orb)', () => {

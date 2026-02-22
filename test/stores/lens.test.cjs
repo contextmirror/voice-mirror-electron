@@ -150,4 +150,44 @@ describe('lens: error handling', () => {
   it('uses try/catch in navigate', () => {
     assert.ok(src.includes('catch'), 'Should have error handling');
   });
+
+  it('clears loading on navigation error', () => {
+    // After catch block in navigate, loading should be set to false
+    const navigateBlock = src.split('async navigate')[1]?.split('async ')[0] || '';
+    assert.ok(
+      navigateBlock.includes('loading = false'),
+      'navigate should clear loading on error'
+    );
+  });
+
+  it('clears loading on reload error', () => {
+    const reloadBlock = src.split('async reload')[1]?.split('async ')[0] || '';
+    assert.ok(
+      reloadBlock.includes('loading = false'),
+      'reload should clear loading on error'
+    );
+  });
+
+  it('clears loading on goBack error', () => {
+    const goBackBlock = src.split('async goBack')[1]?.split('async ')[0] || '';
+    assert.ok(
+      goBackBlock.includes('loading = false'),
+      'goBack should clear loading on error'
+    );
+  });
+
+  it('clears loading on goForward error', () => {
+    const goForwardBlock = src.split('async goForward')[1]?.split('async ')[0] || '';
+    assert.ok(
+      goForwardBlock.includes('loading = false'),
+      'goForward should clear loading on error'
+    );
+  });
+
+  it('sets loading=true for goBack and goForward', () => {
+    const goBackBlock = src.split('async goBack')[1]?.split('async ')[0] || '';
+    assert.ok(goBackBlock.includes('loading = true'), 'goBack should set loading');
+    const goForwardBlock = src.split('async goForward')[1]?.split('async ')[0] || '';
+    assert.ok(goForwardBlock.includes('loading = true'), 'goForward should set loading');
+  });
 });

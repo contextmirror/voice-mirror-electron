@@ -1,12 +1,20 @@
 <script>
+  import { onMount, onDestroy } from 'svelte';
   import { lensStore, DEFAULT_URL } from '../../lib/stores/lens.svelte.js';
   import { lensCreateWebview, lensResizeWebview, lensCloseWebview } from '../../lib/api.js';
   import { listen } from '@tauri-apps/api/event';
 
   let containerEl = $state(null);
-  let resizeObserver = $state(null);
-  let rafId = $state(null);
-  let unlistenUrl = $state(null);
+  let resizeObserver = null;
+  let rafId = null;
+  let unlistenUrl = null;
+  let setupDone = false;
+  let retryCount = 0;
+  let retryTimer = null;
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY_MS = 2000;
+  const LOADING_TIMEOUT_MS = 15000;
+  let loadingTimer = null;
 
   function getAbsoluteBounds() {
     if (!containerEl) return null;
@@ -25,6 +33,26 @@
     lensResizeWebview(bounds.x, bounds.y, bounds.width, bounds.height).catch(() => {});
   }
 
+  /** Safety net: clear loading state after timeout so user is never stuck. */
+  function startLoadingTimeout() {
+    clearTimeout(loadingTimer);
+    loadingTimer = setTimeout(() => {
+      if (lensStore.loading) {
+        console.warn('[LensPreview] Loading timeout — clearing stuck loading state');
+        lensStore.setLoading(false);
+      }
+    }, LOADING_TIMEOUT_MS);
+  }
+
+  /** Watch loading state to arm/disarm the safety timeout. */
+  $effect(() => {
+    if (lensStore.loading) {
+      startLoadingTimeout();
+    } else {
+      clearTimeout(loadingTimer);
+    }
+  });
+
   // Hide/show webview when lensStore.hidden changes (e.g. screenshot picker overlay)
   $effect(() => {
     if (!lensStore.webviewReady) return;
@@ -37,84 +65,95 @@
     }
   });
 
-  $effect(() => {
+  async function createWebview() {
     if (!containerEl) return;
 
-    let cancelled = false;
-
-    async function setup() {
-      // Listen for URL change events first (before webview creation)
-      const ul = await listen('lens-url-changed', (event) => {
-        if (event.payload?.url) {
-          lensStore.setUrl(event.payload.url);
-          lensStore.setInputUrl(event.payload.url);
-        }
-        lensStore.setLoading(false);
+    // Wait for layout to settle before measuring bounds (double rAF)
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(resolve);
       });
-      if (cancelled) { ul(); return; }
-      unlistenUrl = ul;
+    });
 
-      // Wait for layout to settle before measuring bounds (double rAF)
-      await new Promise((resolve) => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(resolve);
-        });
-      });
+    const bounds = getAbsoluteBounds();
+    if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
+      console.warn('[LensPreview] Container has zero bounds, will retry');
+      scheduleRetry();
+      return;
+    }
 
-      if (cancelled) return;
+    console.log('[LensPreview] Creating webview at', bounds, retryCount > 0 ? `(retry ${retryCount})` : '');
 
-      const bounds = getAbsoluteBounds();
-      if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
-        console.warn('[LensPreview] Container has zero bounds, skipping webview creation');
-        return;
-      }
+    try {
+      await lensCreateWebview(
+        DEFAULT_URL,
+        bounds.x, bounds.y,
+        bounds.width, bounds.height,
+      );
+      lensStore.setWebviewReady(true);
+      retryCount = 0;
+      console.log('[LensPreview] Webview ready');
 
-      console.log('[LensPreview] Creating webview at', bounds);
-
-      try {
-        await lensCreateWebview(
-          DEFAULT_URL,
-          bounds.x, bounds.y,
-          bounds.width, bounds.height,
-        );
-        if (cancelled) {
-          lensCloseWebview().catch(() => {});
-          return;
-        }
-        lensStore.setWebviewReady(true);
-        console.log('[LensPreview] Webview ready');
-      } catch (err) {
-        console.error('[LensPreview] Failed to create webview:', err);
-        return;
-      }
-
-      // Observe container resize — sync bounds on next animation frame (no debounce delay)
+      // Observe container resize — sync bounds on next animation frame
+      if (resizeObserver) resizeObserver.disconnect();
       const observer = new ResizeObserver(() => {
         if (rafId) cancelAnimationFrame(rafId);
         rafId = requestAnimationFrame(() => { rafId = null; syncBounds(); });
       });
       observer.observe(containerEl);
       resizeObserver = observer;
+    } catch (err) {
+      console.error('[LensPreview] Failed to create webview:', err);
+      scheduleRetry();
     }
+  }
 
-    setup().catch((err) => {
-      console.error('[LensPreview] Setup failed:', err);
+  function scheduleRetry() {
+    if (retryCount >= MAX_RETRIES) {
+      console.error(`[LensPreview] Giving up after ${MAX_RETRIES} retries`);
+      return;
+    }
+    retryCount++;
+    console.log(`[LensPreview] Retrying in ${RETRY_DELAY_MS}ms (attempt ${retryCount}/${MAX_RETRIES})`);
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => {
+      createWebview();
+    }, RETRY_DELAY_MS);
+  }
+
+  // Use onMount instead of $effect to avoid re-running on reactive state changes.
+  // This ensures theme changes, config updates, etc. don't destroy/recreate the webview.
+  onMount(async () => {
+    if (setupDone) return;
+    setupDone = true;
+
+    // Listen for URL change events first (before webview creation)
+    unlistenUrl = await listen('lens-url-changed', (event) => {
+      if (event.payload?.url) {
+        lensStore.setUrl(event.payload.url);
+        lensStore.setInputUrl(event.payload.url);
+      }
+      lensStore.setLoading(false);
     });
 
-    return () => {
-      cancelled = true;
-      if (rafId) cancelAnimationFrame(rafId);
-      if (resizeObserver) {
-        resizeObserver.disconnect();
-        resizeObserver = null;
-      }
-      if (unlistenUrl) {
-        unlistenUrl();
-        unlistenUrl = null;
-      }
-      lensCloseWebview().catch(() => {});
-      lensStore.setWebviewReady(false);
-    };
+    await createWebview();
+  });
+
+  onDestroy(() => {
+    clearTimeout(retryTimer);
+    clearTimeout(loadingTimer);
+    if (rafId) cancelAnimationFrame(rafId);
+    if (resizeObserver) {
+      resizeObserver.disconnect();
+      resizeObserver = null;
+    }
+    if (unlistenUrl) {
+      unlistenUrl();
+      unlistenUrl = null;
+    }
+    lensCloseWebview().catch(() => {});
+    lensStore.setWebviewReady(false);
+    setupDone = false;
   });
 </script>
 

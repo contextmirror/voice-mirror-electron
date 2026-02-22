@@ -16,6 +16,7 @@
   let userName = $state('');
   let startMinimized = $state(false);
   let startWithSystem = $state(false);
+  let showToasts = $state(true);
   let debugMode = $state(false);
   let showDependencies = $state(false);
 
@@ -30,6 +31,7 @@
     userName = cfg.user?.name || '';
     startMinimized = cfg.behavior?.startMinimized === true;
     startWithSystem = cfg.behavior?.startWithSystem === true;
+    showToasts = cfg.behavior?.showToasts !== false;
     debugMode = cfg.advanced?.debugMode === true;
     showDependencies = cfg.advanced?.showDependencies === true;
   });
@@ -46,6 +48,7 @@
         behavior: {
           startMinimized,
           startWithSystem,
+          showToasts,
         },
         advanced: {
           debugMode,
@@ -92,6 +95,19 @@
         description="Launch automatically on login"
         checked={startWithSystem}
         onChange={(v) => (startWithSystem = v)}
+      />
+    </div>
+  </section>
+
+  <!-- Notifications -->
+  <section class="settings-section">
+    <h3>Notifications</h3>
+    <div class="settings-group">
+      <Toggle
+        label="Toast Notifications"
+        description="Show popup notifications for file operations and other events"
+        checked={showToasts}
+        onChange={(v) => (showToasts = v)}
       />
     </div>
   </section>

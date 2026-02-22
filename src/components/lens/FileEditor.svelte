@@ -7,6 +7,7 @@
   import { chatStore } from '../../lib/stores/chat.svelte.js';
   import { aiStatusStore } from '../../lib/stores/ai-status.svelte.js';
   import EditorContextMenu from './EditorContextMenu.svelte';
+  import { voiceMirrorEditorTheme } from '../../lib/editor-theme.js';
 
   let { tab } = $props();
 
@@ -17,6 +18,9 @@
   let isBinary = $state(false);
   let fileSize = $state(0);
   let currentPath = $state(null);
+
+  // Conflict detection state — shown when file changes on disk while tab is dirty
+  let conflictDetected = $state(false);
 
   // Context menu state
   let editorMenu = $state({ visible: false, x: 0, y: 0 });
@@ -45,18 +49,16 @@
       { EditorView, basicSetup },
       { EditorState },
       { keymap, hoverTooltip },
-      { oneDark },
       { autocompletion },
       { setDiagnostics, lintGutter },
     ] = await Promise.all([
       import('codemirror'),
       import('@codemirror/state'),
       import('@codemirror/view'),
-      import('@codemirror/theme-one-dark'),
       import('@codemirror/autocomplete'),
       import('@codemirror/lint'),
     ]);
-    cmCache = { EditorView, basicSetup, EditorState, keymap, hoverTooltip, oneDark, autocompletion, setDiagnostics, lintGutter };
+    cmCache = { EditorView, basicSetup, EditorState, keymap, hoverTooltip, autocompletion, setDiagnostics, lintGutter };
     return cmCache;
   }
 
@@ -207,7 +209,8 @@
           scrollIntoView: true,
         });
       } else {
-        tabsStore.openFile(locPath);
+        const fileName = locPath.split(/[/\\]/).pop() || locPath;
+        tabsStore.openFile({ name: fileName, path: locPath });
       }
     } catch {}
   }
@@ -328,6 +331,30 @@
     }
   }
 
+  async function reloadFromDisk() {
+    if (!view || !currentPath) return;
+    try {
+      const root = projectStore.activeProject?.path || null;
+      const result = await readFile(currentPath, root);
+      const data = result?.data || result;
+      if (!data?.content || data.content == null) return;
+      const currentContent = view.state.doc.toString();
+      if (data.content !== currentContent) {
+        view.dispatch({
+          changes: { from: 0, to: currentContent.length, insert: data.content },
+        });
+      }
+      tabsStore.setDirty(tab.id, false);
+      conflictDetected = false;
+    } catch (err) {
+      console.warn('[FileEditor] Conflict reload failed:', err);
+    }
+  }
+
+  function dismissConflict() {
+    conflictDetected = false;
+  }
+
   async function loadFile(filePath) {
     if (!filePath || filePath === currentPath) return;
 
@@ -344,6 +371,7 @@
     loading = true;
     error = null;
     isBinary = false;
+    conflictDetected = false;
 
     try {
       const cm = await loadCM();
@@ -384,7 +412,7 @@
 
       const extensions = [
         cm.basicSetup,
-        cm.oneDark,
+        ...voiceMirrorEditorTheme,
         cm.lintGutter(),
         cm.autocompletion(hasLsp ? {
           override: [lspCompletionSource],
@@ -504,7 +532,8 @@
                 scrollIntoView: true,
               });
             } else {
-              tabsStore.openFile(locPath);
+              const fileName = locPath.split(/[/\\]/).pop() || locPath;
+              tabsStore.openFile({ name: fileName, path: locPath });
             }
           } catch {
             // Definition lookup failed — still consume the event
@@ -574,9 +603,12 @@
         const { files } = event.payload;
         if (!view || !currentPath || !files?.includes(currentPath)) return;
 
-        // Skip reload if the editor has unsaved changes (user is actively editing)
+        // If the editor has unsaved changes, show conflict banner instead of auto-reloading
         const dirty = tabsStore.tabs.find(t => t.path === currentPath)?.dirty;
-        if (dirty) return;
+        if (dirty) {
+          conflictDetected = true;
+          return;
+        }
 
         try {
           const root = projectStore.activeProject?.path || null;
@@ -672,6 +704,17 @@
       </div>
     {/if}
   </div>
+  {#if conflictDetected}
+    <div class="conflict-banner">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      <span>File changed on disk.</span>
+      <button class="conflict-btn conflict-reload" onclick={reloadFromDisk}>Reload</button>
+      <button class="conflict-btn conflict-dismiss" onclick={dismissConflict}>Dismiss</button>
+    </div>
+  {/if}
 {/if}
 
 <EditorContextMenu
@@ -757,6 +800,56 @@
     border-radius: 4px;
     white-space: pre-wrap;
     word-break: break-word;
+  }
+
+  .conflict-banner {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--warn-subtle, rgba(245, 158, 11, 0.15));
+    border-bottom: 1px solid var(--warn, #f59e0b);
+    color: var(--warn, #f59e0b);
+    font-size: 12px;
+    font-family: var(--font-family);
+    z-index: 10;
+  }
+
+  .conflict-banner svg {
+    flex-shrink: 0;
+  }
+
+  .conflict-btn {
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: var(--font-family);
+    cursor: pointer;
+    border: none;
+  }
+
+  .conflict-reload {
+    background: var(--warn, #f59e0b);
+    color: var(--bg, #000);
+    font-weight: 600;
+  }
+
+  .conflict-reload:hover {
+    filter: brightness(1.1);
+  }
+
+  .conflict-dismiss {
+    background: transparent;
+    color: var(--warn, #f59e0b);
+    border: 1px solid var(--warn, #f59e0b);
+  }
+
+  .conflict-dismiss:hover {
+    background: var(--warn-subtle, rgba(245, 158, 11, 0.15));
   }
 
   .file-editor :global(.cm-lintPoint-error) {

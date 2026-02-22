@@ -28,10 +28,12 @@
   .toast-container {
     position: fixed;
     bottom: 16px;
-    right: 16px;
+    left: 50%;
+    transform: translateX(-50%);
     z-index: 10002;
     display: flex;
     flex-direction: column;
+    align-items: center;
     gap: 8px;
     pointer-events: none;
     max-height: calc(100vh - 32px);

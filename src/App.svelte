@@ -24,6 +24,7 @@
   import OverlayPanel from './components/overlay/OverlayPanel.svelte';
   import ResizeEdges from './components/shared/ResizeEdges.svelte';
   import StatsBar from './components/shared/StatsBar.svelte';
+  import ToastContainer from './components/shared/ToastContainer.svelte';
 
   // Load config on mount and init event listeners
   $effect(() => {
@@ -443,6 +444,7 @@
 
 <StatsBar bind:visible={statsVisible} />
 <CommandPalette bind:visible={commandPaletteVisible} onClose={() => { commandPaletteVisible = false; }} />
+<ToastContainer />
 
 <style>
   .app-shell {

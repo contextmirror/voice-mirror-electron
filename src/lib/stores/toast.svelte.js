@@ -6,6 +6,7 @@
  */
 
 import { uid } from '../utils.js';
+import { configStore } from './config.svelte.js';
 
 /**
  * @typedef {Object} Toast
@@ -50,6 +51,9 @@ function createToastStore() {
     duration = DEFAULT_DURATION,
     action = null,
   }) {
+    // Respect the showToasts config setting (errors always shown)
+    if (severity !== 'error' && configStore.value?.behavior?.showToasts === false) return '';
+
     const id = uid();
     const toast = {
       id,
