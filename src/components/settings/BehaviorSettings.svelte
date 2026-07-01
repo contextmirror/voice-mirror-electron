@@ -30,7 +30,8 @@
   // ---- Updates ----
   let autoCheckUpdates = $state(true);
   let appVersion = $state('');
-  // Derived live update state — drives the channel toggle + status line.
+  // Release channel is derived from the running build (see updater store);
+  // it is read-only here because Tauri bakes the channel into the binary.
   let updateChannel = $derived(updaterStore.channel);
   let updateState = $derived(updaterStore.state);
 
@@ -45,6 +46,8 @@
         const { getVersion } = await import('@tauri-apps/api/app');
         const v = await getVersion();
         if (!cancelled) appVersion = v;
+        // Derive the release channel from the running build (display-only).
+        updaterStore.detectChannel();
       } catch {
         /* not in Tauri — leave blank */
       }
@@ -77,10 +80,6 @@
   function checkForUpdatesNow() {
     // Explicit check — surfaces errors (unlike silent background checks).
     updaterStore.checkForUpdates(true);
-  }
-
-  function setUpdateChannel(channel) {
-    updaterStore.setChannel(channel);
   }
 
   // ---- Folder picker ----
@@ -269,24 +268,20 @@
         onChange={(v) => (autoCheckUpdates = v)}
       />
 
-      <!-- Channel toggle (Stable / Beta) -->
+      <!-- Channel indicator (read-only — the channel is set by which build you installed) -->
       <div class="update-channel-setting">
         <div class="update-channel-text">
           <span class="update-channel-label">Update Channel</span>
-          <span class="update-channel-desc">Beta receives newer, less-tested builds</span>
+          <span class="update-channel-desc">
+            Determined by the build you installed. Nightly gets newer, less-tested builds —
+            switch by installing the other build.
+          </span>
         </div>
-        <div class="update-channel-toggle" role="group" aria-label="Update channel">
-          <button
-            class="channel-btn"
-            class:active={updateChannel === 'stable'}
-            onclick={() => setUpdateChannel('stable')}
-          >Stable</button>
-          <button
-            class="channel-btn"
-            class:active={updateChannel === 'beta'}
-            onclick={() => setUpdateChannel('beta')}
-          >Beta</button>
-        </div>
+        <span
+          class="channel-indicator"
+          class:nightly={updateChannel === 'nightly'}
+          aria-label="Current update channel"
+        >{updateChannel === 'nightly' ? 'Nightly' : 'Stable'}</span>
       </div>
 
       <!-- Check now -->
@@ -473,32 +468,22 @@
     line-height: 1.3;
   }
 
-  .update-channel-toggle {
-    display: flex;
+  .channel-indicator {
     flex-shrink: 0;
+    padding: 4px 12px;
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm);
-    overflow: hidden;
-  }
-
-  .channel-btn {
-    padding: 5px 12px;
-    border: none;
     background: var(--bg);
     color: var(--muted);
     font-size: 12px;
-    font-family: var(--font-family);
-    cursor: pointer;
-    transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+    font-weight: 500;
+    letter-spacing: 0.02em;
   }
 
-  .channel-btn:hover {
-    color: var(--text);
-  }
-
-  .channel-btn.active {
-    background: var(--accent);
-    color: var(--accent-contrast, #fff);
+  .channel-indicator.nightly {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent);
   }
 
   .update-check-row {
