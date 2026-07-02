@@ -3,10 +3,10 @@
   import { readFile, getFileGitContent, getGitChanges, revealInExplorer } from '../../../lib/api.js';
   import { projectStore } from '../../../lib/stores/project.svelte.js';
   import { tabsStore } from '../../../lib/stores/tabs.svelte.js';
-  import { voiceMirrorEditorTheme } from '../../../lib/editor-theme.js';
+  import { voiceMirrorEditorTheme } from '../../../lib/editor/editor-theme.js';
   import DiffToolbar from './DiffToolbar.svelte';
   import DiffMinimap from './DiffMinimap.svelte';
-  import { loadLanguageExtension } from '../../../lib/codemirror-languages.js';
+  import { loadLanguageExtension } from '../../../lib/editor/codemirror-languages.js';
   import { basename, unwrapResult } from '../../../lib/utils.js';
 
   let { tab } = $props();

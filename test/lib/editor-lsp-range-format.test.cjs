@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const src = fs.readFileSync(
-  path.join(__dirname, '../../src/lib/editor-lsp.svelte.js'), 'utf-8'
+  path.join(__dirname, '../../src/lib/editor/editor-lsp.svelte.js'), 'utf-8'
 );
 
 describe('editor-lsp.svelte.js: range formatting', () => {

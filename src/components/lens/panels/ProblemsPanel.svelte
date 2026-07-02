@@ -8,7 +8,7 @@
   import { lspDiagnosticsStore } from '../../../lib/stores/lsp-diagnostics.svelte.js';
   import { tabsStore } from '../../../lib/stores/tabs.svelte.js';
   import { basename } from '../../../lib/utils.js';
-  import { severityName, severityNum, severityLabel as severityLabelFn } from '../../../lib/lsp-severity.js';
+  import { severityName, severityNum, severityLabel as severityLabelFn } from '../../../lib/editor/lsp-severity.js';
 
   /** @type {{ showErrors: boolean, showWarnings: boolean, showInfos: boolean, filterText: string }} */
   let { showErrors = true, showWarnings = true, showInfos = true, filterText = '' } = $props();

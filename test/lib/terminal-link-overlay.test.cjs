@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 
 const overlaySource = fs.readFileSync(
-  path.join(__dirname, '../../src/lib/terminal-link-overlay.js'), 'utf-8'
+  path.join(__dirname, '../../src/lib/terminal/terminal-link-overlay.js'), 'utf-8'
 );
 
 const terminalSource = fs.readFileSync(
@@ -166,7 +166,7 @@ describe('terminal-link-overlay module', () => {
 
 describe('Terminal.svelte link overlay integration', () => {
   it('imports createLinkOverlay', () => {
-    assert.ok(terminalSource.includes("import { createLinkOverlay } from '../../lib/terminal-link-overlay.js'"));
+    assert.ok(terminalSource.includes("import { createLinkOverlay } from '../../lib/terminal/terminal-link-overlay.js'"));
   });
 
   it('imports tabsStore for opening files', () => {

@@ -273,7 +273,7 @@ export function deriveTheme(colors, fonts = /** @type {{ fontFamily?: string, fo
     '--msg-ai-radius': '4px 16px 16px 16px',
 
     // ── CodeMirror editor variables ──
-    // These drive the custom editor theme in src/lib/editor-theme.js.
+    // These drive the custom editor theme in src/lib/editor/editor-theme.js.
     // Each preset's 10 base colors map to distinct syntax highlighting palettes.
 
     // Editor chrome

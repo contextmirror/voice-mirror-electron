@@ -16,8 +16,8 @@
   import { currentThemeName } from '../../lib/stores/theme.svelte.js';
   import { terminalTabsStore } from '../../lib/stores/terminal-tabs.svelte.js';
   import { devServerManager } from '../../lib/stores/dev-server-manager.svelte.js';
-  import { searchBuffer, nextMatch, prevMatch } from '../../lib/terminal-search.js';
-  import { createLinkOverlay } from '../../lib/terminal-link-overlay.js';
+  import { searchBuffer, nextMatch, prevMatch } from '../../lib/terminal/terminal-search.js';
+  import { createLinkOverlay } from '../../lib/terminal/terminal-link-overlay.js';
   import { tabsStore } from '../../lib/stores/tabs.svelte.js';
   import { projectStore } from '../../lib/stores/project.svelte.js';
   import { basename, blendHex } from '../../lib/utils.js';

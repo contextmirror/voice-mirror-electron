@@ -28,7 +28,7 @@
   import { outputStore } from '../../lib/stores/output.svelte.js';
   import ProblemsPanel from '../lens/panels/ProblemsPanel.svelte';
   import { lspDiagnosticsStore } from '../../lib/stores/lsp-diagnostics.svelte.js';
-  import { severityLabel } from '../../lib/lsp-severity.js';
+  import { severityLabel } from '../../lib/editor/lsp-severity.js';
   import { formatLogTime, unwrapResult } from '../../lib/utils.js';
   import { layoutStore } from '../../lib/stores/layout.svelte.js';
 

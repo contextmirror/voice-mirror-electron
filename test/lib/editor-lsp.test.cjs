@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 
 const src = fs.readFileSync(
-  path.join(__dirname, '../../src/lib/editor-lsp.svelte.js'),
+  path.join(__dirname, '../../src/lib/editor/editor-lsp.svelte.js'),
   'utf-8'
 );
 

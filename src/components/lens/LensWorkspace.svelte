@@ -35,7 +35,7 @@
   import { devicePreviewStore } from '../../lib/stores/device-preview.svelte.js';
   import { sandboxPreviewStore } from '../../lib/stores/sandbox-preview.svelte.js';
   import { devServerManager } from '../../lib/stores/dev-server-manager.svelte.js';
-  import { LSP_EXTENSIONS } from '../../lib/editor-lsp.svelte.js';
+  import { LSP_EXTENSIONS } from '../../lib/editor/editor-lsp.svelte.js';
   import { setActionHandler } from '../../lib/stores/shortcuts.svelte.js';
 
   let {

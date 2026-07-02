@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 const src = fs.readFileSync(
-  path.join(__dirname, '../../src/lib/editor-extensions.js'),
+  path.join(__dirname, '../../src/lib/editor/editor-extensions.js'),
   'utf-8'
 );
 
@@ -149,7 +149,7 @@ describe('FileEditor.svelte: cm object includes ViewPlugin and Decoration', () =
 });
 
 const themeSrc = fs.readFileSync(
-  path.join(__dirname, '../../src/lib/editor-theme.js'),
+  path.join(__dirname, '../../src/lib/editor/editor-theme.js'),
   'utf-8'
 );
 

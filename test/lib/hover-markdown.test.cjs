@@ -9,12 +9,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const SRC_PATH = path.join(__dirname, '../../src/lib/hover-markdown.js');
+const SRC_PATH = path.join(__dirname, '../../src/lib/editor/hover-markdown.js');
 const src = fs.existsSync(SRC_PATH) ? fs.readFileSync(SRC_PATH, 'utf-8') : '';
 
 describe('hover-markdown.js: file exists', () => {
   it('source file exists', () => {
-    assert.ok(fs.existsSync(SRC_PATH), 'src/lib/hover-markdown.js should exist');
+    assert.ok(fs.existsSync(SRC_PATH), 'src/lib/editor/hover-markdown.js should exist');
   });
 });
 

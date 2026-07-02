@@ -6,8 +6,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const EXT_SRC = fs.readFileSync(path.join(__dirname, '../../src/lib/editor-extensions.js'), 'utf-8');
-const THEME_SRC = fs.readFileSync(path.join(__dirname, '../../src/lib/editor-theme.js'), 'utf-8');
+const EXT_SRC = fs.readFileSync(path.join(__dirname, '../../src/lib/editor/editor-extensions.js'), 'utf-8');
+const THEME_SRC = fs.readFileSync(path.join(__dirname, '../../src/lib/editor/editor-theme.js'), 'utf-8');
 
 describe('Document Highlight wiring', () => {
   it('editor-extensions.js calls documentHighlightExtension', () => {

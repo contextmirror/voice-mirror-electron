@@ -6,8 +6,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const LSP_SRC = fs.readFileSync(path.join(__dirname, '../../src/lib/editor-lsp.svelte.js'), 'utf-8');
-const EXT_SRC = fs.readFileSync(path.join(__dirname, '../../src/lib/editor-extensions.js'), 'utf-8');
+const LSP_SRC = fs.readFileSync(path.join(__dirname, '../../src/lib/editor/editor-lsp.svelte.js'), 'utf-8');
+const EXT_SRC = fs.readFileSync(path.join(__dirname, '../../src/lib/editor/editor-extensions.js'), 'utf-8');
 
 describe('Folding Ranges — factory', () => {
   it('editor-lsp.svelte.js has foldingRangeExtension function', () => {

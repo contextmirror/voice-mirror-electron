@@ -1,0 +1,52 @@
+const { describe, it } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+
+const src = fs.readFileSync(path.join(__dirname, '../../../../src/components/lens/status/LspTab.svelte'), 'utf-8');
+
+describe('StatusDropdown LSP tab', () => {
+  it('imports lspGetStatus from api', () => {
+    assert.ok(src.includes('lspGetStatus'));
+  });
+  it('has lspServers state', () => {
+    assert.ok(src.includes('lspServers'));
+  });
+  it('listens for lsp-server-status event', () => {
+    assert.ok(src.includes("'lsp-server-status'") || src.includes('lsp-server-status'));
+  });
+  it('renders LSP server list', () => {
+    assert.ok(src.includes('lsp-server-row') || src.includes('lsp-dot'));
+  });
+  it('shows running status with green dot', () => {
+    // New implementation uses dotClass() to map ServerState to CSS classes
+    assert.ok(src.includes('dotClass') || src.includes('class:running'),
+      'Should color-code status dot by state');
+  });
+  it('shows server binary name', () => {
+    assert.ok(src.includes('server.binary') || src.includes('lsp-server-name'));
+  });
+  it('shows languageId', () => {
+    assert.ok(src.includes('server.languageId') || src.includes('lsp-server-lang'));
+  });
+  it('shows open document count for running servers', () => {
+    assert.ok(src.includes('openDocsCount'));
+  });
+  it('shows empty state when no servers active', () => {
+    assert.ok(src.includes('No LSP servers active'));
+  });
+  it('has auto-detection hint text', () => {
+    assert.ok(src.includes('Auto-detected from open file types'));
+  });
+  it('fetches status when LSP tab is selected', () => {
+    assert.ok(src.includes('lspGetStatus'));
+  });
+  it('uses cancelled flag pattern for event listener cleanup', () => {
+    assert.ok(src.includes('let cancelled = false'), 'Should use cancelled flag');
+    assert.ok(src.includes('if (!cancelled'), 'Should guard event handler with cancelled check');
+    assert.ok(src.includes('cancelled = true'), 'Cleanup should set cancelled to true');
+  });
+  it('calls unlisten on cleanup if already resolved', () => {
+    assert.ok(src.includes('if (cancelled) fn()'), 'Should unlisten immediately if cancelled before resolve');
+  });
+});
