@@ -376,7 +376,40 @@ function createTabsStore() {
       if (!tab) return;
 
       const sourceGroupId = tab.groupId;
+
+      // Recompute the group-namespaced ID for the target group (group 1 → base
+      // ID, group N → `${base}:gN`, matching openFile/openDiff). Keeping the old
+      // ID meant reopening the same file later created a duplicate ID, and every
+      // find()-by-id then acted on the wrong tab.
+      const baseId = tab.id.replace(/:g\d+$/, '');
+      const newTabId = targetGroupId === 1 ? baseId : `${baseId}:g${targetGroupId}`;
+
+      // Dedupe: the target group already has this file/diff open — drop the
+      // moved tab and focus the existing one instead of duplicating the ID.
+      const existing = tabs.find(t => t.id === newTabId && t !== tab);
+      if (existing) {
+        const dupIdx = tabs.indexOf(tab);
+        tabs.splice(dupIdx, 1);
+        editorGroupsStore.setActiveTabForGroup(targetGroupId, existing.id);
+        editorGroupsStore.setFocusedGroup(targetGroupId);
+        activeTabId = existing.id;
+
+        // Source group cleanup (moved tab is gone from it)
+        const remaining = tabs.filter(t => t.groupId === sourceGroupId);
+        if (remaining.length === 0 && editorGroupsStore.groupCount > 1) {
+          editorGroupsStore.setActiveTabForGroup(sourceGroupId, null);
+          editorGroupsStore.closeGroup(sourceGroupId);
+        } else if (remaining.length > 0) {
+          const sourceActive = editorGroupsStore.getActiveTabForGroup(sourceGroupId);
+          if (sourceActive === tabId) {
+            editorGroupsStore.setActiveTabForGroup(sourceGroupId, remaining[0].id);
+          }
+        }
+        return;
+      }
+
       tab.groupId = targetGroupId;
+      tab.id = newTabId;
 
       // If an index is specified, reposition within target group tabs
       if (index !== undefined) {
@@ -393,10 +426,10 @@ function createTabsStore() {
         }
       }
 
-      // Update active tab for target group
-      editorGroupsStore.setActiveTabForGroup(targetGroupId, tabId);
+      // Update active tab for target group (with the recomputed ID)
+      editorGroupsStore.setActiveTabForGroup(targetGroupId, newTabId);
       editorGroupsStore.setFocusedGroup(targetGroupId);
-      activeTabId = tabId;
+      activeTabId = newTabId;
 
       // Check if source group is now empty
       const sourceRemaining = tabs.filter(t => t.groupId === sourceGroupId);

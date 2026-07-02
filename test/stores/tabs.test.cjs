@@ -565,3 +565,37 @@ describe('tabs.svelte.js — workspace state persistence', () => {
     );
   });
 });
+
+describe('tabs.svelte.js: moveTab recomputes the group-namespaced ID', () => {
+  const start = src.indexOf('moveTab(tabId, targetGroupId, index)');
+  const end = src.indexOf('reorderTab(');
+  const chunk = src.slice(start, end);
+
+  it('strips the old group suffix and re-namespaces for the target group', () => {
+    assert.ok(chunk.includes("tab.id.replace(/:g\\d+$/, '')"), 'strips the :gN suffix to get the base ID');
+    assert.ok(
+      chunk.includes('targetGroupId === 1 ? baseId : `${baseId}:g${targetGroupId}`'),
+      'matches the openFile/openDiff ID scheme (group 1 → base, group N → base:gN)'
+    );
+  });
+
+  it('assigns the recomputed ID to the tab and to the group active-tab reference', () => {
+    assert.ok(chunk.includes('tab.id = newTabId'), 'tab keeps a target-group-namespaced ID');
+    assert.ok(
+      chunk.includes('setActiveTabForGroup(targetGroupId, newTabId)'),
+      'active tab for the target group uses the new ID'
+    );
+    assert.ok(chunk.includes('activeTabId = newTabId'), 'global activeTabId uses the new ID');
+  });
+
+  it('dedupes when the target group already has the same file open', () => {
+    assert.ok(
+      chunk.includes('t.id === newTabId && t !== tab'),
+      'detects an existing tab with the recomputed ID'
+    );
+    assert.ok(
+      chunk.includes('activeTabId = existing.id'),
+      'focuses the existing tab instead of duplicating the ID'
+    );
+  });
+});

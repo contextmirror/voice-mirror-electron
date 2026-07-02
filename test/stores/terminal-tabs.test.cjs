@@ -94,7 +94,10 @@ describe('terminal-tabs.svelte.js -- smart numbering', () => {
   });
 
   it('fills gaps in terminal numbering', () => {
-    assert.ok(src.includes("match(/^Terminal (\\d+)$/)"), 'Should parse existing terminal numbers');
+    // Title regex is now built per-prefix (profile-aware) instead of the
+    // hardcoded /^Terminal (\d+)$/ that numbered all profiles together.
+    assert.ok(src.includes('inst.title.match(titleRe)'), 'Should parse existing terminal numbers');
+    assert.ok(src.includes('while (existing.has(num)) num++'), 'Should fill gaps');
   });
 
   it('uses Set for existing numbers', () => {
@@ -268,5 +271,46 @@ describe('terminal-tabs.svelte.js -- getDevServerTabByShellId method', () => {
   it('returns null when not found', () => {
     const block = src.split('getDevServerTabByShellId(')[1]?.split('\n    },')[0] || '';
     assert.ok(block.includes('|| null'), 'Should return null when not found');
+  });
+});
+
+describe('terminal-tabs.svelte.js -- legacy moveTab append branch', () => {
+  it('checks toIndex === -1 before <= 0 so the append case is reachable', () => {
+    const start = src.indexOf('moveTab(id, beforeId)');
+    assert.ok(start !== -1, 'legacy moveTab exists');
+    const chunk = src.slice(start, start + 900);
+    const negOne = chunk.indexOf('toIndex === -1');
+    const lte = chunk.indexOf('toIndex <= 0');
+    assert.ok(negOne !== -1 && lte !== -1, 'both branches exist');
+    assert.ok(negOne < lte, '-1 (not found → append) must be checked before <= 0, or it is swallowed');
+  });
+});
+
+describe('terminal-tabs.svelte.js -- previous-group focus after kill', () => {
+  it('clamps groupIdx - 1 into the filtered array in both kill paths', () => {
+    const matches = src.match(/Math\.max\(0, Math\.min\(groupIdx - 1, groups\.length - 1\)\)/g) || [];
+    assert.equal(matches.length, 2, 'killInstance and killGroup both use the clamped neighbor index');
+  });
+
+  it('no longer double-subtracts via prevIdx - 1', () => {
+    assert.ok(!src.includes('prevIdx > 0 ? prevIdx - 1 : 0'), 'killGroup double-subtract removed');
+    assert.ok(!src.includes('prevGroupIdx > 0 ? prevGroupIdx - 1 : 0'), 'killInstance double-subtract removed');
+  });
+});
+
+describe('terminal-tabs.svelte.js -- profile-scoped tab numbering', () => {
+  it('nextTerminalNumber accepts a profile-name prefix', () => {
+    assert.ok(src.includes('function nextTerminalNumber(profileName)'), 'takes the profile name');
+    assert.ok(src.includes("const prefix = profileName || 'Terminal'"), 'defaults to Terminal');
+  });
+
+  it('builds the title regex from the (escaped) profile prefix', () => {
+    assert.ok(src.includes('new RegExp(`^${prefix.replace('), 'regex is built from the prefix');
+  });
+
+  it('addGroup numbers within the selected profile so two "PowerShell" tabs differ', () => {
+    const start = src.indexOf('async addGroup');
+    const chunk = src.slice(start, start + 1400);
+    assert.ok(chunk.includes('nextTerminalNumber(profileName)'), 'passes the profile name to the numberer');
   });
 });

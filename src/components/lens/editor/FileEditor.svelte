@@ -76,8 +76,12 @@
 
   // Per-tab unsaved-edit cache. Switching the active tab destroys + recreates the
   // single CodeMirror view; without this, unsaved edits in the tab being left were
-  // silently discarded (re-read from disk on return). Keyed by tab.id.
+  // silently discarded (re-read from disk on return).
+  // Keyed by the group-agnostic BASE id (tab.id minus the `:gN` suffix): moving a
+  // tab between groups rewrites tab.id, and a group-keyed entry would be orphaned
+  // (then pruned), silently dropping the unsaved edits.
   const unsavedBuffers = new Map();
+  const bufferKey = (id) => id.replace(/:g\d+$/, '');
   let loadedTab = null;
 
   /**
@@ -285,7 +289,7 @@
       const content = view.state.doc.toString();
       await writeFile(tab.path, content, root);
       tabsStore.setDirty(tab.id, false);
-      unsavedBuffers.delete(tab.id); // saved → disk is now the source of truth
+      unsavedBuffers.delete(bufferKey(tab.id)); // saved → disk is now the source of truth
       lsp.saveFile(tab.path, content, root);
 
       // Refresh git gutter after save (file on disk changed)
@@ -293,6 +297,10 @@
       if (gp) gp.refreshOriginal();
     } catch (err) {
       console.error('[FileEditor] Save failed:', err);
+      toastStore.addToast({
+        message: `Save failed for ${tab.title || basename(tab.path)}: ${err?.message || err}`,
+        severity: 'error',
+      });
     }
   }
 
@@ -302,7 +310,9 @@
       const root = projectStore.root;
       const result = await readFile(currentPath, root);
       const data = unwrapResult(result);
-      if (!data?.content || data.content == null) return;
+      // == null (not falsy) — '' is a valid read of an externally-emptied file;
+      // treating it as a failure made the conflict banner's Reload a no-op.
+      if (data?.content == null) return;
       const currentContent = view.state.doc.toString();
       if (data.content !== currentContent) {
         isLiveReloading = true;
@@ -341,7 +351,16 @@
     if (view && loadedTab) {
       const prev = tabsStore.tabs.find((t) => t.id === loadedTab.id);
       if (prev?.dirty) {
-        unsavedBuffers.set(loadedTab.id, view.state.doc.toString());
+        unsavedBuffers.set(bufferKey(loadedTab.id), view.state.doc.toString());
+      }
+    }
+
+    // Prune cache entries whose tab no longer exists (closed with "Don't Save").
+    // Without this, reopening that file resurrects the discarded edits (and the
+    // re-seeded buffer is even marked clean, hiding the stale content).
+    for (const key of [...unsavedBuffers.keys()]) {
+      if (!tabsStore.tabs.some((t) => bufferKey(t.id) === key)) {
+        unsavedBuffers.delete(key);
       }
     }
 
@@ -411,9 +430,9 @@
       // Re-seed unsaved edits cached when this tab was last left; otherwise use
       // the freshly-read disk content. (Consume the cache entry on restore.)
       let initialDoc = data.content || '';
-      if (tab && unsavedBuffers.has(tab.id)) {
-        initialDoc = unsavedBuffers.get(tab.id);
-        unsavedBuffers.delete(tab.id);
+      if (tab && unsavedBuffers.has(bufferKey(tab.id))) {
+        initialDoc = unsavedBuffers.get(bufferKey(tab.id));
+        unsavedBuffers.delete(bufferKey(tab.id));
       }
       // Store content for markdown preview
       markdownContent = initialDoc;
@@ -616,6 +635,10 @@
       loading = false;
       await tick();
 
+      // Check again if tab changed while awaiting tick — without this, rapid
+      // tab switching stacks a second (stale) editor view onto the new tab.
+      if (filePath !== currentPath) return;
+
       if (editorEl) {
         view = new cm.EditorView({ state, parent: editorEl });
         loadedTab = tab; // the tab whose unsaved buffer this view now owns
@@ -730,8 +753,9 @@
   // Live file sync: reload editor content when the file changes on disk.
   $effect(() => {
     let unlisten;
+    let cancelled = false;
     (async () => {
-      unlisten = await listen('fs-file-changed', async (event) => {
+      const fn = await listen('fs-file-changed', async (event) => {
         const { files } = event.payload;
         if (!view || !currentPath || !files?.includes(currentPath)) return;
 
@@ -745,7 +769,8 @@
           const root = projectStore.root;
           const result = await readFile(currentPath, root);
           const data = unwrapResult(result);
-          if (!data?.content || data.content == null) return;
+          // == null (not falsy) — an externally-emptied file must still live-reload.
+          if (data?.content == null) return;
 
           const currentContent = view.state.doc.toString();
           if (data.content === currentContent) return;
@@ -760,9 +785,14 @@
           console.warn('[FileEditor] Live reload failed:', err);
         }
       });
+      // If cleanup ran before listen() resolved, unsubscribe immediately —
+      // otherwise the listener leaks forever with stale closures.
+      if (cancelled) { fn(); return; }
+      unlisten = fn;
     })();
 
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   });
@@ -771,10 +801,16 @@
   $effect(() => {
     if (!lsp.hasLsp || !currentPath) return;
     let unlisten;
+    let cancelled = false;
     (async () => {
-      unlisten = await listen('lsp-diagnostics', lsp.diagnosticListener(currentPath, () => view, cmCache));
+      const fn = await listen('lsp-diagnostics', lsp.diagnosticListener(currentPath, () => view, cmCache));
+      // If cleanup ran before listen() resolved (rapid file switching), the
+      // cleanup's unlisten?.() saw undefined — unsubscribe here instead, or the
+      // listener leaks forever with a stale currentPath and a live view ref.
+      if (cancelled) { fn(); return; }
+      unlisten = fn;
     })();
-    return () => { unlisten?.(); };
+    return () => { cancelled = true; unlisten?.(); };
   });
 
   /**

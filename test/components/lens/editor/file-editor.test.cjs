@@ -339,7 +339,7 @@ describe('FileEditor.svelte: conflict detection', () => {
 
   it('reloadFromDisk clears conflict and dirty flags', () => {
     const fnStart = src.indexOf('async function reloadFromDisk');
-    const chunk = src.slice(fnStart, fnStart + 700);
+    const chunk = src.slice(fnStart, fnStart + 1000);
     assert.ok(chunk.includes('conflictDetected = false'), 'Should clear conflict after reload');
     assert.ok(chunk.includes('setDirty'), 'Should clear dirty flag after reload');
   });
@@ -544,7 +544,7 @@ describe('FileEditor.svelte: markdown preview config', () => {
 
   it('resets showPreview to config default on file load', () => {
     const loadStart = src.indexOf('async function loadFile');
-    const chunk = src.slice(loadStart, loadStart + 1800);
+    const chunk = src.slice(loadStart, loadStart + 2600);
     assert.ok(
       chunk.includes('showPreview = markdownPreviewDefault'),
       'Should reset showPreview to config default when loading a new file'
@@ -738,5 +738,67 @@ describe('FileEditor — workspace state capture', () => {
 
   it('restores scroll from tab.scroll on mount', () => {
     assert.ok(src.includes('tab.scroll'), 'Should read tab.scroll');
+  });
+});
+
+describe('FileEditor: loadFile stale-path rechecks (rapid tab switching)', () => {
+  it('rechecks currentPath right after the disk read', () => {
+    assert.ok(
+      /data = unwrapResult\(result\);[\s\S]{0,200}?if \(filePath !== currentPath\) return;/.test(src),
+      'should bail out when the tab changed during the read'
+    );
+  });
+
+  it('rechecks currentPath after await tick() before creating the EditorView', () => {
+    assert.ok(
+      /loading = false;\s*\n\s*await tick\(\);[\s\S]{0,400}?if \(filePath !== currentPath\) return;[\s\S]{0,100}?if \(editorEl\)/.test(src),
+      'must bail out after tick() when the tab changed — otherwise a stale second editor view stacks onto the new tab'
+    );
+  });
+});
+
+describe('FileEditor: empty-file reloads (content == null, not falsy)', () => {
+  it('never treats empty-string content as a read failure', () => {
+    assert.ok(
+      !src.includes('!data?.content ||'),
+      'no falsy-content bailout should remain — an externally-emptied file must still reload'
+    );
+  });
+
+  it('uses == null checks in reloadFromDisk and the fs-file-changed handler', () => {
+    const matches = src.match(/if \(data\?\.content == null\) return;/g) || [];
+    assert.ok(matches.length >= 2, `both reload sites must use the == null check (found ${matches.length})`);
+  });
+});
+
+describe('FileEditor: save failure surfaces user feedback', () => {
+  it('save() catch shows an error toast, not just console.error', () => {
+    const start = src.indexOf('async function save()');
+    const end = src.indexOf('async function reloadFromDisk');
+    assert.ok(start !== -1 && end > start, 'save() and reloadFromDisk exist');
+    const chunk = src.slice(start, end);
+    assert.ok(chunk.includes('Save failed'), 'catch logs the failure');
+    assert.ok(chunk.includes('toastStore.addToast'), 'catch shows a toast');
+    assert.ok(chunk.includes("severity: 'error'"), 'toast severity is error');
+  });
+});
+
+describe('FileEditor: Tauri listen() unlisten race', () => {
+  it('fs-file-changed listen resolves through a cancelled flag', () => {
+    const start = src.indexOf("listen('fs-file-changed'");
+    assert.ok(start !== -1, 'fs-file-changed listener exists');
+    const chunk = src.slice(Math.max(0, start - 300), start + 2600);
+    assert.ok(chunk.includes('let cancelled = false'), 'effect declares a cancelled flag');
+    assert.ok(chunk.includes('if (cancelled) { fn(); return; }'), 'resolve-after-cleanup unsubscribes immediately');
+    assert.ok(chunk.includes('cancelled = true;'), 'cleanup sets the cancelled flag');
+  });
+
+  it('lsp-diagnostics listen resolves through a cancelled flag', () => {
+    const start = src.indexOf("listen('lsp-diagnostics'");
+    assert.ok(start !== -1, 'lsp-diagnostics listener exists');
+    const chunk = src.slice(Math.max(0, start - 400), start + 900);
+    assert.ok(chunk.includes('let cancelled = false'), 'effect declares a cancelled flag');
+    assert.ok(chunk.includes('if (cancelled) { fn(); return; }'), 'resolve-after-cleanup unsubscribes immediately');
+    assert.ok(chunk.includes('cancelled = true; unlisten?.();'), 'cleanup sets the flag and unsubscribes');
   });
 });

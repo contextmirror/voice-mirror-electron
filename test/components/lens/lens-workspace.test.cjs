@@ -378,3 +378,46 @@ describe('LensWorkspace.svelte', () => {
   });
 
 });
+
+describe('LensWorkspace: restored split ratios reach the panels', () => {
+  it('copies store ratios to locals when layoutStore.restoreCount changes', () => {
+    const start = src.indexOf('layoutStore.restoreCount');
+    assert.ok(start !== -1, 'effect keys on the restore counter');
+    const chunk = src.slice(start, start + 600);
+    assert.ok(chunk.includes('untrack(() => {'), 'ratio reads are untracked to avoid a feedback loop with the sync effects');
+    assert.ok(chunk.includes('chatRatio = layoutStore.chatRatio'), 'copies chatRatio');
+    assert.ok(chunk.includes('centerRatio = layoutStore.centerRatio'), 'copies centerRatio');
+    assert.ok(chunk.includes('previewRatio = layoutStore.previewRatio'), 'copies previewRatio');
+    assert.ok(chunk.includes('devicePreviewRatio = layoutStore.devicePreviewRatio'), 'copies devicePreviewRatio');
+  });
+
+  it('declares the store→local copy effect before the local→store sync effects', () => {
+    // Effects run in creation order at mount: if a restore landed pre-mount,
+    // the copy must happen before the sync effects push defaults into the store.
+    assert.ok(
+      src.indexOf('layoutStore.restoreCount') < src.indexOf('layoutStore.setChatRatio(chatRatio)'),
+      'copy effect must come first'
+    );
+  });
+
+  it('no longer relies on a one-shot onMount default-comparison read', () => {
+    assert.ok(!src.includes('layoutStore.chatRatio !== 0.18'), 'fragile default-comparison read removed');
+  });
+});
+
+describe('LensWorkspace: Tauri listen() unlisten race', () => {
+  it('element-inspector listens resolve through a cancelled flag', () => {
+    const start = src.indexOf("listen('element-selected'");
+    assert.ok(start !== -1);
+    const chunk = src.slice(Math.max(0, start - 500), start + 1600);
+    assert.ok(chunk.includes('let cancelled = false'), 'effect declares a cancelled flag');
+    assert.ok(chunk.includes('if (cancelled) { selected(); return; }'), 'element-selected resolve-after-cleanup unsubscribes');
+    assert.ok(chunk.includes('if (cancelled) { deselected(); return; }'), 'element-deselected resolve-after-cleanup unsubscribes');
+    assert.ok(chunk.includes('if (cancelled) { urlChanged(); return; }'), 'lens-url-changed resolve-after-cleanup unsubscribes');
+  });
+
+  it('sandbox listens resolve through a cancelled flag', () => {
+    assert.ok(src.includes('if (cancelled) { start(); return; }'), 'sandbox-start-request resolve-after-cleanup unsubscribes');
+    assert.ok(src.includes('if (cancelled) { attached(); return; }'), 'sandbox-attached resolve-after-cleanup unsubscribes');
+  });
+});

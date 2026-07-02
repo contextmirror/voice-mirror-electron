@@ -83,3 +83,14 @@ describe('App.svelte -- auto-start provider gating', () => {
     assert.ok(src.includes('providerStarted'), 'Should have providerStarted one-shot guard');
   });
 });
+
+describe('App.svelte -- lens-shortcut listen() unlisten race', () => {
+  it('resolves through a cancelled flag so cleanup-before-resolve does not leak the listener', () => {
+    const start = src.indexOf("listen('lens-shortcut'");
+    assert.ok(start !== -1, 'lens-shortcut listener exists');
+    const chunk = src.slice(Math.max(0, start - 300), start + 1800);
+    assert.ok(chunk.includes('let cancelled = false'), 'effect declares a cancelled flag');
+    assert.ok(chunk.includes('if (cancelled) { fn(); return; }'), 'resolve-after-cleanup unsubscribes immediately');
+    assert.ok(chunk.includes('cancelled = true; unlistenFn?.();'), 'cleanup sets the flag and unsubscribes');
+  });
+});

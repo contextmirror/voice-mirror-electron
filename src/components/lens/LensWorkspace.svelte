@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { listen } from '@tauri-apps/api/event';
   import LensToolbar from './LensToolbar.svelte';
   import DesignToolbar from './preview/DesignToolbar.svelte';
@@ -52,19 +52,30 @@
   let devicePreviewRatio = $state(0.5);    // editor vs device preview
   let appPreviewRatio = $state(0.6);       // editor vs app preview (live app)
 
+  // Copy store → local when a workspace-state restore lands. restoreState()
+  // runs AFTER mount, so a one-shot onMount read misses the persisted ratios
+  // (and the local→store sync effects below would immediately overwrite the
+  // store with defaults). Keyed on the restore counter with untracked ratio
+  // reads so this can't form a feedback loop with the sync effects.
+  // NOTE: this effect must stay ABOVE the sync effects — if a restore already
+  // happened before this component mounts, effects run in creation order, and
+  // the store values must be copied to the locals before the sync effects
+  // push the local defaults back into the store.
+  $effect(() => {
+    if (layoutStore.restoreCount === 0) return;
+    untrack(() => {
+      chatRatio = layoutStore.chatRatio;
+      centerRatio = layoutStore.centerRatio;
+      previewRatio = layoutStore.previewRatio;
+      devicePreviewRatio = layoutStore.devicePreviewRatio;
+    });
+  });
+
   // Sync local ratios → layout store (for workspace state persistence)
   $effect(() => { layoutStore.setChatRatio(chatRatio); });
   $effect(() => { layoutStore.setCenterRatio(centerRatio); });
   $effect(() => { layoutStore.setPreviewRatio(previewRatio); });
   $effect(() => { layoutStore.setDevicePreviewRatio(devicePreviewRatio); });
-
-  // Initialize ratios from layout store on mount (restored workspace state)
-  onMount(() => {
-    if (layoutStore.chatRatio !== 0.18) chatRatio = layoutStore.chatRatio;
-    if (layoutStore.centerRatio !== 0.75) centerRatio = layoutStore.centerRatio;
-    if (layoutStore.previewRatio !== 0.78) previewRatio = layoutStore.previewRatio;
-    if (layoutStore.devicePreviewRatio !== 0.5) devicePreviewRatio = layoutStore.devicePreviewRatio;
-  });
 
   // Browser is a fixed UI element, not a tab — follows the first (leftmost) group
   let showBrowser = $state(false);
@@ -249,25 +260,35 @@
     let unlistenSelected;
     let unlistenDeselected;
     let unlistenUrlChanged;
+    let cancelled = false;
 
     (async () => {
-      unlistenSelected = await listen('element-selected', async () => {
+      const selected = await listen('element-selected', async () => {
         const result = await designGetElement();
         if (result?.success && result.data) {
           inspectorData = result.data;
         }
       });
+      // If cleanup ran before listen() resolved, unsubscribe immediately —
+      // otherwise the listener leaks forever (cleanup saw undefined).
+      if (cancelled) { selected(); return; }
+      unlistenSelected = selected;
 
-      unlistenDeselected = await listen('element-deselected', () => {
+      const deselected = await listen('element-deselected', () => {
         inspectorData = null;
       });
+      if (cancelled) { deselected(); return; }
+      unlistenDeselected = deselected;
 
-      unlistenUrlChanged = await listen('lens-url-changed', () => {
+      const urlChanged = await listen('lens-url-changed', () => {
         inspectorData = null;
       });
+      if (cancelled) { urlChanged(); return; }
+      unlistenUrlChanged = urlChanged;
     })();
 
     return () => {
+      cancelled = true;
       unlistenSelected?.();
       unlistenDeselected?.();
       unlistenUrlChanged?.();
@@ -289,9 +310,10 @@
   $effect(() => {
     let unlistenStart;
     let unlistenAttached;
+    let cancelled = false;
 
     (async () => {
-      unlistenStart = await listen('sandbox-start-request', async (e) => {
+      const start = await listen('sandbox-start-request', async (e) => {
         const path = e?.payload?.path || projectStore.root || projectStore.activeProject?.path;
         if (!path) {
           console.warn('[sandbox] start requested but no project path available');
@@ -319,16 +341,24 @@
         }
       });
 
-      unlistenAttached = await listen('sandbox-attached', (e) => {
+      // If cleanup ran before listen() resolved, unsubscribe immediately —
+      // otherwise the listener leaks forever (cleanup saw undefined).
+      if (cancelled) { start(); return; }
+      unlistenStart = start;
+
+      const attached = await listen('sandbox-attached', (e) => {
         const port = e?.payload?.port;
         if (port) {
           showBrowser = false;
           sandboxPreviewStore.open(port, { attached: true });
         }
       });
+      if (cancelled) { attached(); return; }
+      unlistenAttached = attached;
     })();
 
     return () => {
+      cancelled = true;
       unlistenStart?.();
       unlistenAttached?.();
     };

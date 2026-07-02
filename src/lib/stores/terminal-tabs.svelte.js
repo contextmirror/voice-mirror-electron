@@ -58,14 +58,20 @@ function createTerminalTabsStore() {
   /**
    * Find the next available terminal number, filling gaps.
    * If Terminal 1 and Terminal 3 exist, returns 2.
+   * When a profile name is given, numbering is scoped to that profile's tabs
+   * (e.g. "PowerShell 1", "PowerShell 2") — otherwise two tabs of the same
+   * profile would both be numbered 1.
+   * @param {string|null} [profileName] - Profile name used as the title prefix
    */
-  function nextTerminalNumber() {
+  function nextTerminalNumber(profileName) {
     // Scan only active instances -- the single source of truth for terminal numbers.
     // Legacy tabs are derived from instances via syncLegacyTabs(), so checking
     // them separately would double-count and risk stale entries blocking reuse.
+    const prefix = profileName || 'Terminal';
+    const titleRe = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} (\\d+)$`);
     const existing = new Set(
       Object.values(instances).map(inst => {
-        const match = inst.title.match(/^Terminal (\d+)$/);
+        const match = inst.title.match(titleRe);
         return match ? parseInt(match[1]) : null;
       }).filter(n => n !== null)
     );
@@ -304,7 +310,9 @@ function createTerminalTabsStore() {
         const shellId = result.data.id;
         const profileName = result.data.profileName || null;
         const groupId = generateGroupId();
-        const tabNum = nextTerminalNumber();
+        // Number within the profile's own tabs (two "PowerShell" tabs must not
+        // both be "PowerShell 1")
+        const tabNum = nextTerminalNumber(profileName);
         // Use profile name for tab title when a profile was explicitly selected
         const title = profileName ? `${profileName} ${tabNum}` : `Terminal ${tabNum}`;
 
@@ -435,8 +443,9 @@ function createTerminalTabsStore() {
           // Focus previous group or null
           if (activeGroupId === groupId) {
             if (groups.length > 0) {
-              const prevGroupIdx = Math.min(groupIdx, groups.length - 1);
-              const prevGroup = groups[prevGroupIdx > 0 ? prevGroupIdx - 1 : 0] || groups[0];
+              // groupIdx was computed BEFORE the filter, so in the filtered
+              // array the previous neighbor sits at groupIdx - 1 (clamped).
+              const prevGroup = groups[Math.max(0, Math.min(groupIdx - 1, groups.length - 1))];
               activeGroupId = prevGroup.id;
               activeInstanceId = prevGroup.instanceIds[0] || null;
             } else {
@@ -536,8 +545,9 @@ function createTerminalTabsStore() {
       // Focus previous group
       if (activeGroupId === groupId) {
         if (groups.length > 0) {
-          const prevIdx = Math.min(groupIdx, groups.length - 1);
-          const prevGroup = groups[prevIdx > 0 ? prevIdx - 1 : 0] || groups[0];
+          // groupIdx was computed BEFORE the filter, so in the filtered array
+          // the previous neighbor sits at groupIdx - 1 (clamped).
+          const prevGroup = groups[Math.max(0, Math.min(groupIdx - 1, groups.length - 1))];
           activeGroupId = prevGroup.id;
           activeInstanceId = prevGroup.instanceIds[0] || null;
         } else {
@@ -854,10 +864,12 @@ function createTerminalTabsStore() {
         tabs.push(tab);
       } else {
         const toIndex = tabs.findIndex(t => t.id === beforeId);
-        if (toIndex <= 0) {
-          tabs.splice(1, 0, tab);
-        } else if (toIndex === -1) {
+        // Check -1 (not found → append) BEFORE <= 0, or it gets swallowed by
+        // the <= 0 branch and the tab lands right after the AI tab instead.
+        if (toIndex === -1) {
           tabs.push(tab);
+        } else if (toIndex <= 0) {
+          tabs.splice(1, 0, tab);
         } else {
           tabs.splice(toIndex, 0, tab);
         }

@@ -388,6 +388,7 @@
   // this Tauri event.
   $effect(() => {
     let unlistenFn;
+    let cancelled = false;
     listen('lens-shortcut', (event) => {
       const key = event.payload?.key;
       if (key === 'F1') { commandPaletteMode = 'commands'; commandPaletteVisible = true; }
@@ -407,8 +408,13 @@
       else if (key?.startsWith('menu-')) {
         window.dispatchEvent(new CustomEvent('lens-shortcut', { detail: { key } }));
       }
-    }).then(fn => { unlistenFn = fn; });
-    return () => { unlistenFn?.(); };
+    }).then(fn => {
+      // If cleanup ran before listen() resolved, unsubscribe immediately —
+      // otherwise the listener leaks forever (cleanup saw undefined).
+      if (cancelled) { fn(); return; }
+      unlistenFn = fn;
+    });
+    return () => { cancelled = true; unlistenFn?.(); };
   });
 
   // Listen for status bar "Go to Line" click (R1 cursor position item)

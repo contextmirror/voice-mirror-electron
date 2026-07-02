@@ -72,3 +72,24 @@ describe('output.svelte.js -- project channels', () => {
     assert.ok(matches && matches.length >= 3, 'Should cap entries in at least 3 places (system + 2 project listeners)');
   });
 });
+
+describe('output.svelte.js -- console message routing', () => {
+  it('routes lens-console-message to the ACTIVE project channel', () => {
+    assert.ok(src.includes("import { projectStore } from './project.svelte.js'"), 'imports projectStore');
+    const start = src.indexOf("listen('lens-console-message'");
+    assert.ok(start !== -1, 'lens-console-message listener exists');
+    const chunk = src.slice(start, start + 1800);
+    assert.ok(chunk.includes('projectStore.root'), 'reads the active project root');
+    assert.ok(chunk.includes('c.projectPath === activeRoot'), 'matches the channel by project path');
+  });
+
+  it('falls back to the first registered channel when the active project has none', () => {
+    const start = src.indexOf("listen('lens-console-message'");
+    const chunk = src.slice(start, start + 1800);
+    assert.ok(chunk.includes('|| projectChannelList[0]'), 'keeps the first-channel fallback');
+  });
+
+  it('drops the first-channel-only TODO', () => {
+    assert.ok(!src.includes('TODO: route based on URL/port'), 'TODO resolved');
+  });
+});

@@ -304,9 +304,20 @@ describe('dev-server-manager.svelte.js -- crash detection', () => {
     assert.ok(block.includes('crashCount++'), 'Should increment crash count');
   });
 
-  it('sets status to crashed', () => {
+  it('sets status to crashed (unless a non-running server exited cleanly)', () => {
     const block = src.split('function handleShellExit')[1]?.split('\n  function')[0] || '';
-    assert.ok(block.includes("status: 'crashed'"), 'Should set status to crashed');
+    assert.ok(
+      block.includes('const isCrash = wasRunning || !cleanExit'),
+      'Should classify the exit (crash vs clean stop of a non-running server)'
+    );
+    assert.ok(
+      block.includes("status: isCrash ? 'crashed' : 'stopped'"),
+      'Should set crashed for real crashes, stopped for a clean exit of an idle server'
+    );
+    assert.ok(
+      block.includes('lastCrashTime: isCrash ? now : lastCrashTime'),
+      'A clean stop must not stamp lastCrashTime (would feed the crash-loop window)'
+    );
   });
 
   it('detects crash loops after CRASH_LOOP_COUNT', () => {
@@ -365,15 +376,14 @@ describe('dev-server-manager.svelte.js -- idle timeout and LRU eviction', () => 
     assert.ok(src.includes('function countRunning'), 'Should have countRunning function');
   });
 
-  it('countRunning includes running and idle statuses (not starting)', () => {
+  it('countRunning includes running, idle AND starting statuses', () => {
+    // startServer marks the new server 'starting' BEFORE calling evictIfNeeded,
+    // so 'starting' must count toward MAX_CONCURRENT or concurrent launches
+    // blow past the cap.
     const block = src.split('function countRunning')[1]?.split('\n  function')[0] || '';
     assert.ok(
-      block.includes("'running'") && block.includes("'idle'"),
-      'Should count running and idle servers'
-    );
-    assert.ok(
-      !block.includes("'starting'"),
-      'Should NOT count starting servers (they have not consumed resources yet)'
+      block.includes("'running'") && block.includes("'idle'") && block.includes("'starting'"),
+      'Should count running, idle and starting servers'
     );
   });
 });
@@ -612,5 +622,25 @@ describe('dev-server-manager.svelte.js -- sandbox CDP', () => {
     // Appears in stopServer and handleShellExit.
     const occurrences = (src.match(/sandboxClearActivePort\(\)/g) || []).length;
     assert.ok(occurrences >= 2, 'Should clear the active port on both stop and crash paths');
+  });
+});
+
+describe('dev-server-manager.svelte.js -- MAX_CONCURRENT accounting', () => {
+  it("countRunning counts 'starting' servers so concurrent launches respect the cap", () => {
+    const start = src.indexOf('function countRunning');
+    const chunk = src.slice(start, start + 700);
+    assert.ok(chunk.includes("state.status === 'starting'"), 'starting servers count toward MAX_CONCURRENT');
+  });
+});
+
+describe('dev-server-manager.svelte.js -- shell exit of a non-running server', () => {
+  it("records a clean exit while not running/starting as 'stopped', not 'crashed'", () => {
+    const start = src.indexOf('function handleShellExit');
+    const chunk = src.slice(start, start + 2600);
+    assert.ok(chunk.includes('exitCode === undefined || exitCode === 0'), 'detects a clean exit');
+    assert.ok(
+      chunk.includes("status: isCrash ? 'crashed' : 'stopped'"),
+      'idle + clean exit must not feed false crash diagnostics'
+    );
   });
 });

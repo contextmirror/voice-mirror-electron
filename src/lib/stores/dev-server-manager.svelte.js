@@ -108,7 +108,10 @@ function createDevServerManager() {
   function countRunning() {
     let count = 0;
     for (const [, state] of servers) {
-      if (state.status === 'running' || state.status === 'idle') {
+      // 'starting' must count too: startServer marks the new server 'starting'
+      // BEFORE calling evictIfNeeded, so excluding it let concurrent launches
+      // exceed MAX_CONCURRENT.
+      if (state.status === 'running' || state.status === 'idle' || state.status === 'starting') {
         count++;
       }
     }
@@ -595,11 +598,18 @@ function createDevServerManager() {
 
     const crashLoopDetected = crashCount >= CRASH_LOOP_COUNT;
 
+    // An idle (or otherwise not running/starting) server exiting cleanly is a
+    // normal shutdown, not a crash — recording it as 'crashed' fed false
+    // diagnostics (crashedServers list, crash toasts on the next launch).
+    const cleanExit = exitCode === undefined || exitCode === 0;
+    const isCrash = wasRunning || !cleanExit;
     updateState(crashedProject, {
-      status: 'crashed',
+      status: isCrash ? 'crashed' : 'stopped',
       shellId: null,
       crashCount,
-      lastCrashTime: now,
+      // Only stamp crash time on an actual crash — a clean stop must not
+      // contribute to the crash-loop window.
+      lastCrashTime: isCrash ? now : lastCrashTime,
       crashLoopDetected,
     });
 

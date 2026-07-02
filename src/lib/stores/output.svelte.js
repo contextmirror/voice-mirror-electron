@@ -11,6 +11,7 @@
 
 import { listen } from '@tauri-apps/api/event';
 import { getOutputLogs, registerProjectChannel as apiRegister, unregisterProjectChannel as apiUnregister } from '../api.js';
+import { projectStore } from './project.svelte.js';
 
 const MAX_ENTRIES = 2000;
 const SYSTEM_CHANNELS = ['app', 'cli', 'voice', 'mcp', 'browser', 'frontend', 'preview'];
@@ -143,8 +144,15 @@ async function startListening() {
     // but store the canonical uppercase level for consistency + counts).
     const normLevel = String(level).toUpperCase();
 
-    // Route to the active project channel (first one, or based on current project)
-    const activeProject = projectChannelList[0]; // TODO: route based on URL/port
+    // Route to the ACTIVE project's channel. The lens preview shows the active
+    // project's dev server, and the `lens-console-message` payload carries no
+    // URL/port metadata (see lib.rs / webview_setup.rs — it emits only
+    // { level, message }), so the active project is the best available match.
+    // Fall back to the first registered channel if the active project has none.
+    const activeRoot = projectStore.root;
+    const activeProject =
+      (activeRoot && projectChannelList.find(c => c.projectPath === activeRoot))
+      || projectChannelList[0];
     if (activeProject) {
       const entry = {
         id: Date.now() + Math.random(),
