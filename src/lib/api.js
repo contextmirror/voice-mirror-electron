@@ -365,8 +365,8 @@ export async function scanCliTools() {
 }
 
 /**
- * Check npm package versions (installed vs latest) and system tool status.
- * Returns { npm: { ghosttyWeb, opencode, claudeCode }, system: { node, ollama, ffmpeg } }
+ * Check system tool status (installed vs latest where updatable).
+ * Returns { system: { node, ollama, ffmpeg, claude, opencode } }
  */
 export async function checkNpmVersions() {
   return invoke('check_npm_versions');
@@ -374,7 +374,7 @@ export async function checkNpmVersions() {
 
 /**
  * Update (install) a global npm package to latest.
- * Only whitelisted packages are allowed: ghostty-web, opencode, @anthropic-ai/claude-code
+ * Only whitelisted packages are allowed: @anthropic-ai/claude-code, opencode
  */
 export async function updateNpmPackage(pkg) {
   return invoke('update_npm_package', { package: pkg });

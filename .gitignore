@@ -58,7 +58,12 @@ tools/espeak-ng/
 
 # Local-only
 CLAUDE.md
-scripts/
 docs/internal/
+
+# Machine-specific launchers/tools (the release + CDP scripts ARE committed)
+scripts/launch-dev.vbs
+scripts/gen-icons.py
+scripts/demo-take.ps1
+scripts/record-demo.ps1
 .problems.txt
 .firecrawl/

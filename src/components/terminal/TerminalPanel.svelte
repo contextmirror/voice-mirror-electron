@@ -7,7 +7,6 @@
    * terminalTabsStore for group/instance state management.
    *
    * Sub-components:
-   * - TerminalTabStrip: group tab iteration and switching
    * - TerminalActionBar: action buttons with dropdown menus
    * - TerminalSidebar: instance list with tree characters
    * - TerminalContextMenu: right-click menu for instances

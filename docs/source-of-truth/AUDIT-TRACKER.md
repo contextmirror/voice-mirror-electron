@@ -25,7 +25,7 @@
 | npm dependencies (93 packages) | Done | 2026-03-11 | All permissive (MIT, Apache-2.0, BSD, ISC) |
 | Cargo dependencies (698 crates) | Done | 2026-03-11 | 12 MPL-2.0 (file-level, unmodified — no obligation) |
 | CodeMirror 6 deep-dive (32 packages) | Done | 2026-03-11 | All MIT |
-| Vendored/copied code | Done | 2026-03-11 | File icons (MIT, attributed), ghostty-web (MIT) |
+| Vendored/copied code | Done | 2026-03-11 | File icons (MIT, attributed), ghostty-web (MIT; **removed 2026-07-02** — migrated to xterm.js) |
 | Project LICENSE file | Done | 2026-03-11 | MIT, Copyright 2026 Context Mirror |
 
 **Action items from last run:**
@@ -188,7 +188,7 @@
 | Production bundle | Done | 2026-03-11 | **2,319 KB JS** (706 KB gzip), 257 KB CSS, 423 KB WASM, 956 KB SVG sprite |
 | Main chunk | **WARNING** | 2026-03-11 | 1,959 KB — exceeds Vite's 500 KB warning |
 | CodeMirror + Lezer | 1,630 KB | 2026-03-11 | 38% of bundle — largest contributor |
-| ghostty-web | 688 KB | 2026-03-11 | 16% of bundle — terminal renderer |
+| ghostty-web | 688 KB | 2026-03-11 | 16% of bundle — terminal renderer (**removed 2026-07-02**; replaced by @xterm/xterm) |
 | Markdown + highlight.js + DOMPurify | 135 KB | 2026-03-11 | 3% — hover tooltips |
 
 **Top modules by size:**
