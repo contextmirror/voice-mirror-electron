@@ -1,7 +1,7 @@
 {
   "name": "voice-mirror",
   "private": true,
-  "version": "0.13.0-nightly.2",
+  "version": "0.13.0-nightly.3",
   "description": "Voice-native IDE — build desktop apps and websites by voice, watch them render live, and let the in-app AI see and drive the running app",
   "license": "MIT",
   "type": "module",

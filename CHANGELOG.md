@@ -17,6 +17,13 @@ The 0.13 nightly line, dogfooded via the rolling `nightly` GitHub pre-release.
 - **Unicode 11 widths** — emoji-heavy TUIs no longer leave stale glyphs on redraw
 - **Resize polish** — no more black box / thin line while resizing (stock xterm.css hard-codes #000 backgrounds); no more canvas-wipe flicker (fit via proposeDimensions + resize); terminal panel has a sane minimum height
 
+### Changed — Codebase deep-clean (nightly.3)
+- **28 audited logic bugs fixed** (14 frontend + 14 Rust), the standouts:
+  - Editor data-loss fixes: discarded "Don't Save" edits no longer resurrect; empty-on-disk files reload; save failures toast; pane sizes actually persist
+  - Voice-loop resilience: `voice_listen` falls back to file polling on a dead pipe, and the MCP binary reconnects with backoff — an app restart no longer silences the AI
+  - No more UI freezes on provider switch / terminal kill (sync commands made async); PTT survives a busy main thread (hook callbacks no longer emit inline); no orphaned node processes on provider switch
+- **Professional layout**: `components/lens/` split into 8 subfolders, `lib/` grouped, `test/` mirrors `src/`, release scripts committed, docs consolidated + de-staled, CHANGELOG backfilled, dead code removed
+
 ### Fixed
 - Updater channel indicator is honest (was a fake Stable/Beta toggle)
 - Inactive Lens tab webviews park off-screen — popup tabs no longer cover the panel
