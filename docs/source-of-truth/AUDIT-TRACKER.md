@@ -10,9 +10,9 @@
 > (now **231 Tauri commands**, 102 components, 31 stores). A fresh pre-launch
 > sweep was done separately — its blockers/highs (CUDA-forced release build, MCP
 > bundling, CDP :9222 exposure, named-pipe ACL, dump secrets, the window-follow
-> freeze, LSP multibyte-rename panic) live in
-> [`docs/internal/LAUNCH-READINESS.md`](../internal/LAUNCH-READINESS.md), which is
-> the authoritative launch checklist. Re-run the sections here before release.
+> freeze, LSP multibyte-rename panic) live in the internal launch-readiness notes
+> (`docs/internal/`, local only — not in the public repo), which are the
+> authoritative launch checklist. Re-run the sections here before release.
 
 ---
 

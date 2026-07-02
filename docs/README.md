@@ -10,9 +10,8 @@ Project documentation for Voice Mirror.
 docs/
 ├── source-of-truth/   Living decision-making docs (architecture, audits, gap analyses)
 ├── guides/            User- and contributor-facing setup and feature docs
-├── implementation/    Design notes for implemented subsystems
-├── internal/          Internal roadmaps and launch tracking
-├── archive/           Historical designs and completed-plan specs
+├── internal/          Internal roadmaps and launch tracking (gitignored — local only)
+├── archive/           Historical designs, audits, and completed-plan specs
 ├── ROADMAP.md         High-level project roadmap
 ├── CODE-AUDIT.md      Codebase audit notes
 └── README.md          This file
@@ -27,9 +26,7 @@ Living documents that track the current state of the project and drive decisions
 | [ARCHITECTURE.md](source-of-truth/ARCHITECTURE.md) | System overview, component diagram, data flow |
 | [BROWSER-CONTROL.md](source-of-truth/BROWSER-CONTROL.md) | Browser/app control via the native WebView2 bridge |
 | [IDE-GAPS.md](source-of-truth/IDE-GAPS.md) | IDE feature gap analysis vs VS Code / Zed |
-| [UX-AUDIT.md](source-of-truth/UX-AUDIT.md) | UX completeness audit — context menus, status bar, tabs, editor, shortcuts |
-| [LSP-GAP.md](source-of-truth/LSP-GAP.md) | LSP feature gap tracking |
-| [LSP-WIRING-AUDIT.md](source-of-truth/LSP-WIRING-AUDIT.md) | Audit of how LSP is wired through the Lens editor |
+| [LSP.md](source-of-truth/LSP.md) | LSP architecture, 37/37 feature matrix, and wiring pointers |
 | [AUDIT-TRACKER.md](source-of-truth/AUDIT-TRACKER.md) | Cross-audit tracker / status roll-up |
 
 ## Guides
@@ -43,26 +40,13 @@ How-to docs for getting started and using features.
 | [VOICE-PIPELINE.md](guides/VOICE-PIPELINE.md) | Voice pipeline: STT (Whisper), TTS (Kokoro / Edge), VAD |
 | [THEME-SYSTEM.md](guides/THEME-SYSTEM.md) | Theme presets, color derivation, custom themes |
 
-## Implementation
-
-Design notes for subsystems that have been built.
-
-| File | Description |
-|------|-------------|
-| [LSP-DESIGN.md](implementation/LSP-DESIGN.md) | LSP integration design, tiers, and Zed comparison |
-
 ## Internal
 
-Roadmaps and launch tracking maintained by the core team.
-
-| File | Description |
-|------|-------------|
-| [LAUNCH-READINESS.md](internal/LAUNCH-READINESS.md) | Windows-first public launch readiness tracking |
-| [PREVIEW-LIFECYCLE.md](internal/PREVIEW-LIFECYCLE.md) | Live App Preview lifecycle architecture & roadmap |
+`docs/internal/` holds roadmaps and launch tracking maintained by the core team (launch-readiness checklist, App Preview lifecycle roadmap). It is **gitignored** — the files exist only in local working copies, not in the public repo.
 
 ## Archive
 
-Historical design specs kept for their non-obvious rationale (WGC/D3D11 window capture, the MCP handshake, WebView2 download/inspector gotchas, Python dev-server/venv detection, async-command performance, workspace-state persistence, LSP gap-closure) plus older scoping notes. Completed step-by-step implementation plans were removed once shipped; the surviving specs hold knowledge worth keeping. Browse the directory for the full set.
+Historical design specs kept for their non-obvious rationale (WGC/D3D11 window capture, the MCP handshake, WebView2 download/inspector gotchas, Python dev-server/venv detection, async-command performance, workspace-state persistence) plus older scoping notes and superseded audits — including the LSP docs consolidated into `source-of-truth/LSP.md` (gap analysis, wiring audit, original design) and the 2026-03-04 UX audit snapshot. Completed step-by-step implementation plans were removed once shipped; the surviving specs hold knowledge worth keeping. Browse the directory for the full set.
 
 ## Also See
 
@@ -78,6 +62,6 @@ Historical design specs kept for their non-obvious rationale (WGC/D3D11 window c
 3. **guides/CONFIGURATION.md** — settings, AI providers, voice engine
 4. **guides/VOICE-PIPELINE.md** — the Rust-native STT/TTS/VAD pipeline
 5. **source-of-truth/BROWSER-CONTROL.md** — native WebView2 browser/app integration
-6. **internal/PREVIEW-LIFECYCLE.md** — how the live App Preview tracks and drives the running app
-7. **implementation/LSP-DESIGN.md** — if working on the Lens editor
-8. **source-of-truth/IDE-GAPS.md** + **source-of-truth/UX-AUDIT.md** — feature and UX gap tracking
+6. the internal App Preview lifecycle notes (`docs/internal/`, local only) — how the live App Preview tracks and drives the running app
+7. **source-of-truth/LSP.md** — if working on the Lens editor
+8. **source-of-truth/IDE-GAPS.md** — feature and UX gap tracking

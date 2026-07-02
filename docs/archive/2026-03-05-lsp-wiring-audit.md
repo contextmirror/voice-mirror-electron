@@ -1,5 +1,9 @@
 # LSP Frontend Wiring Audit
 
+> **ARCHIVED 2026-07-02** — superseded by [`docs/source-of-truth/LSP.md`](../source-of-truth/LSP.md).
+> Note: file paths below predate the Lens component split (editor components now
+> live in `src/components/lens/editor/`, editor libs in `src/lib/editor/`).
+>
 > Source of truth for LSP backend-to-frontend wiring completeness.
 > Last updated: 2026-03-05 · verified current 2026-06-29 (`commands/lsp.rs` still 45 commands)
 
@@ -125,4 +129,4 @@ Steps 5-8 are where gaps silently occur — the backend works, the API exists, b
 - Editor LSP: `src/lib/editor-lsp.svelte.js` (factory + extensions)
 - Editor extensions: `src/lib/editor-extensions.js` (CM wiring)
 - FileEditor: `src/components/lens/FileEditor.svelte` (handler wiring)
-- Feature tracking: `docs/source-of-truth/LSP-GAP.md`
+- Feature tracking: `2026-03-05-lsp-gap.md` (archived alongside this doc; current doc is `docs/source-of-truth/LSP.md`)

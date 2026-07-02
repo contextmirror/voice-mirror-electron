@@ -1,6 +1,6 @@
 # Voice Mirror — Roadmap
 
-Voice Mirror is a voice-controlled AI agent IDE for your desktop. It starts as an always-on-top overlay with an embedded AI-native code editor, browser, and terminal — then grows into a cross-platform server and mobile app.
+Voice Mirror is a **voice-native IDE**: you build real desktop apps and websites by voice, watch them render live in the in-app App Preview, and the in-app AI can see and drive the running app — the **voice → build → see → fix loop**. It starts as a Windows-first desktop app, then grows into a cross-platform server and mobile app.
 
 ---
 
@@ -23,8 +23,8 @@ Voice Mirror is a fully functional AI-native IDE built on **Tauri 2 + Rust + Sve
 > **Launch status:** Windows-first by decision (2026-06-29). The see-and-drive
 > loop, native-app driving, and push-to-talk/dictation are Windows-only for v1;
 > mac/Linux get a basic build. Remaining blockers (CUDA-forced release build, MCP
-> binary bundling, code signing, updater) are tracked in
-> [`docs/internal/LAUNCH-READINESS.md`](internal/LAUNCH-READINESS.md).
+> binary bundling, code signing, updater) are tracked in the internal
+> launch-readiness notes (`docs/internal/`, local only — not in the public repo).
 
 See `docs/source-of-truth/IDE-GAPS.md` for detailed feature comparison vs VS Code / Zed / Cursor.
 

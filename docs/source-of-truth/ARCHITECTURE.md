@@ -1,6 +1,6 @@
 # Voice Mirror — Architecture
 
-> Voice Mirror is a **Windows-first** voice-native IDE. The cross-platform basics (chat, editor, terminal, full-screen capture) work everywhere, but the see-and-drive App Preview / native-app driving, push-to-talk/dictation injection, and WebView2 browser bridge are **Windows-only** for v1. Launch gaps are tracked in [`docs/internal/LAUNCH-READINESS.md`](../internal/LAUNCH-READINESS.md).
+> Voice Mirror is a **Windows-first** voice-native IDE. The cross-platform basics (chat, editor, terminal, full-screen capture) work everywhere, but the see-and-drive App Preview / native-app driving, push-to-talk/dictation injection, and WebView2 browser bridge are **Windows-only** for v1. Launch gaps are tracked in the internal launch-readiness notes (`docs/internal/`, local only — not in the public repo).
 >
 > Last verified against code: 2026-06-29.
 
@@ -251,7 +251,7 @@ Split into `navigation`, `tabs`, `find`, `zoom`, `device_preview`, `downloads`,
 
 ### commands/lsp.rs (45 commands)
 
-The 15 most-used are listed below; the full set (45) covers the entire LSP feature matrix — type/declaration/implementation navigation, document highlight, inlay hints, code lens, semantic tokens, document colors, folding ranges, workspace symbols, call/type hierarchy, selection range, on-type/range formatting, linked editing, server management, etc. See [`LSP-GAP.md`](LSP-GAP.md) and [`LSP-WIRING-AUDIT.md`](LSP-WIRING-AUDIT.md).
+The 15 most-used are listed below; the full set (45) covers the entire LSP feature matrix — type/declaration/implementation navigation, document highlight, inlay hints, code lens, semantic tokens, document colors, folding ranges, workspace symbols, call/type hierarchy, selection range, on-type/range formatting, linked editing, server management, etc. See [`LSP.md`](LSP.md).
 
 | Command | Purpose |
 |---------|---------|

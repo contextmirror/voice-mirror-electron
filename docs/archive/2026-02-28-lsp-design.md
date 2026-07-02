@@ -1,5 +1,10 @@
 # LSP Integration — Design & Status
 
+> **ARCHIVED 2026-07-02** — superseded by [`docs/source-of-truth/LSP.md`](../source-of-truth/LSP.md).
+> Kept for the protocol explainer, data flows, design decisions, and the Zed comparison.
+> File paths below predate the Lens component split (editor components now live in
+> `src/components/lens/editor/`, editor libs in `src/lib/editor/`).
+>
 > Internal design doc — **architecture / data-flow reference**.
 >
 > **Feature-status note (2026-06-29):** This doc's original "Not Implemented" /
@@ -8,9 +13,11 @@
 > complete) — inlay hints, workspace symbols, semantic tokens, code lens,
 > document colors, folding ranges, type/declaration/implementation navigation,
 > linked editing, on-type/range formatting, call/type hierarchy, selection
-> range, and pull diagnostics are all shipped. The **current source of truth for
-> feature status is [`docs/source-of-truth/LSP-GAP.md`](../source-of-truth/LSP-GAP.md)**
-> and [`LSP-WIRING-AUDIT.md`](../source-of-truth/LSP-WIRING-AUDIT.md). The
+> range, and pull diagnostics are all shipped. The current source of truth for
+> feature status is [`docs/source-of-truth/LSP.md`](../source-of-truth/LSP.md)
+> (which consolidated the former `LSP-GAP.md` and `LSP-WIRING-AUDIT.md`, archived
+> as [`2026-03-05-lsp-gap.md`](2026-03-05-lsp-gap.md) and
+> [`2026-03-05-lsp-wiring-audit.md`](2026-03-05-lsp-wiring-audit.md)). The
 > command count is now **45** (not 15/24). The architecture, data-flow, and
 > design-decision sections below remain accurate.
 
@@ -93,7 +100,7 @@ Content-Length: 52\r\n
 ### Now Implemented (formerly "Not Implemented" — closed in Waves 4–6)
 
 Every capability previously listed here as unsupported has since shipped. They
-are kept below for historical context; see [`LSP-GAP.md`](../source-of-truth/LSP-GAP.md)
+are kept below for historical context; see [`docs/source-of-truth/LSP.md`](../source-of-truth/LSP.md)
 for the authoritative status and CodeMirror wiring details.
 
 | Feature | LSP Method | Status |
@@ -440,8 +447,8 @@ All 5 high-value features from the gap analysis have been implemented:
 
 > These were the candidates at the time of the Zed comparison. All four (and the
 > "deep polish" set below) have since been implemented — see the top-of-doc note
-> and [`LSP-GAP.md`](../source-of-truth/LSP-GAP.md). The Zed feature table above
-> still shows the historical "No" column; treat `LSP-GAP.md` as authoritative.
+> and [`docs/source-of-truth/LSP.md`](../source-of-truth/LSP.md). The Zed feature table above
+> still shows the historical "No" column; treat `LSP.md` as authoritative.
 
 Ranked by value for Voice Mirror (all now done):
 
