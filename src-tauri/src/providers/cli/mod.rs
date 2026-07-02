@@ -418,11 +418,13 @@ impl Provider for CliProvider {
             let ready_delay_timer = self.cli_config.ready_delay_ms;
             std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_secs(8));
+                // swap() is the gate: exactly ONE of the safety-net timer and
+                // the reader thread wins the false->true transition, so Ready
+                // can't be emitted (and the queue drained) twice when both race.
                 if gen_timer.load(Ordering::SeqCst) == my_gen
-                    && !is_ready_timer.load(Ordering::SeqCst)
+                    && !is_ready_timer.swap(true, Ordering::SeqCst)
                 {
                     info!("{} TUI ready forced by safety-net timer (8s)", display_timer);
-                    is_ready_timer.store(true, Ordering::SeqCst);
                     let _ = event_tx_timer.send(ProviderEvent::Ready);
 
                     // Drain ready queue (same logic as reader thread)
@@ -515,7 +517,11 @@ impl Provider for CliProvider {
                                 || clean.len() > 8000 // Size fallback: 8KB+ of clean output
                                 || timed_out;
 
-                            if has_prompt {
+                            // swap() gate (matches the safety-net timer): only the
+                            // side that wins the false->true transition emits Ready
+                            // and drains the queue — prevents a double Ready when
+                            // the timer and this thread race.
+                            if has_prompt && !is_ready.swap(true, Ordering::SeqCst) {
                                 let reason = if ready_patterns.iter().any(|p| clean.contains(p)) {
                                     "pattern match"
                                 } else if timed_out {
@@ -527,7 +533,6 @@ impl Provider for CliProvider {
                                     "{} TUI ready detected via {} (buffer {} bytes, clean {} bytes)",
                                     display_name, reason, output_buffer.len(), clean.len()
                                 );
-                                is_ready.store(true, Ordering::SeqCst);
                                 output_buffer.clear();
                                 let _ = event_tx.send(ProviderEvent::Ready);
 
@@ -557,7 +562,7 @@ impl Provider for CliProvider {
                                             let clean = text.trim_end_matches(['\r', '\n']);
                                             info!("Sending ready-queue item ({} bytes): {}...",
                                                 clean.len(),
-                                                &clean[..clean.len().min(60)]);
+                                                crate::util::truncate_utf8(clean, 60));
                                             let _ = w.write_all(clean.as_bytes());
                                             let _ = w.flush();
                                             // Give the TUI time to process the text before
@@ -631,6 +636,18 @@ impl Provider for CliProvider {
 
         // Kill the child process
         if let Some(mut child) = self.child.take() {
+            // On Windows, kill the entire process tree FIRST: `child.kill()`
+            // TerminateProcess-es only the top-level cmd.exe wrapper (claude.cmd),
+            // leaving the actual node process (and its children) orphaned and
+            // still holding the MCP session. Mirrors TerminalManager::kill.
+            #[cfg(windows)]
+            if let Some(pid) = child.process_id() {
+                info!("Killing provider process tree for PID {}", pid);
+                let mut kill_cmd = std::process::Command::new("taskkill");
+                kill_cmd.args(["/PID", &pid.to_string(), "/T", "/F"]);
+                crate::util::hidden(&mut kill_cmd);
+                let _ = kill_cmd.output();
+            }
             let _ = child.kill();
             let _ = child.wait();
         }
@@ -648,12 +665,16 @@ impl Provider for CliProvider {
             // TUI apps need a delay between text and carriage return —
             // they must process/render the text before receiving Enter.
             std::thread::spawn(move || {
+                // Hold ONE writer-lock guard across text + delay + Enter.
+                // The lock deliberately spans the 200ms sleep: it makes each
+                // send atomic, so two sends within 200ms can't interleave as
+                // "textA textB \r \r" (which submits a mangled first message
+                // and an empty second one). Sends are small and infrequent —
+                // serializing them is exactly the point.
                 if let Ok(mut w) = writer.lock() {
                     let _ = w.write_all(text.as_bytes());
                     let _ = w.flush();
-                }
-                std::thread::sleep(std::time::Duration::from_millis(200));
-                if let Ok(mut w) = writer.lock() {
+                    std::thread::sleep(std::time::Duration::from_millis(200));
                     let _ = w.write_all(b"\r");
                     let _ = w.flush();
                 }

@@ -226,6 +226,19 @@ fn dispatch_message(msg: McpToApp, app_handle: &AppHandle) {
             message_id,
             timestamp,
         } => {
+            // voice_send also writes this message (same id) to inbox.json.
+            // Mark the id as seen in the file watcher BEFORE emitting, so the
+            // watcher's debounced re-read (~100ms later) doesn't emit a
+            // duplicate mcp-inbox-message for a pipe-delivered message.
+            {
+                use tauri::Manager;
+                if let Some(seen) =
+                    app_handle.try_state::<crate::services::inbox_watcher::InboxSeenIds>()
+                {
+                    seen.mark_seen(&message_id);
+                }
+            }
+
             // voice_send is always called by an AI provider, never a user.
             // Use "ai_message" regardless of instance_id so all providers
             // (Claude Code, OpenCode, etc.) trigger TTS + chat card.

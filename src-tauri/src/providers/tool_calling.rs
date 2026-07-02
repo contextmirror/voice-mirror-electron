@@ -237,7 +237,7 @@ impl ToolCallAccumulator {
                                 "Failed to parse tool call arguments for '{}': {} (raw: {})",
                                 tc.name,
                                 e,
-                                &tc.arguments[..tc.arguments.len().min(200)]
+                                crate::util::truncate_utf8(&tc.arguments, 200)
                             );
                             serde_json::json!({})
                         }

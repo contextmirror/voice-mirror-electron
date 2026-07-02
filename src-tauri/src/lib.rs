@@ -355,19 +355,15 @@ pub fn run() {
             config_cmds::get_config,
             config_cmds::set_config,
             config_cmds::reset_config,
-            config_cmds::get_platform_info,
             config_cmds::get_api_key,
             // Window
             window_cmds::get_window_position,
             window_cmds::set_window_position,
-            window_cmds::save_window_bounds,
             window_cmds::minimize_window,
-            window_cmds::maximize_window,
             window_cmds::set_window_size,
             window_cmds::set_always_on_top,
             window_cmds::set_resizable,
             window_cmds::show_window,
-            window_cmds::quit_app,
             // Screenshot / screen capture
             sandbox_cmds::sandbox_snapshot,
             sandbox_cmds::sandbox_click,
@@ -379,7 +375,6 @@ pub fn run() {
             sandbox_cmds::sandbox_stream_stop,
             sandbox_cmds::sandbox_list_windows,
             sandbox_cmds::sandbox_active_hwnd,
-            screenshot_cmds::take_screenshot,
             screenshot_cmds::save_image_to_temp,
             screenshot_cmds::list_monitors,
             screenshot_cmds::list_windows,
@@ -418,12 +413,10 @@ pub fn run() {
             ai_cmds::ai_pty_input,
             ai_cmds::ai_raw_input,
             ai_cmds::ai_pty_resize,
-            ai_cmds::interrupt_ai,
             ai_cmds::send_voice_loop,
             ai_cmds::scan_providers,
             ai_cmds::list_models,
             ai_cmds::set_provider,
-            ai_cmds::get_provider,
             ai_cmds::write_user_message,
             // Chat persistence
             chat_cmds::chat_list,
@@ -439,7 +432,6 @@ pub fn run() {
             // Global shortcuts
             shortcut_cmds::register_shortcut,
             shortcut_cmds::unregister_shortcut,
-            shortcut_cmds::list_shortcuts,
             shortcut_cmds::unregister_all_shortcuts,
             // Performance stats
             window_cmds::get_process_stats,
@@ -494,7 +486,6 @@ pub fn run() {
             // File tree
             files_cmds::list_directory,
             files_cmds::get_git_changes,
-            files_cmds::get_project_root,
             files_cmds::read_file,
             files_cmds::read_file_base64,
             files_cmds::read_external_file,
@@ -530,7 +521,6 @@ pub fn run() {
             terminal_cmds::terminal_input,
             terminal_cmds::terminal_resize,
             terminal_cmds::terminal_kill,
-            terminal_cmds::terminal_list,
             terminal_cmds::terminal_detect_profiles,
             // File watcher
             services::file_watcher::start_file_watching,
@@ -600,7 +590,6 @@ pub fn run() {
             output_cmds::log_frontend_error,
             output_cmds::register_project_channel,
             output_cmds::unregister_project_channel,
-            output_cmds::push_project_log,
             output_cmds::list_project_channels,
             // Project icon management
             project_cmds::save_project_icon,

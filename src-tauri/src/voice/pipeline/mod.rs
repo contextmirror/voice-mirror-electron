@@ -787,6 +787,21 @@ async fn audio_processing_loop(shared: Arc<PipelineShared>) {
         };
 
         if samples_read == 0 {
+            // A dead/stalled mic must not wedge the Recording state: PTT release
+            // (force_stop) and Cancel (force_cancel) are normally consumed in the
+            // Recording arm below, which this short-circuit would skip forever
+            // when no samples arrive. Check the flags here so the user can still
+            // stop/cancel a recording even when the input stream has died.
+            let current_state = state_from_u8(shared.state.load(Ordering::Acquire));
+            if current_state == VoiceState::Recording {
+                let force_cancel = shared.force_cancel_recording.swap(false, Ordering::SeqCst);
+                let force_stop = shared.force_stop_recording.swap(false, Ordering::SeqCst);
+                if force_cancel {
+                    cancel_recording(&shared, &mut vad);
+                } else if force_stop {
+                    stop_recording_and_transcribe(&shared, &mut vad, "manual").await;
+                }
+            }
             continue;
         }
 
@@ -880,109 +895,14 @@ async fn audio_processing_loop(shared: Arc<PipelineShared>) {
                 let current_mode = shared.mode.lock().map(|g| *g).unwrap_or(VoiceMode::PushToTalk);
                 let silence_stop = current_mode != VoiceMode::Toggle && vad.silence_exceeded(silence_timeout);
                 if force_cancel {
-                    // User discarded the recording — drop the audio, no STT.
-                    tracing::info!("Discarding cancelled recording");
-                    if let Ok(guard) = shared.ring_consumer.lock() {
-                        if let Some(ref consumer) = *guard {
-                            if let Ok(mut ring) = consumer.buffer.lock() {
-                                let _ = ring.drain_all();
-                            }
-                        }
-                    }
-                    if let Ok(mut buf) = shared.recording_buf.lock() {
-                        buf.clear();
-                    }
-                    let mode = shared.mode.lock().map(|g| *g).unwrap_or(VoiceMode::PushToTalk);
-                    let next_state = match mode {
-                        VoiceMode::WakeWord => VoiceState::Listening,
-                        VoiceMode::PushToTalk | VoiceMode::Toggle => VoiceState::Idle,
-                    };
-                    shared.state.store(state_to_u8(next_state), Ordering::Release);
-                    let _ = shared.app_handle.emit("voice-event", VoiceEvent::RecordingStop {});
-                    let _ = shared.app_handle.emit(
-                        "voice-event",
-                        VoiceEvent::StateChange { state: next_state.to_string() },
-                    );
-                    vad.reset();
+                    cancel_recording(&shared, &mut vad);
                 } else if force_stop || silence_stop {
-                    tracing::info!(
-                        reason = if force_stop { "manual" } else { "silence" },
-                        "Stopping recording"
-                    );
-
-                    shared
-                        .state
-                        .store(state_to_u8(VoiceState::Processing), Ordering::Release);
-                    let _ = shared
-                        .app_handle
-                        .emit("voice-event", VoiceEvent::RecordingStop {});
-                    let _ = shared.app_handle.emit(
-                        "voice-event",
-                        VoiceEvent::StateChange {
-                            state: "processing".into(),
-                        },
-                    );
-
-                    // Drain remaining audio from ring buffer.
-                    // The lock result must be fully resolved (not held) before
-                    // any .await, because MutexGuard is !Send.
-                    let drain_result: Result<Vec<f32>, String> = shared
-                        .ring_consumer
-                        .lock()
-                        .map(|guard| {
-                            if let Some(ref consumer) = *guard {
-                                if let Ok(mut ring) = consumer.buffer.lock() {
-                                    ring.drain_all()
-                                } else {
-                                    Vec::new()
-                                }
-                            } else {
-                                Vec::new()
-                            }
-                        })
-                        .map_err(|e| format!("{}", e));
-
-                    let remaining = match drain_result {
-                        Ok(v) => v,
-                        Err(e) => {
-                            tracing::error!("Failed to lock ring_consumer for drain: {}", e);
-                            Vec::new()
-                        }
-                    };
-
-                    let audio_for_stt = match shared.recording_buf.lock() {
-                        Ok(mut buf) => {
-                            buf.extend_from_slice(&remaining);
-                            std::mem::take(&mut *buf)
-                        }
-                        Err(e) => {
-                            tracing::error!("Failed to lock recording_buf for STT: {}", e);
-                            remaining
-                        }
-                    };
-
-                    // Run STT
-                    run_stt_and_emit(&shared, audio_for_stt).await;
-
-                    // Return to appropriate state based on mode:
-                    // - WakeWord -> Listening (auto-detect next utterance)
-                    // - PTT / Toggle -> Idle (wait for next key press)
-                    let mode = shared.mode.lock().map(|g| *g).unwrap_or(VoiceMode::PushToTalk);
-                    let next_state = match mode {
-                        VoiceMode::WakeWord => VoiceState::Listening,
-                        VoiceMode::PushToTalk | VoiceMode::Toggle => VoiceState::Idle,
-                    };
-                    shared
-                        .state
-                        .store(state_to_u8(next_state), Ordering::Release);
-                    let _ = shared.app_handle.emit(
-                        "voice-event",
-                        VoiceEvent::StateChange {
-                            state: next_state.to_string(),
-                        },
-                    );
-
-                    vad.reset();
+                    stop_recording_and_transcribe(
+                        &shared,
+                        &mut vad,
+                        if force_stop { "manual" } else { "silence" },
+                    )
+                    .await;
                 }
             }
 
@@ -994,6 +914,126 @@ async fn audio_processing_loop(shared: Arc<PipelineShared>) {
     }
 
     tracing::info!("Audio processing loop ended");
+}
+
+/// Discard an in-progress recording (user cancelled): drop the audio without
+/// running STT and return to the mode's resting state.
+///
+/// Shared by the Recording arm of `audio_processing_loop` and the
+/// zero-samples path (dead mic) so Cancel always works.
+fn cancel_recording(shared: &Arc<PipelineShared>, vad: &mut VadProcessor) {
+    tracing::info!("Discarding cancelled recording");
+    if let Ok(guard) = shared.ring_consumer.lock() {
+        if let Some(ref consumer) = *guard {
+            if let Ok(mut ring) = consumer.buffer.lock() {
+                let _ = ring.drain_all();
+            }
+        }
+    }
+    if let Ok(mut buf) = shared.recording_buf.lock() {
+        buf.clear();
+    }
+    let mode = shared.mode.lock().map(|g| *g).unwrap_or(VoiceMode::PushToTalk);
+    let next_state = match mode {
+        VoiceMode::WakeWord => VoiceState::Listening,
+        VoiceMode::PushToTalk | VoiceMode::Toggle => VoiceState::Idle,
+    };
+    shared.state.store(state_to_u8(next_state), Ordering::Release);
+    let _ = shared.app_handle.emit("voice-event", VoiceEvent::RecordingStop {});
+    let _ = shared.app_handle.emit(
+        "voice-event",
+        VoiceEvent::StateChange { state: next_state.to_string() },
+    );
+    vad.reset();
+}
+
+/// Stop an in-progress recording: transition Recording -> Processing, drain
+/// remaining ring-buffer audio, run STT, then return to the mode's resting
+/// state.
+///
+/// Shared by the Recording arm of `audio_processing_loop` (manual stop or
+/// silence timeout) and the zero-samples path (dead mic) so PTT release /
+/// Toggle stop always work.
+async fn stop_recording_and_transcribe(
+    shared: &Arc<PipelineShared>,
+    vad: &mut VadProcessor,
+    reason: &str,
+) {
+    tracing::info!(reason, "Stopping recording");
+
+    shared
+        .state
+        .store(state_to_u8(VoiceState::Processing), Ordering::Release);
+    let _ = shared
+        .app_handle
+        .emit("voice-event", VoiceEvent::RecordingStop {});
+    let _ = shared.app_handle.emit(
+        "voice-event",
+        VoiceEvent::StateChange {
+            state: "processing".into(),
+        },
+    );
+
+    // Drain remaining audio from ring buffer.
+    // The lock result must be fully resolved (not held) before
+    // any .await, because MutexGuard is !Send.
+    let drain_result: Result<Vec<f32>, String> = shared
+        .ring_consumer
+        .lock()
+        .map(|guard| {
+            if let Some(ref consumer) = *guard {
+                if let Ok(mut ring) = consumer.buffer.lock() {
+                    ring.drain_all()
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            }
+        })
+        .map_err(|e| format!("{}", e));
+
+    let remaining = match drain_result {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!("Failed to lock ring_consumer for drain: {}", e);
+            Vec::new()
+        }
+    };
+
+    let audio_for_stt = match shared.recording_buf.lock() {
+        Ok(mut buf) => {
+            buf.extend_from_slice(&remaining);
+            std::mem::take(&mut *buf)
+        }
+        Err(e) => {
+            tracing::error!("Failed to lock recording_buf for STT: {}", e);
+            remaining
+        }
+    };
+
+    // Run STT
+    run_stt_and_emit(shared, audio_for_stt).await;
+
+    // Return to appropriate state based on mode:
+    // - WakeWord -> Listening (auto-detect next utterance)
+    // - PTT / Toggle -> Idle (wait for next key press)
+    let mode = shared.mode.lock().map(|g| *g).unwrap_or(VoiceMode::PushToTalk);
+    let next_state = match mode {
+        VoiceMode::WakeWord => VoiceState::Listening,
+        VoiceMode::PushToTalk | VoiceMode::Toggle => VoiceState::Idle,
+    };
+    shared
+        .state
+        .store(state_to_u8(next_state), Ordering::Release);
+    let _ = shared.app_handle.emit(
+        "voice-event",
+        VoiceEvent::StateChange {
+            state: next_state.to_string(),
+        },
+    );
+
+    vad.reset();
 }
 
 /// Run STT on recorded audio and emit the transcription as a Tauri event.

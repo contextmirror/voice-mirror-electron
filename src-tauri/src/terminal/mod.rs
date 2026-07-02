@@ -56,7 +56,7 @@ impl std::fmt::Debug for TerminalEvent {
         f.debug_struct("TerminalEvent")
             .field("id", &self.id)
             .field("event_type", &self.event_type)
-            .field("text", &self.text.as_deref().map(|t| &t[..t.len().min(64)]))
+            .field("text", &self.text.as_deref().map(|t| crate::util::truncate_utf8(t, 64)))
             .field("code", &self.code)
             .field("output_channel", &self.output_channel)
             .finish_non_exhaustive()
@@ -544,9 +544,13 @@ impl TerminalManager {
                 }
             }
 
-            // Emit exit event
+            // Emit exit event. Unlike stdout above, the exit event must NOT be
+            // dropped when the channel is momentarily full (a stdout flood right
+            // before exit) — a lost exit leaves a zombie tab in the UI. This
+            // reader thread has nothing left to do, so block until there's room;
+            // blocking_send only errs if the receiver is gone entirely.
             thread_running.store(false, Ordering::SeqCst);
-            if event_tx.try_send(TerminalEvent {
+            if event_tx.blocking_send(TerminalEvent {
                 id: session_id.clone(),
                 event_type: "exit".to_string(),
                 text: None,
@@ -554,7 +558,7 @@ impl TerminalManager {
                 output_channel: None,
                 output_store: None,
             }).is_err() {
-                warn!("Terminal {} channel full, dropping exit event", session_id);
+                warn!("Terminal {} event channel closed, exit event dropped", session_id);
             }
 
             info!("Terminal {} reader thread ended", session_id);

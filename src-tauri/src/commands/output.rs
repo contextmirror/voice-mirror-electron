@@ -218,22 +218,6 @@ pub fn unregister_project_channel(
     Ok(())
 }
 
-#[derive(Debug, Deserialize)]
-pub struct PushProjectLogParams {
-    pub label: String,
-    pub level: String,
-    pub message: String,
-}
-
-#[tauri::command]
-pub fn push_project_log(
-    params: PushProjectLogParams,
-    output_store: State<'_, Arc<OutputStore>>,
-) -> Result<(), String> {
-    output_store.push_project(&params.label, &params.level, &params.message);
-    Ok(())
-}
-
 #[tauri::command]
 pub fn list_project_channels(
     output_store: State<'_, Arc<OutputStore>>,

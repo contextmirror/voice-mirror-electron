@@ -167,23 +167,6 @@ pub fn unregister_shortcut(
     }
 }
 
-/// List all registered shortcuts and their status.
-#[tauri::command]
-pub fn list_shortcuts(
-    state: tauri::State<'_, ShortcutManagerState>,
-) -> IpcResponse {
-    let manager = match state.0.lock() {
-        Ok(g) => g,
-        Err(e) => return IpcResponse::err(format!("Failed to lock shortcut state: {}", e)),
-    };
-    let entries: Vec<&ShortcutEntry> = manager.entries.values().collect();
-
-    match serde_json::to_value(&entries) {
-        Ok(data) => IpcResponse::ok(data),
-        Err(e) => IpcResponse::err(format!("Serialize error: {}", e)),
-    }
-}
-
 /// Unregister all global shortcuts. Called during app cleanup.
 #[tauri::command]
 pub fn unregister_all_shortcuts(

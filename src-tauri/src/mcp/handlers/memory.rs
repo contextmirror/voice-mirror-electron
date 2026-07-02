@@ -412,7 +412,7 @@ pub async fn handle_memory_search(args: &Value, data_dir: &Path) -> McpToolResul
                 _ => String::new(),
             };
             let preview = if r.chunk.content.len() > 200 {
-                format!("{}...", &r.chunk.content[..200])
+                format!("{}...", crate::util::truncate_utf8(&r.chunk.content, 200))
             } else {
                 r.chunk.content.clone()
             };

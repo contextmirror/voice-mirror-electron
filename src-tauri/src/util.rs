@@ -65,6 +65,112 @@ pub fn hidden(cmd: &mut std::process::Command) -> &mut std::process::Command {
     cmd
 }
 
+/// Truncate a string to at most `max_bytes` WITHOUT splitting a multi-byte
+/// UTF-8 character.
+///
+/// A plain `&s[..n]` panics when byte `n` lands inside a multi-byte char
+/// (e.g. emoji or non-ASCII text in a chat message), which has crashed log
+/// and preview paths. This walks back to the nearest char boundary
+/// (a stable-Rust `floor_char_boundary`).
+pub fn truncate_utf8(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
+// ── Cross-process file lock ─────────────────────────────────────────────
+
+/// Guard for a cross-process lock file. Deleting the file on drop releases
+/// the lock. A guard with `path: None` means the lock could NOT be acquired
+/// (we proceed unlocked after bounded retries rather than blocking forever).
+pub struct FileLockGuard {
+    path: Option<PathBuf>,
+}
+
+impl FileLockGuard {
+    /// A guard that holds no lock (acquisition failed or was skipped).
+    pub fn unlocked() -> Self {
+        Self { path: None }
+    }
+}
+
+impl Drop for FileLockGuard {
+    fn drop(&mut self) {
+        if let Some(p) = self.path.take() {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+}
+
+/// Acquire a cross-process advisory lock by exclusively creating `lock_path`.
+///
+/// `create_new(true)` is atomic (CREATE_NEW on Windows, O_EXCL on Unix): only
+/// one process can create the file. Used to serialize read-modify-write cycles
+/// on shared JSON files (e.g. inbox.json, written by BOTH the Tauri app and
+/// the MCP binary — without exclusion, concurrent writes lose messages).
+///
+/// Blocking (bounded ~2s worst case): call from sync code or wrap in
+/// `spawn_blocking` from async code. A lock file older than `STALE_AFTER` is
+/// treated as left over from a crashed process and broken. If the lock still
+/// can't be acquired after all retries, returns an unlocked guard and logs —
+/// a rare unserialized write beats wedging the messaging path.
+pub fn acquire_file_lock(lock_path: &std::path::Path) -> FileLockGuard {
+    const RETRIES: u32 = 50;
+    const RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(40);
+    const STALE_AFTER: std::time::Duration = std::time::Duration::from_secs(10);
+
+    for _ in 0..RETRIES {
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(lock_path)
+        {
+            Ok(_file) => {
+                // File handle can be dropped immediately: existence of the
+                // file IS the lock; the guard deletes it on drop.
+                return FileLockGuard {
+                    path: Some(lock_path.to_path_buf()),
+                };
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                // Break a stale lock left by a crashed process.
+                let stale = std::fs::metadata(lock_path)
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|t| t.elapsed().ok())
+                    .map(|age| age > STALE_AFTER)
+                    .unwrap_or(false);
+                if stale {
+                    warn!("Breaking stale lock file: {}", lock_path.display());
+                    let _ = std::fs::remove_file(lock_path);
+                    continue; // retry immediately
+                }
+                std::thread::sleep(RETRY_DELAY);
+            }
+            Err(e) => {
+                // Unexpected error (missing dir, permissions) — don't spin.
+                warn!(
+                    "Failed to create lock file {}: {} — proceeding unlocked",
+                    lock_path.display(),
+                    e
+                );
+                return FileLockGuard::unlocked();
+            }
+        }
+    }
+
+    warn!(
+        "Could not acquire lock {} after retries — proceeding unlocked",
+        lock_path.display()
+    );
+    FileLockGuard::unlocked()
+}
+
 /// Escape a string for safe embedding inside a JS single-quoted string literal.
 pub fn escape_js_string(s: &str) -> String {
     s.replace('\\', "\\\\")

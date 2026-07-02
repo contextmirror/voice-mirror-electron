@@ -561,7 +561,7 @@ impl ApiProvider {
                         // Log non-empty chunks that fail to parse
                         let trimmed_data = data.trim();
                         if !trimmed_data.is_empty() {
-                            debug!("Malformed SSE chunk: {}", &trimmed_data[..trimmed_data.len().min(100)]);
+                            debug!("Malformed SSE chunk: {}", crate::util::truncate_utf8(trimmed_data, 100));
                         }
                     }
                 }
@@ -798,7 +798,7 @@ impl Provider for ApiProvider {
         if let Some(ref prompt) = self.system_prompt {
             tracing::info!(
                 length = prompt.len(),
-                preview = %&prompt[..prompt.len().min(80)],
+                preview = %crate::util::truncate_utf8(&prompt, 80),
                 "Injecting system prompt into API provider"
             );
             self.messages.push(serde_json::json!({

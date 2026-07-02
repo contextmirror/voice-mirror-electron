@@ -129,18 +129,6 @@ pub fn list_directory(path: Option<String>, root: Option<String>) -> IpcResponse
     IpcResponse::ok(serde_json::json!(result))
 }
 
-/// Get the project root directory path.
-#[tauri::command]
-pub fn get_project_root() -> IpcResponse {
-    match find_project_root() {
-        Some(root) => {
-            let root_str = root.to_string_lossy().to_string();
-            IpcResponse::ok(serde_json::json!({ "root": root_str }))
-        }
-        None => IpcResponse::err("Could not find project root"),
-    }
-}
-
 /// Recursively list all files in the project, respecting .gitignore.
 ///
 /// Uses the `ignore` crate (same engine as ripgrep) for fast, gitignore-aware

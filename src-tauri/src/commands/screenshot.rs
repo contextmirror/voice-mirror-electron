@@ -756,26 +756,6 @@ mod win32 {
         results
     }
 
-    /// Capture the primary screen using native Win32 APIs.
-    pub fn capture_primary_screen(output_path: &str) -> Result<(), String> {
-        unsafe {
-            let w = GetSystemMetrics(SM_CXSCREEN);
-            let h = GetSystemMetrics(SM_CYSCREEN);
-
-            if w <= 0 || h <= 0 {
-                return Err(format!("Invalid screen dimensions: {}x{}", w, h));
-            }
-
-            match capture_screen_region(0, 0, w, h) {
-                Some(pixels) => {
-                    let png = bgra_to_png(&pixels, w as u32, h as u32);
-                    fs::write(output_path, &png)
-                        .map_err(|e| format!("Failed to write screenshot: {}", e))
-                }
-                None => Err("Failed to capture screen region".into()),
-            }
-        }
-    }
 }
 
 // ── Public reusable functions (for MCP pipe handler) ───────────────────
@@ -819,77 +799,6 @@ pub fn list_visible_windows() -> Result<Vec<WindowInfo>, String> {
 pub fn list_visible_windows_metadata() -> Result<Vec<WindowInfoLight>, String> {
     let our_pid = std::process::id();
     Ok(win32::enumerate_windows_metadata(our_pid))
-}
-
-// ── Platform-native screen capture (cross-platform) ────────────────────
-
-fn capture_screen_native(output_path: &str) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        win32::capture_primary_screen(output_path)
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        let output = std::process::Command::new("screencapture")
-            .args(["-x", output_path])
-            .output()
-            .map_err(|e| format!("Failed to run screencapture: {}", e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("screencapture failed: {}", stderr.trim()));
-        }
-        Ok(())
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        if let Ok(output) = std::process::Command::new("cosmic-screenshot")
-            .args([
-                "--interactive=false",
-                "--modal=false",
-                "--notify=false",
-                &format!(
-                    "--save-dir={}",
-                    Path::new(output_path)
-                        .parent()
-                        .unwrap_or(Path::new("."))
-                        .display()
-                ),
-            ])
-            .output()
-        {
-            if output.status.success() {
-                return Ok(());
-            }
-        }
-
-        if let Ok(output) = std::process::Command::new("gnome-screenshot")
-            .args(["-f", output_path])
-            .output()
-        {
-            if output.status.success() {
-                return Ok(());
-            }
-        }
-
-        let output = std::process::Command::new("import")
-            .args(["-window", "root", output_path])
-            .output()
-            .map_err(|e| format!("No screenshot tool available: {}", e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("Screenshot failed: {}", stderr.trim()));
-        }
-        Ok(())
-    }
-
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    {
-        Err("Screenshot not supported on this platform".into())
-    }
 }
 
 // ── Tauri commands ─────────────────────────────────────────────────────
@@ -952,36 +861,6 @@ pub async fn save_image_to_temp(data: String, ext: Option<String>) -> IpcRespons
     }
 
     IpcResponse::ok(serde_json::json!({ "path": filepath.to_string_lossy() }))
-}
-
-/// Take a screenshot of the primary display.
-#[tauri::command]
-pub async fn take_screenshot() -> IpcResponse {
-    let screenshots_dir = crate::services::platform::get_data_dir().join("screenshots");
-    if let Err(e) = fs::create_dir_all(&screenshots_dir) {
-        return IpcResponse::err(format!("Failed to create screenshots dir: {}", e));
-    }
-
-    cleanup_old_screenshots(&screenshots_dir, 5);
-
-    let now_ms = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let filename = format!("screenshot-{}.png", now_ms);
-    let filepath = screenshots_dir.join(&filename);
-    let filepath_str = filepath.to_string_lossy().to_string();
-
-    let result =
-        tokio::task::spawn_blocking(move || capture_screen_native(&filepath_str)).await;
-
-    match result {
-        Ok(Ok(())) => {
-            IpcResponse::ok(serde_json::json!({ "path": filepath.to_string_lossy() }))
-        }
-        Ok(Err(e)) => IpcResponse::err(e),
-        Err(e) => IpcResponse::err(format!("Screenshot task panicked: {}", e)),
-    }
 }
 
 /// List all monitors with thumbnail previews (base64 PNG).

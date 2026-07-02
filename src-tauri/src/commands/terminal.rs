@@ -28,7 +28,9 @@ macro_rules! lock_terminal {
 /// Returns `{ "id": "terminal-1" }` on success.
 /// If `profile_id` is provided, spawns using the matching shell profile.
 /// If `output_channel` is provided, PTY stdout is also mirrored to that project output channel.
-#[tauri::command]
+// `(async)` runs this on a worker thread instead of the main/UI thread —
+// spawning a PTY + shell is blocking work that would freeze the window.
+#[tauri::command(async)]
 pub fn terminal_spawn(
     state: State<'_, TerminalManagerState>,
     output_state: State<'_, std::sync::Arc<crate::services::output::OutputStore>>,
@@ -104,7 +106,9 @@ pub fn terminal_resize(
 }
 
 /// Kill a terminal session.
-#[tauri::command]
+// `(async)`: TerminalManager::kill runs taskkill and then waits up to 3s for
+// the child to exit — far too long to block the main/UI thread.
+#[tauri::command(async)]
 pub fn terminal_kill(
     state: State<'_, TerminalManagerState>,
     id: String,
@@ -114,14 +118,4 @@ pub fn terminal_kill(
         Ok(()) => IpcResponse::ok_empty(),
         Err(e) => IpcResponse::err(e),
     }
-}
-
-/// List all active terminal session IDs.
-#[tauri::command]
-pub fn terminal_list(
-    state: State<'_, TerminalManagerState>,
-) -> IpcResponse {
-    let manager = lock_terminal!(state);
-    let sessions = manager.list();
-    IpcResponse::ok(json!({ "sessions": sessions }))
 }

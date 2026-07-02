@@ -138,16 +138,3 @@ pub fn reset_config() -> IpcResponse {
     }
 }
 
-/// Get platform information (OS, arch, directory paths).
-#[tauri::command]
-pub fn get_platform_info() -> IpcResponse {
-    IpcResponse::ok(serde_json::json!({
-        "os": platform::get_os_name(),
-        "arch": platform::get_arch(),
-        "configDir": platform::get_config_dir().to_string_lossy(),
-        "dataDir": platform::get_data_dir().to_string_lossy(),
-        "logDir": platform::get_log_dir().to_string_lossy(),
-        "cacheDir": platform::get_cache_dir().to_string_lossy(),
-    }))
-}
-
