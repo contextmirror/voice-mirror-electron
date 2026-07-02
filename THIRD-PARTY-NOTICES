@@ -10,10 +10,11 @@ This file lists third-party code and assets bundled with Voice Mirror.
    Files: src/assets/icons/file-icons-sprite.svg, src/lib/file-icons.js
    Full license: src/assets/icons/LICENSE-file-icons
 
-2. ghostty-web (fork: contextmirror/ghostty-web)
-   Source: https://github.com/coder/ghostty-web
+2. xterm.js
+   Source: https://github.com/xtermjs/xterm.js
    License: MIT
-   Copyright (c) 2025 Coder
+   Copyright (c) 2017-2022, The xterm.js authors
+   Packages: @xterm/xterm, @xterm/addon-fit, @xterm/addon-webgl
 
 3. CodeMirror 6
    Source: https://github.com/codemirror

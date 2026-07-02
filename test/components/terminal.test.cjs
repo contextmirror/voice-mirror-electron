@@ -7,8 +7,11 @@ const SRC_PATH = path.join(__dirname, '../../src/components/terminal/Terminal.sv
 const src = fs.readFileSync(SRC_PATH, 'utf-8');
 
 describe('Terminal.svelte -- imports', () => {
-  it('imports ghostty-web Terminal and FitAddon', () => {
-    assert.ok(src.includes("import { init, Terminal, FitAddon } from 'ghostty-web'"), 'Should import ghostty-web');
+  it('imports xterm.js Terminal, FitAddon and WebglAddon', () => {
+    assert.ok(src.includes("import { Terminal } from '@xterm/xterm'"), 'Should import xterm.js Terminal');
+    assert.ok(src.includes("import { FitAddon } from '@xterm/addon-fit'"), 'Should import FitAddon');
+    assert.ok(src.includes("import { WebglAddon } from '@xterm/addon-webgl'"), 'Should import WebglAddon');
+    assert.ok(!src.includes('ghostty'), 'Should not reference ghostty-web anymore');
   });
 
   it('imports terminalInput from api', () => {
@@ -81,8 +84,9 @@ describe('Terminal.svelte -- event handling', () => {
 });
 
 describe('Terminal.svelte -- terminal setup', () => {
-  it('initializes ghostty-web with init()', () => {
-    assert.ok(src.includes('await init()'), 'Should initialize WASM');
+  it('loads the WebGL renderer with DOM fallback on context loss', () => {
+    assert.ok(src.includes('new WebglAddon()'), 'Should load WebGL addon');
+    assert.ok(src.includes('onContextLoss'), 'Should handle WebGL context loss');
   });
 
   it('creates Terminal instance', () => {
@@ -113,6 +117,37 @@ describe('Terminal.svelte -- toolbar', () => {
 
   it('has paste button', () => {
     assert.ok(src.includes('handlePaste'), 'Should have paste handler');
+  });
+
+  it('prevents the browser default paste on Ctrl+V (double-paste guard)', () => {
+    const idx = src.indexOf("event.key === 'v'");
+    assert.ok(idx > -1, 'Should have a Ctrl+V handler');
+    const block = src.slice(idx, idx + 400);
+    assert.ok(block.includes('event.preventDefault()'), 'Ctrl+V handler must preventDefault so the native paste event cannot fire a second paste');
+  });
+
+  it('routes text pastes through xterm paste pipeline for bracketed paste', () => {
+    assert.ok(src.includes('term.paste(text)'), 'handlePaste should use term.paste, not raw PTY input');
+  });
+
+  it('uses opaque (pre-blended) selection colors, no alpha channel', () => {
+    assert.ok(src.includes('blendHex(bg, accent'), 'Selection should be pre-blended opaque');
+    assert.ok(!src.includes("+ '4d'"), 'No alpha-suffixed selection color');
+  });
+
+  it('loads the Unicode 11 addon for correct emoji/symbol widths', () => {
+    assert.ok(src.includes('new Unicode11Addon()'), 'Should load Unicode11Addon');
+    assert.ok(src.includes("unicode.activeVersion = '11'"), 'Should activate Unicode 11 widths');
+    // terminal.unicode is a PROPOSED API in xterm 6 — without this flag,
+    // loadAddon(unicode11) throws and the whole terminal fails to mount.
+    assert.ok(src.includes('allowProposedApi: true'), 'Unicode addon requires allowProposedApi');
+  });
+
+  it('sizes via proposeDimensions + resize, never fitAddon.fit()', () => {
+    // fit() calls _renderService.clear() before resizing — a one-frame canvas
+    // wipe that reads as flicker during window-resize drags.
+    assert.ok(src.includes('proposeDimensions()'), 'Should use proposeDimensions');
+    assert.ok(!src.includes('fitAddon.fit()'), 'Must not call fitAddon.fit() (clears canvas = flicker)');
   });
 });
 

@@ -6,7 +6,34 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { deepMerge, formatTime, formatLogTime, formatRelativeTime, uid, basename, unwrapResult, copyFullPath, copyRelativePath } from '../../src/lib/utils.js';
+import { deepMerge, formatTime, formatLogTime, formatRelativeTime, uid, basename, unwrapResult, copyFullPath, copyRelativePath, blendHex } from '../../src/lib/utils.js';
+
+// ============ blendHex ============
+
+describe('blendHex', () => {
+  it('blends overlay into base at the given alpha', () => {
+    assert.equal(blendHex('#000000', '#ffffff', 0.5), '#808080');
+  });
+
+  it('returns base at alpha 0 and overlay at alpha 1', () => {
+    assert.equal(blendHex('#102030', '#ffffff', 0), '#102030');
+    assert.equal(blendHex('#102030', '#ffffff', 1), '#ffffff');
+  });
+
+  it('expands 3-digit hex shorthand', () => {
+    assert.equal(blendHex('#000', '#fff', 0.5), '#808080');
+  });
+
+  it('always returns an opaque 7-char hex color', () => {
+    const out = blendHex('#000000', '#e69f00', 0.35);
+    assert.match(out, /^#[0-9a-f]{6}$/);
+  });
+
+  it('falls back to the overlay color on non-hex input', () => {
+    assert.equal(blendHex('rgb(0,0,0)', '#56b4e9', 0.35), '#56b4e9');
+    assert.equal(blendHex('', '#56b4e9', 0.35), '#56b4e9');
+  });
+});
 
 // ============ deepMerge ============
 

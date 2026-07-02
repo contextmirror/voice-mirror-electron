@@ -188,7 +188,7 @@ Settings is a full page accessible via the sidebar.
 
 Select the active provider by **right-clicking the "Voice Agent" tab** (or in Settings > AI Provider). Provider metadata lives in `src/lib/providers.js` (`CLI_PROVIDERS`, `LOCAL_PROVIDERS`).
 
-CLI agent providers (claude, opencode) use PTY mode with full terminal rendering via ghostty-web. Local providers use the OpenAI-compatible `/v1/chat/completions` HTTP API.
+CLI agent providers (claude, opencode) use PTY mode with full terminal rendering via xterm.js. Local providers use the OpenAI-compatible `/v1/chat/completions` HTTP API.
 
 ---
 

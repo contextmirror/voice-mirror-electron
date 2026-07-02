@@ -766,8 +766,8 @@ describe('DependencySettings.svelte', () => {
     assert.ok(src.includes('const BUNDLED'), 'Should define BUNDLED list');
   });
 
-  it('lists ghostty-web as bundled', () => {
-    assert.ok(src.includes('ghostty-web'), 'Should list ghostty-web');
+  it('lists xterm.js as bundled', () => {
+    assert.ok(src.includes('@xterm/xterm'), 'Should list @xterm/xterm');
   });
 
   it('defines SYSTEM_TOOLS list', () => {

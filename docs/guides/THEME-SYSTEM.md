@@ -405,7 +405,7 @@ changes, the orb canvas repaints with the new colors.
 
 ## 6. Terminal Theme
 
-`deriveTerminalTheme(colors)` produces a ghostty-web compatible theme object
+`deriveTerminalTheme(colors)` produces an xterm.js compatible theme object
 containing 18 color properties: background, foreground, cursor, cursor accent,
 selection background, and the 16 standard ANSI colors (8 normal + 8 bright).
 

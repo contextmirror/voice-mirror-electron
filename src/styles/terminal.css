@@ -1,6 +1,6 @@
 /**
  * terminal.css -- Terminal container, header, controls,
- * ghostty-web canvas layout, fullscreen terminal page.
+ * xterm.js canvas layout, fullscreen terminal page.
  */
 
 /* ========== Terminal Panel ========== */
@@ -31,7 +31,7 @@
   display: none;
 }
 
-/* Terminal canvas container (ghostty-web renders to <canvas>) */
+/* Terminal canvas container (xterm.js renders to <canvas>) */
 .terminal-mount {
   flex: 1;
   overflow: hidden;

@@ -13,7 +13,7 @@ Voice Mirror is a fully functional AI-native IDE built on **Tauri 2 + Rust + Sve
 - **45 MCP tools** in 5 groups (core/voice, memory, browser, capture+sandbox, n8n)
 - **6700+ JS tests**, cargo check clean
 - **Voice pipeline**: Whisper STT (CUDA GPU, large-v3), Kokoro + Edge TTS, energy VAD; PTT / Toggle / Dictation modes
-- **Lens workspace**: CodeMirror 6 editor, file tree, terminal **engine split** (AI terminal = xterm.js+WebGL, user shells = ghostty-web WASM), browser preview (native WebView2), split editor, command palette + **title-bar menu bar** sharing one **command registry** (`commands.svelte.js`, 70 commands), **LSP 37/37 feature matrix**
+- **Lens workspace**: CodeMirror 6 editor, file tree, terminal (xterm.js+WebGL for both the AI terminal and user shells), browser preview (native WebView2), split editor, command palette + **title-bar menu bar** sharing one **command registry** (`commands.svelte.js`, 70 commands), **LSP 37/37 feature matrix**
 - **App Preview / see-and-drive (Windows)**: live preview + driving of a running app via **CDP** (web/Tauri/Electron) and **UI Automation** (native non-CDP), WGC capture + MJPEG streaming + event-driven window-follow, `sandbox_*` MCP tools
 - **First-run**: onboarding wizard + Get-Started tutorial (Help → Get Started)
 - **Design mode + Element Inspector**: element capture with hidden context, parent chain, pseudo-class CSS extraction
@@ -35,7 +35,7 @@ See `docs/source-of-truth/IDE-GAPS.md` for detailed feature comparison vs VS Cod
 Features that close the remaining gaps between Lens and a "real IDE."
 
 ### Run / Build System
-One-click Run button in the toolbar. Auto-detects project type (`package.json` → npm, `Cargo.toml` → cargo, `pyproject.toml` → python, etc.) and runs the appropriate command in the terminal. Triggered by button click OR voice ("run it"). Output goes to the existing ghostty-web terminal.
+One-click Run button in the toolbar. Auto-detects project type (`package.json` → npm, `Cargo.toml` → cargo, `pyproject.toml` → python, etc.) and runs the appropriate command in the terminal. Triggered by button click OR voice ("run it"). Output goes to the existing xterm.js terminal.
 
 ### Layout Refactor (VS Code-Style Terminal)
 Move the terminal from a full-width bottom panel into the center column, stacked below the editor/preview:

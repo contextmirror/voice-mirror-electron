@@ -702,8 +702,12 @@
         <!-- Horizontal split: center-column | file tree -->
         <SplitPanel direction="horizontal" bind:ratio={previewRatio} minA={300} minB={140} collapseB={!layoutStore.showFileTree}>
           {#snippet panelA()}
-            <!-- Center column: editor/preview (top) | terminal (bottom) -->
-            <SplitPanel direction="vertical" bind:ratio={centerRatio} minA={200} minB={80} collapseB={!layoutStore.showTerminal}>
+            <!-- Center column: editor/preview (top) | terminal (bottom).
+                 minB keeps the terminal at a usable ~7 rows after the tab bar —
+                 dragging it shorter puts TUIs (Claude Code) into a degenerate
+                 1-2 row layout that renders as overlapping garble. Hiding the
+                 terminal entirely goes through the layout toggle (collapseB). -->
+            <SplitPanel direction="vertical" bind:ratio={centerRatio} minA={200} minB={160} collapseB={!layoutStore.showTerminal}>
               {#snippet panelA()}
                 <div class="preview-area">
                  <SplitPanel direction="horizontal" bind:ratio={appPreviewRatio} minA={300} minB={240} collapseB={!sandboxPreviewStore.visible || sandboxPreviewStore.maximized}>

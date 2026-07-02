@@ -239,7 +239,7 @@ Voice Mirror's extension story is: "Add an MCP server" — not "install a VS Cod
 
 ### 9. Terminal — SEE §14 FOR FULL ANALYSIS
 
-**Status:** Rich terminal system with split panes, sidebar tree, tab coloring/icons, dev-server integration, AI terminal (xterm.js+WebGL) + user shells (ghostty-web), shell profiles, and drag-to-reorder. See §14 below for the gap summary. (The standalone `docs/archive/TERMINAL-GAP-ANALYSIS.md` referenced here is no longer present.)
+**Status:** Rich terminal system with split panes, sidebar tree, tab coloring/icons, dev-server integration, AI terminal + user shells (both xterm.js+WebGL), shell profiles, and drag-to-reorder. See §14 below for the gap summary. (The standalone `docs/archive/TERMINAL-GAP-ANALYSIS.md` referenced here is no longer present.)
 
 ---
 
@@ -409,7 +409,7 @@ Voice Mirror's extension story is: "Add an MCP server" — not "install a VS Cod
 | Tab renaming, context menus | ✅ |
 | Dev server integration (framework detection, crash protection) | ✅ |
 | AI terminal (dedicated Claude Code PTY) | ✅ |
-| Engine split: AI terminal = xterm.js+WebGL, user shells = ghostty-web WASM | ✅ |
+| Unified engine: AI terminal and user shells both xterm.js+WebGL | ✅ |
 | 5000-line scrollback | ✅ |
 
 #### Recently Closed Terminal Gaps (2026-02-27)

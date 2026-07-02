@@ -8,11 +8,11 @@
 import { detectURLs, detectFilePaths } from './terminal-links.js';
 
 /**
- * Create a link overlay controller for a ghostty-web terminal.
+ * Create a link overlay controller for an xterm.js terminal.
  *
  * @param {object} opts
  * @param {HTMLElement} opts.container - The .terminal-container element (contains the canvas)
- * @param {() => object} opts.getTerm - Getter for the ghostty-web Terminal instance
+ * @param {() => object} opts.getTerm - Getter for the xterm.js Terminal instance
  * @param {(url: string) => void} opts.onOpenUrl - Callback to open a URL externally
  * @param {(match: {path: string, line?: number, col?: number}) => void} opts.onOpenFile - Callback to open a file in the editor
  * @param {() => string} opts.getCwd - Getter for the terminal's working directory
@@ -47,7 +47,6 @@ export function createLinkOverlay({ container, getTerm, onOpenUrl, onOpenFile, g
 
     // Find the screen element (the area where rows are rendered)
     const screen = container.querySelector('.xterm-screen') ||
-                   container.querySelector('.ghostty-web') ||
                    container.querySelector('canvas')?.parentElement;
     if (!screen) return null;
 

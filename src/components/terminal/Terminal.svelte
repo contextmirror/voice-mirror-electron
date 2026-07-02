@@ -1,12 +1,16 @@
 <script>
   /**
-   * Terminal.svelte -- ghostty-web terminal for user shell PTY sessions.
+   * Terminal.svelte -- xterm.js terminal for user shell PTY sessions.
    *
    * Each instance listens to scoped `terminal-output-{shellId}` events so it
    * only receives output for its own session. Used for user-created terminals
    * and dev-server tabs.
    */
-  import { init, Terminal, FitAddon } from 'ghostty-web';
+  import { Terminal } from '@xterm/xterm';
+  import { FitAddon } from '@xterm/addon-fit';
+  import { WebglAddon } from '@xterm/addon-webgl';
+  import { Unicode11Addon } from '@xterm/addon-unicode11';
+  import '@xterm/xterm/css/xterm.css';
   import { listen } from '@tauri-apps/api/event';
   import { terminalInput, terminalResize } from '../../lib/api.js';
   import { currentThemeName } from '../../lib/stores/theme.svelte.js';
@@ -16,7 +20,7 @@
   import { createLinkOverlay } from '../../lib/terminal-link-overlay.js';
   import { tabsStore } from '../../lib/stores/tabs.svelte.js';
   import { projectStore } from '../../lib/stores/project.svelte.js';
-  import { basename } from '../../lib/utils.js';
+  import { basename, blendHex } from '../../lib/utils.js';
   import { open } from '@tauri-apps/plugin-shell';
   import TerminalSearch from './TerminalSearch.svelte';
 
@@ -25,6 +29,7 @@
   let containerEl = $state(null);
   let term = $state(null);
   let fitAddon = $state(null);
+  let webglAddon = $state(null);
   let resizeObserver = $state(null);
   let unlistenShellOutput = $state(null);
   let resizeTimeout = $state(null);
@@ -43,7 +48,7 @@
   let searchCaseSensitive = $state(false);
   let searchRegex = $state(false);
 
-  // ---- CSS token -> ghostty-web theme mapping ----
+  // ---- CSS token -> xterm.js theme mapping ----
 
   /**
    * Read a CSS custom property value from :root.
@@ -55,8 +60,8 @@
   }
 
   /**
-   * Build a ghostty-web ITheme object from current CSS custom properties.
-   * Maps design tokens to ghostty-web's ITheme keys.
+   * Build an xterm.js ITheme object from current CSS custom properties.
+   * Maps design tokens to xterm.js's ITheme keys.
    */
   function buildTermTheme() {
     const bg = getCssVar('--bg') || '#0c0d10';
@@ -74,7 +79,9 @@
       foreground: text,
       cursor: accent,
       cursorAccent: bg,
-      selectionBackground: accent + '4d', // ~30% opacity
+      // Pre-blended opaque selection — an alpha color over a black background
+      // is nearly invisible, and renderer alpha handling is unreliable.
+      selectionBackground: blendHex(bg, accent, 0.35),
       selectionForeground: textStrong,
       // Standard ANSI colors mapped to theme tokens
       black: bg,
@@ -117,7 +124,16 @@
   function fitTerminal() {
     if (!fitAddon || !term) return;
     try {
-      fitAddon.fit();
+      // Deliberately NOT the addon's fit(): that method calls
+      // _renderService.clear() before resizing, blanking the canvas for a
+      // frame — the visible flicker while resizing the window. Sizing via
+      // proposeDimensions() + term.resize() repaints without the wipe
+      // (what VS Code does).
+      const dims = fitAddon.proposeDimensions();
+      if (!dims || isNaN(dims.cols) || isNaN(dims.rows)) return;
+      if (dims.cols !== term.cols || dims.rows !== term.rows) {
+        term.resize(dims.cols, dims.rows);
+      }
     } catch {
       // Not mounted yet or container has zero size
     }
@@ -127,7 +143,7 @@
 
   /**
    * Extract visible text lines from the terminal buffer.
-   * ghostty-web exposes buffer via term.buffer.active.
+   * xterm.js exposes buffer via term.buffer.active.
    */
   function runSearch(query) {
     searchQuery = query;
@@ -235,9 +251,10 @@
     try {
       const text = await navigator.clipboard.readText();
       if (text) {
-        terminalInput(shellId, text).catch((err) => {
-          console.warn('[Terminal] Paste failed:', err);
-        });
+        // Route through xterm's paste pipeline (not terminalInput directly) so
+        // bracketed-paste mode is honored — TUI apps rely on it to treat
+        // multi-line pastes as one block instead of executing each line.
+        term.paste(text);
       }
     } catch (err) {
       console.warn('[Terminal] Paste failed:', err);
@@ -311,75 +328,114 @@
     let cancelled = false;
 
     async function setup() {
-      // Initialize the WASM module (idempotent -- safe to call multiple times)
-      await init();
-
       if (cancelled) return;
 
-      // Create ghostty-web Terminal instance
-      const ghosttyTerm = new Terminal({
+      // Create xterm.js Terminal instance
+      const xterm = new Terminal({
         cursorBlink: true,
         fontSize: 13,
         fontFamily: getCssVar('--font-mono') || "'Cascadia Code', 'Fira Code', monospace",
         theme: buildTermTheme(),
         scrollback: 5000,
         convertEol: false,
+        // Required by the Unicode 11 addon — `terminal.unicode` is a proposed
+        // API in xterm 6 and loadAddon THROWS without this flag.
+        allowProposedApi: true,
       });
 
       // Create FitAddon for auto-resize
       const fit = new FitAddon();
-      ghosttyTerm.loadAddon(fit);
+      xterm.loadAddon(fit);
+
+      // Unicode 11 width tables — modern CLIs print emoji/symbols that the
+      // default Unicode 6 widths mismeasure, causing redraw artifacts.
+      // try/catch: a failure here must degrade to default widths, never kill
+      // the whole terminal (an uncaught throw in setup() = blank panel).
+      try {
+        const unicode11 = new Unicode11Addon();
+        xterm.loadAddon(unicode11);
+        xterm.unicode.activeVersion = '11';
+      } catch (err) {
+        console.warn('[Terminal] Unicode 11 addon unavailable, using default widths:', err);
+      }
 
       // Mount into DOM
-      ghosttyTerm.open(containerEl);
+      xterm.open(containerEl);
 
       if (cancelled) {
-        ghosttyTerm.dispose();
+        xterm.dispose();
         return;
       }
 
+      // Load the WebGL renderer for GPU-accelerated drawing (must load AFTER
+      // open()). On context loss the addon is disposed and xterm.js falls back
+      // to the DOM renderer instead of rendering a blank terminal.
+      try {
+        const webgl = new WebglAddon();
+        webgl.onContextLoss(() => {
+          console.warn('[Terminal] WebGL context lost — falling back to DOM renderer');
+          webgl.dispose();
+          if (webglAddon === webgl) webglAddon = null;
+        });
+        xterm.loadAddon(webgl);
+        webglAddon = webgl;
+      } catch (err) {
+        // WebGL unavailable (e.g. blocklisted GPU) — DOM renderer stays active.
+        console.warn('[Terminal] WebGL renderer unavailable, using DOM renderer:', err);
+      }
+
       // Store refs
-      term = ghosttyTerm;
+      term = xterm;
       fitAddon = fit;
 
       // Keyboard input -> shell PTY
-      ghosttyTerm.onData((data) => {
+      xterm.onData((data) => {
         terminalInput(shellId, data).catch((err) => {
           console.warn('[Terminal] PTY input failed:', err);
         });
       });
 
       // Custom keyboard handler for Ctrl+C (copy), Ctrl+V (paste), Ctrl+F (search)
-      ghosttyTerm.attachCustomKeyEventHandler((event) => {
-        if (event.type !== 'keydown') return false;
+      // xterm.js convention: return true = "let the terminal process the key
+      // normally"; return false = "stop, terminal should NOT process this key".
+      xterm.attachCustomKeyEventHandler((event) => {
+        // Only intercept keydown to avoid double-firing
+        if (event.type !== 'keydown') return true;
 
         // Ctrl+F: toggle terminal search
         if (event.ctrlKey && event.key === 'f' && !event.shiftKey && !event.altKey) {
+          event.preventDefault();
           searchVisible = !searchVisible;
           if (!searchVisible) handleSearchClose();
-          return true; // Handled: prevent browser find
+          return false; // Prevent terminal default (browser find)
         }
 
         // Ctrl+C: copy selected text if there is a selection
         if (event.ctrlKey && event.key === 'c' && !event.shiftKey && !event.altKey) {
-          if (ghosttyTerm.hasSelection()) {
+          if (xterm.hasSelection()) {
+            event.preventDefault(); // Stop the native copy event (xterm also listens for it)
             handleCopy();
-            return true; // Handled: prevent terminal from sending \x03
+            return false; // Prevent terminal from sending \x03
           }
-          return false; // Not handled: let terminal send interrupt (\x03)
+          return true; // Let terminal send interrupt (\x03)
         }
 
-        // Ctrl+V: paste from clipboard
+        // Ctrl+V: paste from clipboard.
+        // preventDefault is load-bearing: returning false only skips xterm's
+        // keydown processing — the browser's default paste still fires a native
+        // `paste` event that xterm forwards to the PTY, so without it every
+        // Ctrl+V pasted TWICE (handlePaste + native paste).
         if (event.ctrlKey && event.key === 'v' && !event.shiftKey && !event.altKey) {
+          event.preventDefault();
           handlePaste();
-          return true; // Handled: prevent terminal default
+          return false; // Prevent terminal default
         }
 
-        return false; // Not handled: let terminal process all other keys
+        return true; // Let terminal process all other keys
       });
 
       // Listen for resize events from the terminal to send to PTY
-      ghosttyTerm.onResize(({ cols, rows }) => {
+      xterm.onResize(({ cols, rows }) => {
         if (cols === lastPtyCols && rows === lastPtyRows) return;
         lastPtyCols = cols;
         lastPtyRows = rows;
@@ -403,13 +459,19 @@
 
       if (cancelled) {
         unlisten();
-        ghosttyTerm.dispose();
+        xterm.dispose();
         return;
       }
 
       unlistenShellOutput = unlisten;
 
-      // Observe container resize for auto-fitting
+      // Observe container resize for auto-fitting.
+      // Fit ONLY after the drag settles (debounced) — deliberately not live.
+      // A live per-frame fit re-wraps the buffer to the new grid while the
+      // running shell/TUI still paints for the OLD size (SIGWINCH is
+      // debounced), showing garbled overlapping lines for the whole drag.
+      // Mid-drag the canvas just crops/extends over the theme-colored
+      // container instead.
       const observer = new ResizeObserver(() => {
         if (resizeTimeout) clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(() => {
@@ -481,10 +543,11 @@
         linkOverlay = null;
       }
       if (term) {
-        term.dispose();
+        term.dispose(); // Also disposes loaded addons (fit, webgl)
         term = null;
       }
       fitAddon = null;
+      webglAddon = null;
       lastPtyCols = 0;
       lastPtyRows = 0;
       pendingEvents = [];
@@ -594,9 +657,18 @@
     display: block;
   }
 
-  .terminal-container :global(.ghostty-web),
   .terminal-container :global(.xterm) {
     overflow: hidden !important;
+  }
+
+  /* Stock xterm.css hard-codes background #000 on .xterm and .xterm-viewport.
+     Anything the canvas doesn't cover (scrollbar column, the sub-cell gap left
+     by fit(), the exposed area mid-resize) paints PURE BLACK on non-black
+     themes — seen as a black box while resizing + a thin black line after.
+     Follow the app theme instead. */
+  .terminal-container :global(.xterm),
+  .terminal-container :global(.xterm-viewport) {
+    background-color: var(--bg) !important;
   }
 
   /* ---- Context menu ---- */

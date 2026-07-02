@@ -128,7 +128,7 @@
       {/snippet}
 
       <!-- All groups are always mounted — only the active one is visible.
-           This prevents ghostty-web from losing PTY output on group switch. -->
+           This prevents the terminal from losing PTY output on group switch. -->
       {#each terminalTabsStore.groups as group (group.id)}
         {@const isActive = group.id === activeGroupId}
         <div class="group-container" class:active={isActive}>

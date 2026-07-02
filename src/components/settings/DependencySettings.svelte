@@ -3,7 +3,7 @@
    * DependencySettings.svelte -- Dependency status panel.
    *
    * Two sections:
-   *   1. Bundled      -- Components shipped inside the app (ghostty-web)
+   *   1. Bundled      -- Components shipped inside the app (xterm.js)
    *   2. System Tools -- External CLI tools the app depends on, with update support
    *
    * Hidden behind cfg.advanced.showDependencies feature flag.
@@ -16,7 +16,7 @@
   // ---- Bundled components (shipped with the app via Vite) ----
 
   const BUNDLED = [
-    { key: 'ghosttyWeb', label: 'ghostty-web', desc: 'Terminal Emulator (WASM) — contextmirror fork', version: '0.4.0' },
+    { key: 'xterm', label: '@xterm/xterm', desc: 'Terminal Emulator', version: '6.0.0' },
   ];
 
   // ---- System tools (external CLIs detected on the user's machine) ----

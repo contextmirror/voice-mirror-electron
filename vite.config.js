@@ -1,54 +1,16 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { visualizer } from 'rollup-plugin-visualizer';
-import { existsSync, readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const host = process.env.TAURI_DEV_HOST;
 
-/**
- * Vite plugin to make ghostty-web's WASM file available at runtime.
- *
- * ghostty-web loads ghostty-vt.wasm via fetch() at '/ghostty-vt.wasm'.
- * - In dev mode: serves it via middleware from node_modules.
- * - In production: emits it as an asset in the dist/ directory.
- */
-function copyGhosttyWasm() {
-  const wasmSrc = resolve(__dirname, 'node_modules/ghostty-web/ghostty-vt.wasm');
-
-  return {
-    name: 'copy-ghostty-wasm',
-    generateBundle() {
-      if (existsSync(wasmSrc)) {
-        this.emitFile({
-          type: 'asset',
-          fileName: 'ghostty-vt.wasm',
-          source: readFileSync(wasmSrc),
-        });
-      }
-    },
-    configureServer(server) {
-      server.middlewares.use((req, res, next) => {
-        if (req.url === '/ghostty-vt.wasm') {
-          if (existsSync(wasmSrc)) {
-            res.setHeader('Content-Type', 'application/wasm');
-            res.end(readFileSync(wasmSrc));
-            return;
-          }
-        }
-        next();
-      });
-    },
-  };
-}
-
 // https://vitejs.dev/config/
 export default defineConfig(async ({ mode }) => ({
   plugins: [
     svelte(),
-    copyGhosttyWasm(),
     mode === 'production' && visualizer({ filename: 'stats.html', gzipSize: true }),
   ].filter(Boolean),
 
@@ -62,7 +24,6 @@ export default defineConfig(async ({ mode }) => ({
   clearScreen: false,
 
   // Dependency pre-bundling (esbuild optimize step).
-  // - exclude ghostty-web so its WASM fetch('/ghostty-vt.wasm') resolves correctly.
   // - include every CodeMirror/Lezer package the editor pulls in, INCLUDING the
   //   ones that are only reached via lazy dynamic import() (codemirror, autocomplete,
   //   lint, merge, lang-*). The dev launcher wipes node_modules/.vite on every start,
@@ -72,7 +33,6 @@ export default defineConfig(async ({ mode }) => ({
   //   surfaces as "Failed to fetch dynamically imported module". Listing them here
   //   forces deterministic pre-bundling during cold start, before any file is opened.
   optimizeDeps: {
-    exclude: ['ghostty-web'],
     include: [
       'codemirror',
       '@codemirror/state',
@@ -133,7 +93,7 @@ export default defineConfig(async ({ mode }) => ({
             '@lezer/python',
             '@lezer/rust',
           ],
-          ghostty: ['ghostty-web'],
+          xterm: ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-webgl', '@xterm/addon-unicode11'],
           markdown: ['highlight.js', 'dompurify', 'marked', 'marked-highlight'],
         },
       },

@@ -168,7 +168,7 @@ voice-mirror/
 ├── docs/                               # Documentation
 ├── .github/workflows/                  # CI, release, CodeQL, Scorecard
 ├── index.html                          # HTML entry point
-├── vite.config.js                      # Vite + Svelte + ghostty WASM plugin
+├── vite.config.js                      # Vite + Svelte config
 └── package.json                        # Frontend deps + npm scripts
 ```
 
@@ -228,8 +228,7 @@ Additional commands via Cargo:
 | svelte (v5) | UI framework with runes |
 | @sveltejs/vite-plugin-svelte | Svelte Vite integration |
 | vite | Build tool + dev server |
-| ghostty-web | WASM terminal emulator (WebGL) -- user-shell terminal |
-| @xterm/xterm + addons | Terminal emulator (WebGL) -- AI agent (Voice Agent) terminal |
+| @xterm/xterm + addons | Terminal emulator (WebGL) -- AI agent (Voice Agent) + user-shell terminals |
 | codemirror + @codemirror/* | Code editor (Lens file editor) |
 | highlight.js + marked-highlight | Syntax highlighting in chat markdown |
 | marked | Markdown rendering |
