@@ -48,3 +48,28 @@ This file lists third-party code and assets bundled with Voice Mirror.
    Files: src/assets/icons/providers/*.svg, *.webp
    Usage: Nominative fair use for identifying AI provider integrations.
    Trademarks belong to their respective owners (Anthropic, OpenAI, etc.).
+
+9. marked + marked-highlight
+   Source: https://github.com/markedjs/marked
+   License: MIT
+   Copyright (c) 2018+, MarkedJS; (c) 2011-2018, Christopher Jeffrey
+
+10. fuzzysort
+    Source: https://github.com/farzher/fuzzysort
+    License: MIT
+    Copyright (c) 2018 Stephen Kamenar
+
+11. mammoth.js
+    Source: https://github.com/mwilliamson/mammoth.js
+    License: BSD-2-Clause
+    Copyright (c) 2013, Michael Williamson
+
+12. whisper.cpp (via whisper-rs)
+    Source: https://github.com/ggml-org/whisper.cpp / https://github.com/tazz4843/whisper-rs
+    License: MIT
+    Copyright (c) 2023-2024 The ggml authors; whisper-rs (c) tazz4843
+
+13. espeak-ng (bundled external tool, tools/espeak-ng/ — downloaded, not linked)
+    Source: https://github.com/espeak-ng/espeak-ng
+    License: GPL-3.0 (invoked as a separate process; not linked into Voice Mirror)
+
