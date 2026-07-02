@@ -253,7 +253,7 @@ describe('App.svelte — command palette wiring', () => {
 // ── FileEditor.svelte ───────────────────────────────────────────────────────
 
 describe('FileEditor.svelte — command event listeners', () => {
-  const editorSrc = readFile(LENS_DIR, 'FileEditor.svelte');
+  const editorSrc = readFile(LENS_DIR, 'editor/FileEditor.svelte');
 
   it('listens for command:save event', () => {
     assert.ok(editorSrc.includes('command:save'), 'Should listen for command:save event from command registry');

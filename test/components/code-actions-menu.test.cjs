@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const src = fs.readFileSync(path.join(__dirname, '../../src/components/lens/CodeActionsMenu.svelte'), 'utf-8');
+const src = fs.readFileSync(path.join(__dirname, '../../src/components/lens/editor/CodeActionsMenu.svelte'), 'utf-8');
 
 describe('CodeActionsMenu.svelte: props', () => {
   it('accepts actions prop', () => {

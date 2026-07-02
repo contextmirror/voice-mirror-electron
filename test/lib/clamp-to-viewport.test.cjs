@@ -67,9 +67,9 @@ describe('clamp-to-viewport.js', () => {
 
 describe('clampToViewport consumers', () => {
   const consumers = [
-    { file: 'src/components/lens/TabContextMenu.svelte', label: 'TabContextMenu' },
-    { file: 'src/components/lens/FileContextMenu.svelte', label: 'FileContextMenu' },
-    { file: 'src/components/lens/EditorContextMenu.svelte', label: 'EditorContextMenu' },
+    { file: 'src/components/lens/editor/TabContextMenu.svelte', label: 'TabContextMenu' },
+    { file: 'src/components/lens/tree/FileContextMenu.svelte', label: 'FileContextMenu' },
+    { file: 'src/components/lens/editor/EditorContextMenu.svelte', label: 'EditorContextMenu' },
     { file: 'src/components/terminal/TerminalContextMenu.svelte', label: 'TerminalContextMenu' },
     { file: 'src/components/chat/ChatSessionDropdown.svelte', label: 'ChatSessionDropdown' },
   ];

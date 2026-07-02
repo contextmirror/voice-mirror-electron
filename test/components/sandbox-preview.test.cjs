@@ -10,7 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const src = fs.readFileSync(
-  path.join(__dirname, '..', '..', 'src', 'components', 'lens', 'SandboxPreview.svelte'),
+  path.join(__dirname, '..', '..', 'src', 'components', 'lens', 'preview', 'SandboxPreview.svelte'),
   'utf-8'
 );
 

@@ -4,7 +4,7 @@
   import { lensStore } from '../../lib/stores/lens.svelte.js';
   import { browserTabsStore } from '../../lib/stores/browser-tabs.svelte.js';
   import { lensHardRefresh } from '../../lib/api.js';
-  import BrowserMenu from './BrowserMenu.svelte';
+  import BrowserMenu from './browser/BrowserMenu.svelte';
 
   let {
     zoomLevel = 100,

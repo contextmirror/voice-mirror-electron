@@ -13,7 +13,7 @@ function readFile(dir, name) {
 // ── DropZoneOverlay.svelte ──────────────────────────────────────────────────
 
 describe('DropZoneOverlay.svelte', () => {
-  const dropSrc = readFile(LENS_DIR, 'DropZoneOverlay.svelte');
+  const dropSrc = readFile(LENS_DIR, 'editor/DropZoneOverlay.svelte');
 
   it('has active prop', () => {
     assert.ok(dropSrc.includes('active'), 'Should have active prop');
@@ -63,7 +63,7 @@ describe('DropZoneOverlay.svelte', () => {
 // ── EditorPane.svelte drop support ──────────────────────────────────────────
 
 describe('EditorPane.svelte drop support', () => {
-  const paneSrc = readFile(LENS_DIR, 'EditorPane.svelte');
+  const paneSrc = readFile(LENS_DIR, 'editor/EditorPane.svelte');
 
   it('imports DropZoneOverlay', () => {
     assert.ok(paneSrc.includes('import DropZoneOverlay'), 'Should import the overlay component');
@@ -113,7 +113,7 @@ describe('EditorPane.svelte drop support', () => {
 // ── FileTreeNode.svelte drag support ────────────────────────────────────────
 
 describe('FileTreeNode.svelte drag support', () => {
-  const nodeSrc = readFile(LENS_DIR, 'FileTreeNode.svelte');
+  const nodeSrc = readFile(LENS_DIR, 'tree/FileTreeNode.svelte');
 
   it('has draggable attribute', () => {
     assert.ok(nodeSrc.includes('draggable'), 'Should mark file buttons as draggable');
@@ -167,7 +167,7 @@ describe('FileTreeNode.svelte drag support', () => {
 // ── GroupTabBar.svelte file-tree drop ───────────────────────────────────────
 
 describe('GroupTabBar.svelte file-tree drop', () => {
-  const tabBarSrc = readFile(LENS_DIR, 'GroupTabBar.svelte');
+  const tabBarSrc = readFile(LENS_DIR, 'editor/GroupTabBar.svelte');
 
   it('handles file-tree type string in drop handler', () => {
     assert.ok(tabBarSrc.includes('file-tree'), 'Should check for file-tree type in drop data');

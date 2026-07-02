@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const src = fs.readFileSync(path.join(__dirname, '../../src/components/lens/ReferencesPanel.svelte'), 'utf-8');
+const src = fs.readFileSync(path.join(__dirname, '../../src/components/lens/panels/ReferencesPanel.svelte'), 'utf-8');
 
 describe('ReferencesPanel.svelte: props', () => {
   it('accepts references prop', () => {

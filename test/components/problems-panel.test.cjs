@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 
 const src = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/ProblemsPanel.svelte'),
+  path.join(__dirname, '../../src/components/lens/panels/ProblemsPanel.svelte'),
   'utf-8'
 );
 

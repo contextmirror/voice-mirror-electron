@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const panelSrc = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/OutputPanel.svelte'),
+  path.join(__dirname, '../../src/components/lens/panels/OutputPanel.svelte'),
   'utf-8'
 );
 
@@ -15,7 +15,7 @@ const tabsSrc = fs.readFileSync(
 
 describe('OutputPanel.svelte', () => {
   it('imports outputStore', () => {
-    assert.ok(panelSrc.includes("from '../../lib/stores/output.svelte.js'"));
+    assert.ok(panelSrc.includes("from '../../../lib/stores/output.svelte.js'"));
   });
 
   it('renders log entries with level classes', () => {

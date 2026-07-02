@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 const src = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/DevicePickerMenu.svelte'),
+  path.join(__dirname, '../../src/components/lens/browser/DevicePickerMenu.svelte'),
   'utf-8'
 );
 
@@ -150,7 +150,7 @@ describe('DevicePickerMenu.svelte: styling', () => {
 
 // Verify DevicePreview.svelte uses new type field instead of category
 const previewSrc = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/DevicePreview.svelte'),
+  path.join(__dirname, '../../src/components/lens/browser/DevicePreview.svelte'),
   'utf-8'
 );
 

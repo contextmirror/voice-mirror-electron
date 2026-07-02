@@ -233,7 +233,7 @@ describe('editor-extensions.js -- git gutter integration', () => {
 // ── FileEditor.svelte git gutter integration ──
 
 describe('FileEditor.svelte -- git gutter integration', () => {
-  const editorSrc = fs.readFileSync(path.join(__dirname, '../../src/components/lens/FileEditor.svelte'), 'utf-8');
+  const editorSrc = fs.readFileSync(path.join(__dirname, '../../src/components/lens/editor/FileEditor.svelte'), 'utf-8');
 
   it('imports getFileGitContent from api', () => {
     assert.ok(editorSrc.includes('getFileGitContent'), 'Should import getFileGitContent');

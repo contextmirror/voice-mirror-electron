@@ -12,7 +12,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const filePath = path.join(__dirname, '../../src/components/lens/FileTree.svelte');
+const filePath = path.join(__dirname, '../../src/components/lens/tree/FileTree.svelte');
 const src = fs.readFileSync(filePath, 'utf-8');
 
 describe('FileTree.svelte', () => {
@@ -24,7 +24,7 @@ describe('FileTree.svelte', () => {
 
   it('imports listDirectory from api', () => {
     assert.ok(src.includes('listDirectory'), 'Should import listDirectory');
-    assert.ok(src.includes("from '../../lib/api.js'"), 'Should import from api.js');
+    assert.ok(src.includes("from '../../../lib/api.js'"), 'Should import from api.js');
   });
 
   it('imports getGitChanges from api', () => {
@@ -36,7 +36,7 @@ describe('FileTree.svelte', () => {
   });
 
   it('imports GitChangesPanel sub-component', () => {
-    assert.ok(src.includes("import GitChangesPanel from './GitChangesPanel.svelte'"), 'Should import GitChangesPanel');
+    assert.ok(src.includes("import GitChangesPanel from '../git/GitChangesPanel.svelte'"), 'Should import GitChangesPanel');
   });
 
   // ── Props ──

@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 
 const src = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/FileEditor.svelte'),
+  path.join(__dirname, '../../src/components/lens/editor/FileEditor.svelte'),
   'utf-8'
 );
 
@@ -180,7 +180,7 @@ describe('FileEditor.svelte: language support', () => {
   it('has loadLanguage via shared codemirror-languages.js', () => {
     assert.ok(src.includes('loadLanguage'), 'Should have loadLanguage reference');
     assert.ok(
-      src.includes("import { loadLanguageExtension } from '../../lib/codemirror-languages.js'"),
+      src.includes("import { loadLanguageExtension } from '../../../lib/codemirror-languages.js'"),
       'Should import loadLanguageExtension from codemirror-languages.js'
     );
   });
@@ -482,7 +482,7 @@ describe('FileEditor.svelte: markdown preview', () => {
 describe('FileEditor.svelte: markdown preview styles', () => {
   it('imports markdown-preview.css', () => {
     assert.ok(
-      src.includes("@import '../../styles/markdown-preview.css'"),
+      src.includes("@import '../../../styles/markdown-preview.css'"),
       'Should import markdown-preview.css in style block'
     );
   });

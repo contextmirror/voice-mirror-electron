@@ -110,7 +110,7 @@ describe('api.js: device preview wrappers', () => {
   });
 });
 
-const componentSrc = fs.readFileSync(path.join(__dirname, '../../src/components/lens/DevicePreview.svelte'), 'utf-8');
+const componentSrc = fs.readFileSync(path.join(__dirname, '../../src/components/lens/browser/DevicePreview.svelte'), 'utf-8');
 
 describe('DevicePreview.svelte: imports', () => {
   it('imports devicePreviewStore', () => {
@@ -169,8 +169,8 @@ describe('DevicePreview.svelte: styles', () => {
   });
 });
 
-const groupTabBarSrc = fs.readFileSync(path.join(__dirname, '../../src/components/lens/GroupTabBar.svelte'), 'utf-8');
-const editorPaneSrc = fs.readFileSync(path.join(__dirname, '../../src/components/lens/EditorPane.svelte'), 'utf-8');
+const groupTabBarSrc = fs.readFileSync(path.join(__dirname, '../../src/components/lens/editor/GroupTabBar.svelte'), 'utf-8');
+const editorPaneSrc = fs.readFileSync(path.join(__dirname, '../../src/components/lens/editor/EditorPane.svelte'), 'utf-8');
 const workspaceSrc = fs.readFileSync(path.join(__dirname, '../../src/components/lens/LensWorkspace.svelte'), 'utf-8');
 
 describe('GroupTabBar: device preview button', () => {
@@ -208,7 +208,7 @@ describe('LensWorkspace: device preview wiring', () => {
 
 describe('LensWorkspace.svelte: device preview integration', () => {
   it('imports DevicePreview component', () => {
-    assert.ok(workspaceSrc.includes("import DevicePreview from './DevicePreview.svelte'"), 'Should import DevicePreview');
+    assert.ok(workspaceSrc.includes("import DevicePreview from './browser/DevicePreview.svelte'"), 'Should import DevicePreview');
   });
 
   it('renders DevicePreview in a split pane with editor', () => {
@@ -250,7 +250,7 @@ describe('config: device preview settings', () => {
 });
 
 // Re-read the component source for sync tests (after Task 11 modifications)
-const componentSrcV2 = fs.readFileSync(path.join(__dirname, '../../src/components/lens/DevicePreview.svelte'), 'utf-8');
+const componentSrcV2 = fs.readFileSync(path.join(__dirname, '../../src/components/lens/browser/DevicePreview.svelte'), 'utf-8');
 
 describe('DevicePreview.svelte: interaction sync', () => {
   it('imports SYNC_SCRIPT', () => {
@@ -297,7 +297,7 @@ describe('lens_eval_device_js command', () => {
 const lensSrcCDP = lensSrc;
 const libSrcCDP = fs.readFileSync(path.join(__dirname, '../../src-tauri/src/lib.rs'), 'utf-8');
 const apiSrcCDP = fs.readFileSync(path.join(__dirname, '../../src/lib/api.js'), 'utf-8');
-const componentSrcCDP = fs.readFileSync(path.join(__dirname, '../../src/components/lens/DevicePreview.svelte'), 'utf-8');
+const componentSrcCDP = fs.readFileSync(path.join(__dirname, '../../src/components/lens/browser/DevicePreview.svelte'), 'utf-8');
 
 describe('CDP device emulation', () => {
   it('lens.rs has lens_set_device_emulation command', () => {

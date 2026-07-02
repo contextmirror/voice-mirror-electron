@@ -11,19 +11,19 @@ const fs = require('fs');
 const path = require('path');
 
 const src = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/StatusDropdown.svelte'),
+  path.join(__dirname, '../../src/components/lens/status/StatusDropdown.svelte'),
   'utf-8'
 );
 const serversSrc = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/ServersTab.svelte'),
+  path.join(__dirname, '../../src/components/lens/status/ServersTab.svelte'),
   'utf-8'
 );
 const mcpSrc = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/McpTab.svelte'),
+  path.join(__dirname, '../../src/components/lens/status/McpTab.svelte'),
   'utf-8'
 );
 const lspSrc = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/LspTab.svelte'),
+  path.join(__dirname, '../../src/components/lens/status/LspTab.svelte'),
   'utf-8'
 );
 
@@ -357,7 +357,7 @@ describe('StatusDropdown.svelte: manage view interactive controls', () => {
 
   it('imports detectDevServers from api', () => {
     assert.ok(src.includes('detectDevServers'));
-    assert.ok(src.includes("from '../../lib/api.js'"));
+    assert.ok(src.includes("from '../../../lib/api.js'"));
   });
 
   it('has getServerState function (same logic as ServersTab)', () => {

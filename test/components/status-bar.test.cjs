@@ -307,7 +307,7 @@ describe('StatusBar.svelte: click-outside for notification panel', () => {
 });
 
 // ---- FileEditor wiring tests ----
-const FE_SRC_PATH = path.join(__dirname, '../../src/components/lens/FileEditor.svelte');
+const FE_SRC_PATH = path.join(__dirname, '../../src/components/lens/editor/FileEditor.svelte');
 const feSrc = fs.readFileSync(FE_SRC_PATH, 'utf-8');
 
 describe('FileEditor.svelte: status bar wiring', () => {
@@ -433,7 +433,7 @@ describe('toast.svelte.js: notification routing', () => {
 // Task 4: FileEditor → statusBarStore wiring
 // ──────────────────────────────────────────────────
 
-const FE_SRC = fs.readFileSync(path.join(__dirname, '../../src/components/lens/FileEditor.svelte'), 'utf-8');
+const FE_SRC = fs.readFileSync(path.join(__dirname, '../../src/components/lens/editor/FileEditor.svelte'), 'utf-8');
 
 describe('FileEditor.svelte: status bar wiring', () => {
   it('imports statusBarStore', () => {

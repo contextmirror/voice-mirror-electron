@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const EXT_SRC = fs.readFileSync(path.join(__dirname, '../../src/lib/editor-extensions.js'), 'utf-8');
-const CTX_SRC = fs.readFileSync(path.join(__dirname, '../../src/components/lens/EditorContextMenu.svelte'), 'utf-8');
+const CTX_SRC = fs.readFileSync(path.join(__dirname, '../../src/components/lens/editor/EditorContextMenu.svelte'), 'utf-8');
 
 describe('Navigation keybindings', () => {
   it('has Ctrl-F12 for Go to Implementation', () => {

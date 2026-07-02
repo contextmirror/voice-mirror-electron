@@ -4,7 +4,7 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 
 const src = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/DesignToolbar.svelte'),
+  path.join(__dirname, '../../src/components/lens/preview/DesignToolbar.svelte'),
   'utf-8'
 );
 

@@ -17,7 +17,7 @@
   import { configStore, updateConfig } from '../../lib/stores/config.svelte.js';
   import { formatRelativeTime, unwrapResult } from '../../lib/utils.js';
   import { detectDevServers } from '../../lib/api.js';
-  import ServersTab from '../lens/ServersTab.svelte';
+  import ServersTab from '../lens/status/ServersTab.svelte';
 
   // -- Derived state --
   let hasProject = $derived(!!projectStore.root);

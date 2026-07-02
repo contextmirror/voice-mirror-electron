@@ -16,20 +16,12 @@ export async function getConfig() {
   return invoke('get_config');
 }
 
-export async function getApiKey(provider) {
-  return invoke('get_api_key', { provider });
-}
-
 export async function setConfig(patch) {
   return invoke('set_config', { patch });
 }
 
 export async function resetConfig() {
   return invoke('reset_config');
-}
-
-export async function getPlatformInfo() {
-  return invoke('get_platform_info');
 }
 
 // ============ Window ============
@@ -44,18 +36,6 @@ export async function setWindowPosition(x, y) {
 
 export async function minimizeWindow() {
   return invoke('minimize_window');
-}
-
-export async function maximizeWindow() {
-  return invoke('maximize_window');
-}
-
-export async function saveWindowBounds() {
-  return invoke('save_window_bounds');
-}
-
-export async function quitApp() {
-  return invoke('quit_app');
 }
 
 export async function setWindowSize(width, height) {
@@ -116,10 +96,6 @@ export async function listAudioDevices() {
 
 export async function speakText(text) {
   return invoke('speak_text', { text });
-}
-
-export async function stopSpeaking() {
-  return invoke('stop_speaking');
 }
 
 export async function pttPress() {
@@ -196,14 +172,6 @@ export async function startAI(options = {}) {
 
 export async function stopAI() {
   return invoke('stop_ai');
-}
-
-export async function interruptAI() {
-  return invoke('interrupt_ai');
-}
-
-export async function getProvider() {
-  return invoke('get_provider');
 }
 
 export async function getAIStatus() {
@@ -321,10 +289,6 @@ export async function exportChatToFile(path, content) {
 
 // ============ Screenshot ============
 
-export async function takeScreenshot() {
-  return invoke('take_screenshot');
-}
-
 /**
  * Save a base64/data-URL image to a temp file and get back its absolute path.
  * Used by the AI terminal to turn a dropped/pasted image into a readable path
@@ -359,11 +323,6 @@ export async function lensCapturePreview() {
 
 // ============ Tools ============
 
-/** Detect available CLI tools (claude, opencode, ollama, cargo). */
-export async function scanCliTools() {
-  return invoke('scan_cli_tools');
-}
-
 /**
  * Check system tool status (installed vs latest where updatable).
  * Returns { system: { node, ollama, ffmpeg, claude, opencode } }
@@ -394,10 +353,6 @@ export async function unregisterAllShortcuts() {
   return invoke('unregister_all_shortcuts');
 }
 
-export async function listShortcuts() {
-  return invoke('list_shortcuts');
-}
-
 // ============ Performance Stats ============
 
 export async function getProcessStats() {
@@ -407,14 +362,6 @@ export async function getProcessStats() {
 // ============ Config Migration ============
 
 // ============ Lens ============
-
-export async function lensCreateWebview(url, x, y, width, height) {
-  return invoke('lens_create_webview', { url, x, y, width, height });
-}
-
-export async function lensCloseWebview() {
-  return invoke('lens_close_webview');
-}
 
 export async function lensNavigate(url) {
   return invoke('lens_navigate', { url });
@@ -622,31 +569,6 @@ export async function detectDevServers(projectRoot) {
 
 // ============ Sandbox (drive an app being built over CDP) ============
 
-/**
- * Snapshot an external app's UI via its CDP remote-debugging port.
- * The app must be running with `--remote-debugging-port=<port>`.
- * @param {number} port
- * @returns {Promise<{ success: boolean, data?: { pageUrl: string, tree: string, refCount: number } }>}
- */
-export async function sandboxSnapshot(port, window) {
-  return invoke('sandbox_snapshot', { port, window: window ?? null });
-}
-
-/** Click an element in the sandboxed app by its @ref (from the last snapshot). */
-export async function sandboxClick(port, elementRef) {
-  return invoke('sandbox_click', { port, elementRef });
-}
-
-/** Type text into an element in the sandboxed app by its @ref. */
-export async function sandboxType(port, elementRef, text) {
-  return invoke('sandbox_type', { port, elementRef, text });
-}
-
-/** Screenshot the sandboxed app's web contents. Returns { base64, contentType }. */
-export async function sandboxScreenshot(port) {
-  return invoke('sandbox_screenshot', { port });
-}
-
 /** Record the active sandbox app's CDP port so the sandbox MCP tools can default to it. */
 export async function sandboxSetActivePort(port) {
   return invoke('sandbox_set_active_port', { port });
@@ -670,14 +592,6 @@ export async function sandboxStreamStop(port) {
 /** List the app's visible windows (pill, settings, dialogs). Returns [{ hwnd, title }]. */
 export async function sandboxListWindows(port) {
   return invoke('sandbox_list_windows', { port });
-}
-
-/**
- * The OS window (HWND) Claude is currently driving — the live preview mirrors
- * this so the human watches exactly the window Claude acts on. Returns { hwnd }.
- */
-export async function sandboxActiveHwnd() {
-  return invoke('sandbox_active_hwnd');
 }
 
 /**
@@ -717,10 +631,6 @@ export async function deleteSttModel(modelSize) {
 }
 
 // ============ Files ============
-
-export async function getProjectRoot() {
-  return invoke('get_project_root');
-}
 
 export async function listDirectory(path, root) {
   return invoke('list_directory', { path: path || null, root: root || null });
@@ -937,11 +847,6 @@ export async function terminalDetectProfiles() {
   return invoke('terminal_detect_profiles');
 }
 
-/** List all active terminal sessions. */
-export async function terminalList() {
-  return invoke('terminal_list');
-}
-
 // ============ LSP ============
 
 export async function lspOpenFile(path, content, projectRoot) {
@@ -1134,14 +1039,6 @@ export async function registerProjectChannel(label, projectPath, framework, port
 
 export async function unregisterProjectChannel(label) {
   return invoke('unregister_project_channel', { params: { label } });
-}
-
-export async function pushProjectLog(label, level, message) {
-  return invoke('push_project_log', { params: { label, level, message } });
-}
-
-export async function listProjectChannels() {
-  return invoke('list_project_channels');
 }
 
 // ============ Output / Diagnostics ============

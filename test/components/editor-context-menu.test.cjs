@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 const src = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/EditorContextMenu.svelte'),
+  path.join(__dirname, '../../src/components/lens/editor/EditorContextMenu.svelte'),
   'utf-8'
 );
 
@@ -207,7 +207,7 @@ describe('EditorContextMenu.svelte: keyboard shortcuts', () => {
 
 describe('EditorContextMenu.svelte: styling and layout', () => {
   it('imports shared context-menu.css', () => {
-    assert.ok(src.includes("@import '../../styles/context-menu.css'"), 'Should import shared context-menu styles');
+    assert.ok(src.includes("@import '../../../styles/context-menu.css'"), 'Should import shared context-menu styles');
   });
   it('uses -webkit-app-region: no-drag', () => {
     assert.ok(src.includes('-webkit-app-region: no-drag'));

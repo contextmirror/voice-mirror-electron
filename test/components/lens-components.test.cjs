@@ -93,11 +93,11 @@ describe('LensToolbar.svelte', () => {
 // ============ FileTree: Search tab ============
 
 describe('FileTree.svelte — Search tab integration', () => {
-  const ftSrc = readComponent('FileTree.svelte');
+  const ftSrc = readComponent('tree/FileTree.svelte');
 
   it('imports SearchPanel', () => {
     assert.ok(
-      ftSrc.includes("import SearchPanel from './SearchPanel.svelte'"),
+      ftSrc.includes("import SearchPanel from '../panels/SearchPanel.svelte'"),
       'FileTree should import SearchPanel'
     );
   });
@@ -162,7 +162,7 @@ describe('FileTree.svelte — Search tab integration', () => {
 // ============ FileTree: Git Staging ============
 
 describe('FileTree.svelte -- Git staging integration', () => {
-  const ftSrc = readComponent('FileTree.svelte');
+  const ftSrc = readComponent('tree/FileTree.svelte');
 
   // Imports
   it('imports gitStage from api', () => {

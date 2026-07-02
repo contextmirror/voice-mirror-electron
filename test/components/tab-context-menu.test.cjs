@@ -9,12 +9,12 @@ const fs = require('fs');
 const path = require('path');
 
 const src = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/TabContextMenu.svelte'),
+  path.join(__dirname, '../../src/components/lens/editor/TabContextMenu.svelte'),
   'utf-8'
 );
 
 const tabBarSrc = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/TabBar.svelte'),
+  path.join(__dirname, '../../src/components/lens/editor/TabBar.svelte'),
   'utf-8'
 );
 
@@ -113,7 +113,7 @@ describe('TabContextMenu.svelte: menu behavior', () => {
     assert.ok(src.includes('role="menuitem"'));
   });
   it('imports shared context-menu.css', () => {
-    assert.ok(src.includes("@import '../../styles/context-menu.css'"), 'Should import shared context-menu styles');
+    assert.ok(src.includes("@import '../../../styles/context-menu.css'"), 'Should import shared context-menu styles');
   });
   it('uses setupClickOutside for dismiss behavior', () => {
     assert.ok(src.includes('setupClickOutside'), 'Should use setupClickOutside utility');

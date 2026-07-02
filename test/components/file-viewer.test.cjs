@@ -76,15 +76,15 @@ describe('viewer-type.js -- resolveViewerType', () => {
 // ---- FileViewer.svelte (router) ----
 
 describe('FileViewer.svelte -- router', () => {
-  const src = readComponent('FileViewer.svelte');
+  const src = readComponent('viewers/FileViewer.svelte');
 
   it('imports resolveViewerType', () => {
-    assert.ok(src.includes("from '../../lib/viewer-type.js'"), 'imports the resolver');
+    assert.ok(src.includes("from '../../../lib/viewer-type.js'"), 'imports the resolver');
     assert.ok(src.includes('resolveViewerType'), 'uses resolveViewerType');
   });
 
   it('imports every sub-viewer', () => {
-    assert.ok(src.includes("import FileEditor from './FileEditor.svelte'"), 'FileEditor');
+    assert.ok(src.includes("import FileEditor from '../editor/FileEditor.svelte'"), 'FileEditor');
     assert.ok(src.includes("import ImageViewer from './ImageViewer.svelte'"), 'ImageViewer');
     assert.ok(src.includes("import PdfViewer from './PdfViewer.svelte'"), 'PdfViewer');
     assert.ok(src.includes("import OfficeViewer from './OfficeViewer.svelte'"), 'OfficeViewer');
@@ -107,10 +107,10 @@ describe('FileViewer.svelte -- router', () => {
 // ---- EditorPane wiring ----
 
 describe('EditorPane.svelte -- routes file tabs through FileViewer', () => {
-  const src = readComponent('EditorPane.svelte');
+  const src = readComponent('editor/EditorPane.svelte');
 
   it('imports FileViewer (not FileEditor directly)', () => {
-    assert.ok(src.includes("import FileViewer from './FileViewer.svelte'"), 'imports FileViewer');
+    assert.ok(src.includes("import FileViewer from '../viewers/FileViewer.svelte'"), 'imports FileViewer');
     assert.ok(!src.includes("import FileEditor from './FileEditor.svelte'"), 'no direct FileEditor import');
   });
 
@@ -123,7 +123,7 @@ describe('EditorPane.svelte -- routes file tabs through FileViewer', () => {
 // ---- ImageViewer.svelte ----
 
 describe('ImageViewer.svelte', () => {
-  const src = readComponent('ImageViewer.svelte');
+  const src = readComponent('viewers/ImageViewer.svelte');
 
   it('uses readFile for the data URL', () => {
     assert.ok(src.includes('readFile'), 'reads via readFile');
@@ -143,7 +143,7 @@ describe('ImageViewer.svelte', () => {
 // ---- PdfViewer.svelte ----
 
 describe('PdfViewer.svelte', () => {
-  const src = readComponent('PdfViewer.svelte');
+  const src = readComponent('viewers/PdfViewer.svelte');
 
   it('uses readFileBase64', () => {
     assert.ok(src.includes('readFileBase64'), 'reads base64 bytes');
@@ -169,7 +169,7 @@ describe('PdfViewer.svelte', () => {
 // ---- OfficeViewer.svelte ----
 
 describe('OfficeViewer.svelte', () => {
-  const src = readComponent('OfficeViewer.svelte');
+  const src = readComponent('viewers/OfficeViewer.svelte');
 
   it('lazy-imports mammoth', () => {
     assert.ok(src.includes("import('mammoth')"), 'dynamic import of mammoth');
@@ -199,7 +199,7 @@ describe('OfficeViewer.svelte', () => {
 // ---- BinaryFilePanel.svelte ----
 
 describe('BinaryFilePanel.svelte', () => {
-  const src = readComponent('BinaryFilePanel.svelte');
+  const src = readComponent('viewers/BinaryFilePanel.svelte');
 
   it('shows filename and size', () => {
     assert.ok(src.includes('basename'), 'derives a filename');
@@ -222,10 +222,10 @@ describe('BinaryFilePanel.svelte', () => {
 // ---- FileEditor.svelte cleanup ----
 
 describe('FileEditor.svelte -- binary handled by BinaryFilePanel', () => {
-  const src = readComponent('FileEditor.svelte');
+  const src = readComponent('editor/FileEditor.svelte');
 
   it('imports BinaryFilePanel', () => {
-    assert.ok(src.includes("import BinaryFilePanel from './BinaryFilePanel.svelte'"), 'imports the panel');
+    assert.ok(src.includes("import BinaryFilePanel from '../viewers/BinaryFilePanel.svelte'"), 'imports the panel');
   });
 
   it('renders BinaryFilePanel for binary files (no dead-end branch)', () => {

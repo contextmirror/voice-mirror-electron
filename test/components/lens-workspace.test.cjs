@@ -9,7 +9,7 @@ const src = fs.readFileSync(
 );
 
 const editorPaneSrc = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/EditorPane.svelte'),
+  path.join(__dirname, '../../src/components/lens/editor/EditorPane.svelte'),
   'utf-8'
 );
 

@@ -89,8 +89,8 @@ describe('tab-utils.js', () => {
 
 describe('getTabIcon consumers', () => {
   const consumers = [
-    { file: 'src/components/lens/TabBar.svelte', label: 'TabBar' },
-    { file: 'src/components/lens/GroupTabBar.svelte', label: 'GroupTabBar' },
+    { file: 'src/components/lens/editor/TabBar.svelte', label: 'TabBar' },
+    { file: 'src/components/lens/editor/GroupTabBar.svelte', label: 'GroupTabBar' },
   ];
 
   for (const { file, label } of consumers) {

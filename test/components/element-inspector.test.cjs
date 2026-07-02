@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 const src = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/ElementInspector.svelte'),
+  path.join(__dirname, '../../src/components/lens/browser/ElementInspector.svelte'),
   'utf-8'
 );
 

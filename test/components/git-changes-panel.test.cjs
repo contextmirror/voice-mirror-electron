@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const filePath = path.join(__dirname, '../../src/components/lens/GitChangesPanel.svelte');
+const filePath = path.join(__dirname, '../../src/components/lens/git/GitChangesPanel.svelte');
 const src = fs.readFileSync(filePath, 'utf-8');
 
 describe('GitChangesPanel.svelte', () => {

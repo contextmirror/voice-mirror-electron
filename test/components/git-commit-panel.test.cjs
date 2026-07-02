@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const COMPONENT_PATH = path.join(__dirname, '../../src/components/lens/GitCommitPanel.svelte');
+const COMPONENT_PATH = path.join(__dirname, '../../src/components/lens/git/GitCommitPanel.svelte');
 const src = fs.readFileSync(COMPONENT_PATH, 'utf-8');
 
 // ============ Structure ============

@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const filePath = path.join(__dirname, '../../src/components/lens/FileTreeNode.svelte');
+const filePath = path.join(__dirname, '../../src/components/lens/tree/FileTreeNode.svelte');
 const src = fs.readFileSync(filePath, 'utf-8');
 
 describe('FileTreeNode.svelte', () => {

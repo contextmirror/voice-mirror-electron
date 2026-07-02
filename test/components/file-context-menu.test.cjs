@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const SRC_PATH = path.join(__dirname, '../../src/components/lens/FileContextMenu.svelte');
+const SRC_PATH = path.join(__dirname, '../../src/components/lens/tree/FileContextMenu.svelte');
 const src = fs.readFileSync(SRC_PATH, 'utf-8');
 
 describe('FileContextMenu.svelte -- imports', () => {
@@ -94,7 +94,7 @@ describe('FileContextMenu.svelte -- structure', () => {
   });
 
   it('imports shared context-menu.css', () => {
-    assert.ok(src.includes("@import '../../styles/context-menu.css'"), 'Should import shared context-menu styles');
+    assert.ok(src.includes("@import '../../../styles/context-menu.css'"), 'Should import shared context-menu styles');
   });
 
   it('has role=menu', () => {
@@ -264,6 +264,6 @@ describe('FileContextMenu.svelte -- CSS', () => {
   });
 
   it('imports shared context-menu.css for box-shadow and border-radius', () => {
-    assert.ok(src.includes("@import '../../styles/context-menu.css'"), 'Should import shared context-menu styles');
+    assert.ok(src.includes("@import '../../../styles/context-menu.css'"), 'Should import shared context-menu styles');
   });
 });

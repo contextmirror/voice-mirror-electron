@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const src = fs.readFileSync(path.join(__dirname, '../../src/components/lens/RenameInput.svelte'), 'utf-8');
+const src = fs.readFileSync(path.join(__dirname, '../../src/components/lens/editor/RenameInput.svelte'), 'utf-8');
 
 describe('RenameInput.svelte: props', () => {
   it('accepts visible prop', () => {

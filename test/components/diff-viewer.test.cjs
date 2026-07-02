@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 
 const src = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/DiffViewer.svelte'),
+  path.join(__dirname, '../../src/components/lens/editor/DiffViewer.svelte'),
   'utf-8'
 );
 
@@ -336,7 +336,7 @@ describe('DiffViewer.svelte: loadLanguage', () => {
   it('has loadLanguage via shared codemirror-languages.js', () => {
     assert.ok(src.includes('loadLanguage'), 'Should have loadLanguage reference');
     assert.ok(
-      src.includes("import { loadLanguageExtension } from '../../lib/codemirror-languages.js'"),
+      src.includes("import { loadLanguageExtension } from '../../../lib/codemirror-languages.js'"),
       'Should import loadLanguageExtension from codemirror-languages.js'
     );
   });

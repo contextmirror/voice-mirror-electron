@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 
 const src = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/LensPreview.svelte'),
+  path.join(__dirname, '../../src/components/lens/preview/LensPreview.svelte'),
   'utf-8'
 );
 

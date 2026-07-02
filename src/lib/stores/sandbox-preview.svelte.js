@@ -96,7 +96,7 @@ function createSandboxPreviewStore() {
         noWindow = false;
         listFailCount = 0;
       } else {
-        error = 'Failed to start the live preview.';
+        error = 'Failed to start the App Preview.';
       }
     } catch (err) {
       error = err?.message || String(err);

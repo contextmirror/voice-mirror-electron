@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const src = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/LspTab.svelte'), 'utf-8'
+  path.join(__dirname, '../../src/components/lens/status/LspTab.svelte'), 'utf-8'
 );
 const apiSrc = fs.readFileSync(
   path.join(__dirname, '../../src/lib/api.js'), 'utf-8'

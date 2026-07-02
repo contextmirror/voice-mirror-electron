@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const src = fs.readFileSync(path.join(__dirname, '../../src/components/lens/FileEditor.svelte'), 'utf-8');
+const src = fs.readFileSync(path.join(__dirname, '../../src/components/lens/editor/FileEditor.svelte'), 'utf-8');
 const extSrc = fs.readFileSync(path.join(__dirname, '../../src/lib/editor-extensions.js'), 'utf-8');
 
 describe('FileEditor LSP integration', () => {

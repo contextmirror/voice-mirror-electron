@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 
 const src = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/DiffToolbar.svelte'),
+  path.join(__dirname, '../../src/components/lens/editor/DiffToolbar.svelte'),
   'utf-8'
 );
 

@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 
 const src = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/TabDiffBadge.svelte'),
+  path.join(__dirname, '../../src/components/lens/editor/TabDiffBadge.svelte'),
   'utf-8'
 );
 
@@ -79,7 +79,7 @@ describe('TabDiffBadge.svelte: CSS styles', () => {
 
 describe('TabDiffBadge integration: TabBar.svelte', () => {
   const tabBarSrc = fs.readFileSync(
-    path.join(__dirname, '../../src/components/lens/TabBar.svelte'),
+    path.join(__dirname, '../../src/components/lens/editor/TabBar.svelte'),
     'utf-8'
   );
 
@@ -102,7 +102,7 @@ describe('TabDiffBadge integration: TabBar.svelte', () => {
 
 describe('TabDiffBadge integration: GroupTabBar.svelte', () => {
   const groupTabBarSrc = fs.readFileSync(
-    path.join(__dirname, '../../src/components/lens/GroupTabBar.svelte'),
+    path.join(__dirname, '../../src/components/lens/editor/GroupTabBar.svelte'),
     'utf-8'
   );
 

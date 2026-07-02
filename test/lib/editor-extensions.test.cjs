@@ -120,7 +120,7 @@ describe('editor-extensions.js: cm object dependencies', () => {
 });
 
 const fileEditorSrc = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/FileEditor.svelte'),
+  path.join(__dirname, '../../src/components/lens/editor/FileEditor.svelte'),
   'utf-8'
 );
 

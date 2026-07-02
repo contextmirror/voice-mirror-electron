@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 
 const src = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/SearchPanel.svelte'),
+  path.join(__dirname, '../../src/components/lens/panels/SearchPanel.svelte'),
   'utf-8'
 );
 
@@ -26,14 +26,14 @@ describe('SearchPanel: imports', () => {
 
   it('imports from search.svelte.js', () => {
     assert.ok(
-      src.includes("from '../../lib/stores/search.svelte.js'"),
+      src.includes("from '../../../lib/stores/search.svelte.js'"),
       'Should import from search.svelte.js'
     );
   });
 
   it('imports chooseIconName from file-icons.js', () => {
     assert.ok(
-      src.includes("import { chooseIconName } from '../../lib/file-icons.js'"),
+      src.includes("import { chooseIconName } from '../../../lib/file-icons.js'"),
       'Should import chooseIconName'
     );
   });

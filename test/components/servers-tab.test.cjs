@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const src = fs.readFileSync(path.join(__dirname, '../../src/components/lens/ServersTab.svelte'), 'utf-8');
+const src = fs.readFileSync(path.join(__dirname, '../../src/components/lens/status/ServersTab.svelte'), 'utf-8');
 
 describe('ServersTab', () => {
   // ── Imports ──
@@ -261,7 +261,7 @@ describe('ServersTab devServerManager integration', () => {
 
 // ── StatusDropdown integration ──
 
-const dropdownSrc = fs.readFileSync(path.join(__dirname, '../../src/components/lens/StatusDropdown.svelte'), 'utf-8');
+const dropdownSrc = fs.readFileSync(path.join(__dirname, '../../src/components/lens/status/StatusDropdown.svelte'), 'utf-8');
 
 describe('StatusDropdown dev server integration', () => {
   it('imports lensStore for dev server data', () => {

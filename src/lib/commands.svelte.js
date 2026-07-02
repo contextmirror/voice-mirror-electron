@@ -272,7 +272,7 @@ commandRegistry.registerMany([
   },
   {
     id: 'view.toggleBrowser',
-    label: 'Toggle Browser Preview',
+    label: 'Toggle Browser',
     category: 'View',
     execute: () => window.dispatchEvent(new CustomEvent('command:toggle-browser')),
   },

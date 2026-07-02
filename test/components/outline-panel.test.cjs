@@ -3,12 +3,12 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const src = fs.readFileSync(path.join(__dirname, '../../src/components/lens/OutlinePanel.svelte'), 'utf-8');
+const src = fs.readFileSync(path.join(__dirname, '../../src/components/lens/panels/OutlinePanel.svelte'), 'utf-8');
 
 describe('OutlinePanel.svelte: imports', () => {
   it('imports lspRequestDocumentSymbols from api', () => {
     assert.ok(src.includes('lspRequestDocumentSymbols'), 'Should import lspRequestDocumentSymbols');
-    assert.ok(src.includes("from '../../lib/api.js'"), 'Should import from api.js');
+    assert.ok(src.includes("from '../../../lib/api.js'"), 'Should import from api.js');
   });
 
   it('imports projectStore', () => {

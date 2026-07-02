@@ -14,10 +14,10 @@ const path = require('node:path');
 const SRC_PATH = path.join(__dirname, '../../src/lib/codemirror-languages.js');
 const src = fs.readFileSync(SRC_PATH, 'utf-8');
 
-const EDITOR_PATH = path.join(__dirname, '../../src/components/lens/FileEditor.svelte');
+const EDITOR_PATH = path.join(__dirname, '../../src/components/lens/editor/FileEditor.svelte');
 const editorSrc = fs.readFileSync(EDITOR_PATH, 'utf-8');
 
-const DIFF_PATH = path.join(__dirname, '../../src/components/lens/DiffViewer.svelte');
+const DIFF_PATH = path.join(__dirname, '../../src/components/lens/editor/DiffViewer.svelte');
 const diffSrc = fs.readFileSync(DIFF_PATH, 'utf-8');
 
 describe('codemirror-languages.js -- exports', () => {
@@ -91,14 +91,14 @@ describe('codemirror-languages.js -- error handling', () => {
 describe('codemirror-languages.js -- consumers', () => {
   it('FileEditor imports loadLanguageExtension', () => {
     assert.ok(
-      editorSrc.includes("import { loadLanguageExtension } from '../../lib/codemirror-languages.js'"),
+      editorSrc.includes("import { loadLanguageExtension } from '../../../lib/codemirror-languages.js'"),
       'FileEditor should import loadLanguageExtension from codemirror-languages.js'
     );
   });
 
   it('DiffViewer imports loadLanguageExtension', () => {
     assert.ok(
-      diffSrc.includes("import { loadLanguageExtension } from '../../lib/codemirror-languages.js'"),
+      diffSrc.includes("import { loadLanguageExtension } from '../../../lib/codemirror-languages.js'"),
       'DiffViewer should import loadLanguageExtension from codemirror-languages.js'
     );
   });
