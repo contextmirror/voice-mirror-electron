@@ -23,6 +23,9 @@ if (!fs.existsSync(SRC_EXE) || !fs.existsSync(SRC_SIG)) {
 fs.mkdirSync(STAGE, { recursive: true });
 fs.copyFileSync(SRC_EXE, path.join(STAGE, CLEAN_EXE));
 fs.copyFileSync(SRC_SIG, path.join(STAGE, CLEAN_EXE + '.sig'));
+// Evergreen alias: the website deep-links
+// releases/latest/download/voice-mirror-x64-setup.exe on every release.
+fs.copyFileSync(SRC_EXE, path.join(STAGE, 'voice-mirror-x64-setup.exe'));
 
 const sig = fs.readFileSync(SRC_SIG, 'utf8').trim();
 const manifest = {

@@ -59,6 +59,17 @@ jobs:
       - name: Vite build (frontend)
         run: npx vite build
 
+      # tauri.conf.json declares binaries/voice-mirror-mcp as an externalBin;
+      # the tauri build script fails if the target-triple file is missing.
+      - name: Build MCP sidecar
+        working-directory: src-tauri
+        shell: bash
+        run: |
+          cargo build --bin voice-mirror-mcp
+          mkdir -p binaries
+          triple=$(rustc -vV | sed -n 's/^host: //p')
+          cp "target/debug/voice-mirror-mcp" "binaries/voice-mirror-mcp-$triple"
+
       - name: Cargo check
         run: cargo check
         working-directory: src-tauri
@@ -104,6 +115,17 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci
+
+      # tauri.conf.json declares binaries/voice-mirror-mcp as an externalBin;
+      # the tauri build script fails if the target-triple file is missing.
+      - name: Build MCP sidecar
+        working-directory: src-tauri
+        shell: bash
+        run: |
+          cargo build --bin voice-mirror-mcp
+          mkdir -p binaries
+          triple=$(rustc -vV | sed -n 's/^host: //p')
+          cp "target/debug/voice-mirror-mcp" "binaries/voice-mirror-mcp-$triple"
 
       - name: Cargo test
         run: cargo test
@@ -185,6 +207,19 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci
+
+      # tauri.conf.json declares binaries/voice-mirror-mcp as an externalBin;
+      # the tauri build script fails if the target-triple file is missing.
+      - name: Build MCP sidecar
+        working-directory: src-tauri
+        shell: bash
+        run: |
+          cargo build --release --bin voice-mirror-mcp --target ${{ matrix.target }}
+          mkdir -p binaries
+          ext=""
+          if [ "$RUNNER_OS" = "Windows" ]; then ext=".exe"; fi
+          cp "target/${{ matrix.target }}/release/voice-mirror-mcp$ext" \
+             "binaries/voice-mirror-mcp-${{ matrix.target }}$ext"
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa # v0.6.1
