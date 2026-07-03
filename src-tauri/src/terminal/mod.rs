@@ -138,11 +138,26 @@ fn find_git_bash() -> Option<String> {
 /// Deliberately conservative: `5173` (4 digits, a port) and `450ms` (not pure
 /// digits) are rejected so durations/ports don't masquerade as errors.
 fn has_http_error_status(line: &str) -> bool {
-    line.split(char::is_whitespace).any(|tok| {
-        tok.len() == 3
+    // A bare 4xx/5xx number only counts as an HTTP status when the line also
+    // carries an HTTP method BEFORE it (request logs: "GET /api/users 500 12ms").
+    // Without that anchor, ordinary durations/versions false-positive — Vite's
+    // startup banner "VITE v6.4.3 ready in 594 ms" was logged as ERROR.
+    const METHODS: [&str; 7] = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
+    let mut saw_method = false;
+    for tok in line.split(char::is_whitespace) {
+        if METHODS.contains(&tok) {
+            saw_method = true;
+            continue;
+        }
+        if saw_method
+            && tok.len() == 3
             && matches!(tok.as_bytes()[0], b'4' | b'5')
             && tok.bytes().all(|b| b.is_ascii_digit())
-    })
+        {
+            return true;
+        }
+    }
+    false
 }
 
 /// Classify a terminal output line into a log level based on content heuristics.
@@ -740,10 +755,22 @@ mod tests {
     #[test]
     fn http_status_detection_is_conservative() {
         assert!(has_http_error_status("GET / 404"));
-        assert!(has_http_error_status("500 internal"));
+        assert!(has_http_error_status("POST /api/login 503 12ms"));
+        // A bare 4xx/5xx number with no HTTP method is ambiguous — "594 ms" in
+        // Vite's banner looked like a status and cried ERROR. Method required.
+        assert!(!has_http_error_status("500 internal"));
+        assert!(!has_http_error_status("VITE v6.4.3  ready in 594 ms"));
+        // Status must FOLLOW the method — a trailing method doesn't anchor.
+        assert!(!has_http_error_status("404 then GET /"));
         // Ports (4 digits) and durations (not pure digits) must NOT match.
         assert!(!has_http_error_status("listening on 5173"));
         assert!(!has_http_error_status("took 450ms"));
         assert!(!has_http_error_status("200 OK"));
+    }
+
+    #[test]
+    fn dev_server_banners_are_info() {
+        // The exact line from the Yap diagnostic session that was logged ERROR.
+        assert_eq!(classify_terminal_line("VITE v6.4.3  ready in 594 ms"), "INFO");
     }
 }
