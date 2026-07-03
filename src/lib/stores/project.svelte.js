@@ -75,11 +75,23 @@ function createProjectStore() {
     },
 
     /**
-     * Add a new project by path.
-     * Extracts the folder name and assigns a color from the palette.
+     * Add a new project by path — or, if the path is already a project,
+     * just switch to it. Dedupe matters now that folders can be opened as a
+     * workspace from the file-tree context menu (re-opening the same folder
+     * used to mint duplicate sidebar entries). Paths are compared with
+     * normalized separators + case (Windows paths arrive both as `E:\a\b`
+     * from the OS picker and `E:\a/b` from tree-relative joins).
      * @param {string} path
      */
     addProject(path) {
+      const norm = (p) => String(p).replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+      const existing = entries.findIndex((e) => norm(e.path) === norm(path));
+      if (existing !== -1) {
+        activeIndex = existing;
+        this._persist();
+        this.loadSessions();
+        return;
+      }
       // Extract folder name (last path segment)
       const name = path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path;
       const color = COLOR_PALETTE[hashToIndex(name)];

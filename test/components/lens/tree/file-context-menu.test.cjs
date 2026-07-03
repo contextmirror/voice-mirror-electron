@@ -172,6 +172,39 @@ describe('FileContextMenu.svelte -- folder menu items', () => {
   });
 });
 
+describe('FileContextMenu.svelte -- Open as Workspace', () => {
+  it('has Open as Workspace handler', () => {
+    assert.ok(src.includes('handleOpenAsWorkspace'), 'Should have Open as Workspace handler');
+  });
+
+  it('shows Open as Workspace text', () => {
+    assert.ok(src.includes('Open as Workspace'), 'Should show Open as Workspace text');
+  });
+
+  it('routes through the shared open-folder path (projectStore.addProject)', () => {
+    assert.ok(src.includes('projectStore.addProject('), 'Should reuse projectStore.addProject to open the workspace');
+  });
+
+  it('builds an absolute path from the project root and the relative entry path', () => {
+    assert.ok(
+      src.includes('projectStore.addProject(`${root}/${entry.path}`)'),
+      'Should open the folder as workspace using root + entry.path',
+    );
+  });
+
+  it('only appears in the folder branch (directories only, not files)', () => {
+    // The menu item must live inside the isFolder branch, after the file branch.
+    const folderIdx = src.indexOf('{:else if isFolder}');
+    const fileIdx = src.indexOf('<!-- File context menu -->');
+    const itemIdx = src.indexOf('onclick={handleOpenAsWorkspace}');
+    assert.ok(itemIdx > folderIdx, 'Open as Workspace item should be in the folder branch');
+    assert.ok(itemIdx < fileIdx, 'Open as Workspace item should not be in the file branch');
+    // Exactly one menu entry for it.
+    const matches = src.match(/onclick={handleOpenAsWorkspace}/g);
+    assert.equal(matches && matches.length, 1, 'Should have a single Open as Workspace menu item');
+  });
+});
+
 describe('FileContextMenu.svelte -- keyboard shortcuts', () => {
   it('shows F2 shortcut for Rename', () => {
     assert.ok(src.includes('>F2<'), 'Should show F2 shortcut hint');

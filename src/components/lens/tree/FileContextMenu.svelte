@@ -75,6 +75,18 @@
     terminalTabsStore.addTerminalTab({ cwd });
   }
 
+  async function handleOpenAsWorkspace() {
+    close();
+    if (!entry) return;
+    const root = projectStore.root;
+    if (!root) return;
+    // entry.path is relative to the project root with forward slashes
+    // (e.g. "references/preview-testbed/tauri-vanilla"). Build the absolute
+    // folder path and open it as the active workspace — the same path the
+    // File → Open Folder flow ends at (projectStore.addProject), minus the picker.
+    projectStore.addProject(`${root}/${entry.path}`);
+  }
+
   async function handleOpenDiff() {
     close();
     if (entry) {
@@ -171,6 +183,7 @@
       <button class="context-menu-item" onclick={handleNewFile} role="menuitem">New File...</button>
       <button class="context-menu-item" onclick={handleNewFolder} role="menuitem">New Folder...</button>
       <button class="context-menu-item" onclick={handleOpenInTerminal} role="menuitem">Open in Terminal</button>
+      <button class="context-menu-item" onclick={handleOpenAsWorkspace} role="menuitem">Open as Workspace</button>
       <div class="context-menu-divider"></div>
       <button class="context-menu-item" onclick={handleRenameAction} role="menuitem">
         Rename
