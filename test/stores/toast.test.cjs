@@ -288,3 +288,28 @@ describe('toast.svelte.js -- severity levels documented', () => {
     assert.ok(src.includes('error'), 'Should document error severity');
   });
 });
+
+describe('toast.svelte.js -- effect-safety (regression: stuck-recording toast froze the UI)', () => {
+  // addToast both reads and writes the reactive `toasts` array. Called from an
+  // $effect (e.g. App.svelte's voice-stuck toast), an untracked implementation
+  // is the only thing preventing an infinite effect loop
+  // (effect_update_depth_exceeded) that aborts Svelte's reactivity graph.
+  it('imports untrack from svelte', () => {
+    assert.ok(
+      src.includes("import { untrack } from 'svelte'"),
+      'Store must import untrack'
+    );
+  });
+
+  it('addToast body runs inside untrack', () => {
+    assert.ok(
+      src.includes('untrack(() => addToastInner(options))'),
+      'addToast must wrap its read/write body in untrack'
+    );
+  });
+
+  it('dismissToast, updateToast and dismissAll are untracked', () => {
+    const count = (src.match(/untrack\(\(\) =>/g) || []).length;
+    assert.ok(count >= 4, `All four mutators should use untrack (found ${count})`);
+  });
+});

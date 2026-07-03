@@ -10,7 +10,7 @@
   import { shortcutsStore, setActionHandler, setReleaseHandler, setupInAppShortcuts } from './lib/stores/shortcuts.svelte.js';
   import { initStartupGreeting } from './lib/voice-greeting.js';
   import { listen } from '@tauri-apps/api/event';
-  import { writeUserMessage, aiPtyInput, pttPress, pttRelease, configurePttKey, configureDictationKey, injectText, showWindow, minimizeWindow, restartVoice } from './lib/api.js';
+  import { writeUserMessage, aiPtyInput, pttPress, pttRelease, cancelRecording, configurePttKey, configureDictationKey, injectText, showWindow, minimizeWindow, restartVoice } from './lib/api.js';
   import { chatStore } from './lib/stores/chat.svelte.js';
   import { toastStore } from './lib/stores/toast.svelte.js';
   import { PROVIDER_ICONS } from './lib/providers.js';
@@ -345,10 +345,20 @@
       const dur = m > 0 ? `${m}m ${sec}s` : `${sec}s`;
       if (s.state === 'recording') {
         stuckToastId = toastStore.addToast({
-          message: `Still recording (${dur}) — press your voice key to stop.`,
+          message: `Still recording (${dur}).`,
           severity: 'warning',
           duration: 0,
           key: 'voice-stuck',
+          actions: [
+            {
+              label: 'Stop & send',
+              callback: () => { pttRelease().catch(() => {}); },
+            },
+            {
+              label: 'Discard',
+              callback: () => { cancelRecording().catch(() => {}); },
+            },
+          ],
         });
       } else if (s.state === 'speaking') {
         // The backend auto-recovers a wedged Speaking state (cancels the stalled

@@ -5,6 +5,7 @@
  * Severity levels: info, success, warning, error.
  */
 
+import { untrack } from 'svelte';
 import { uid } from '../utils.js';
 import { configStore } from './config.svelte.js';
 import { statusBarStore } from './status-bar.svelte.js';
@@ -49,10 +50,21 @@ function createToastStore() {
 
   /**
    * Add a toast notification.
+   *
+   * Wrapped in `untrack`: this both reads and writes `toasts` (key dedup +
+   * push), so a caller inside an `$effect` would otherwise register `toasts`
+   * as a dependency of that effect and re-run itself on every add — an
+   * infinite loop (effect_update_depth_exceeded) that kills the whole
+   * reactivity graph. Store mutators must never leak deps into callers.
+   *
    * @param {{ message: string, severity?: string, duration?: number, action?: { label: string, callback: () => void }|null, actions?: Array<{ label: string, callback: () => void }>|null, key?: string|null, progress?: number|null }} options
    * @returns {string} The toast ID
    */
-  function addToast({
+  function addToast(options) {
+    return untrack(() => addToastInner(options));
+  }
+
+  function addToastInner({
     message,
     severity = 'info',
     duration,
@@ -108,36 +120,43 @@ function createToastStore() {
   }
 
   /**
-   * Dismiss (remove) a toast by ID.
+   * Dismiss (remove) a toast by ID. Untracked — safe to call from effects.
    * @param {string} id
    */
   function dismissToast(id) {
-    const timer = timers.get(id);
-    if (timer) {
-      clearTimeout(timer);
-      timers.delete(id);
-    }
-    toasts = toasts.filter((t) => t.id !== id);
+    untrack(() => {
+      const timer = timers.get(id);
+      if (timer) {
+        clearTimeout(timer);
+        timers.delete(id);
+      }
+      toasts = toasts.filter((t) => t.id !== id);
+    });
   }
 
   /**
    * Update an existing toast's properties (e.g., message, progress).
+   * Untracked — safe to call from effects.
    * @param {string} id - Toast ID to update
    * @param {Partial<Toast>} updates - Properties to merge
    */
   function updateToast(id, updates) {
-    toasts = toasts.map(t => t.id === id ? { ...t, ...updates } : t);
+    untrack(() => {
+      toasts = toasts.map(t => t.id === id ? { ...t, ...updates } : t);
+    });
   }
 
   /**
-   * Dismiss all toasts.
+   * Dismiss all toasts. Untracked — safe to call from effects.
    */
   function dismissAll() {
-    for (const [, timer] of timers) {
-      clearTimeout(timer);
-    }
-    timers.clear();
-    toasts = [];
+    untrack(() => {
+      for (const [, timer] of timers) {
+        clearTimeout(timer);
+      }
+      timers.clear();
+      toasts = [];
+    });
   }
 
   return {
