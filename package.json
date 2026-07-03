@@ -2,7 +2,7 @@
   "name": "voice-mirror",
   "private": true,
   "version": "0.13.0-nightly.3",
-  "description": "Voice-native IDE — build desktop apps and websites by voice, watch them render live, and let the in-app AI see and drive the running app",
+  "description": "Voice-native IDE \u2014 build desktop apps and websites by voice, watch them render live, and let the in-app AI see and drive the running app",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -13,7 +13,8 @@
     "check": "svelte-check --tsconfig ./jsconfig.json",
     "test": "node --test \"test/**/*.test.cjs\" \"test/**/*.test.mjs\"",
     "test:rust": "cd src-tauri && cargo test",
-    "test:all": "npm test && npm run test:rust"
+    "test:all": "npm test && npm run test:rust",
+    "tauri": "tauri"
   },
   "dependencies": {
     "@codemirror/lang-css": "^6.3.1",
