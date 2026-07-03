@@ -103,8 +103,13 @@ jobs:
         working-directory: src-tauri
         shell: bash
         run: |
-          # Placeholder first: the sidecar is a bin of the same crate, so
+          # Placeholders first: the sidecar is a bin of the same crate, so
           # building it runs the same tauri build script that checks the file.
+          # tools/espeak-ng is provisioned locally and gitignored; an empty dir
+          # satisfies the bundle-resource existence check (CI bundles built
+          # here are smoke builds — shipping installers are staged locally
+          # where the real espeak-ng exists).
+          mkdir -p ../tools/espeak-ng
           mkdir -p binaries
           ext=""
           if [ "$RUNNER_OS" = "Windows" ]; then ext=".exe"; fi
