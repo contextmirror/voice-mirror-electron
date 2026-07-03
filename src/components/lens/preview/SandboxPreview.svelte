@@ -12,6 +12,7 @@
   import { projectStore } from '../../../lib/stores/project.svelte.js';
   import { devServerManager } from '../../../lib/stores/dev-server-manager.svelte.js';
   import { outputStore } from '../../../lib/stores/output.svelte.js';
+  import { logPreview } from '../../../lib/api.js';
 
   const url = $derived(sandboxPreviewStore.streamUrl);
   const loading = $derived(sandboxPreviewStore.loading);
@@ -81,8 +82,23 @@
   // The project-channel stream only flows once the output store listens —
   // normally the Output panel's mount does that, but the preview must not
   // depend on the user having opened that tab. startListening is idempotent.
+  //
+  // Diagnostics: a live 47s tauri-vanilla build (2026-07-03) showed an EMPTY
+  // tail while the backend channel demonstrably streamed — log the wiring
+  // once per launch so the next occurrence pinpoints which link dropped
+  // (frontend store empty vs derivation).
+  let lastDiagCh = null;
   $effect(() => {
-    if (startingServer) outputStore.startListening();
+    if (!startingServer) return;
+    outputStore.startListening();
+    const ch = startingServer.outputChannel;
+    if (ch && ch !== lastDiagCh) {
+      lastDiagCh = ch;
+      setTimeout(() => {
+        const n = (outputStore.projectEntries[ch] || []).length;
+        logPreview('info', `[panel] build-tail wiring: channel='${ch}' frontend-entries=${n} after 5s`).catch(() => {});
+      }, 5000);
+    }
   });
 
   // Elapsed-seconds ticker for the starting state (1s cadence, only while
@@ -165,6 +181,10 @@
     </button>
   </div>
   <div class="sandbox-body">
+    {#if !confirmStart && !error && !showEmpty && (loading || !url || !hasFrame)}
+      <!-- Indeterminate progress bar: launch in flight / mirror attaching. -->
+      <div class="progress-track" aria-hidden="true"><div class="progress-glide"></div></div>
+    {/if}
     {#if confirmStart}
       <!-- USER clicked App with no session: confirm before launching a dev server
            (never silently spin one up). "Always" persists a per-project pref. -->
@@ -233,7 +253,7 @@
       <div class="sandbox-msg starting">
         <span class="spinner" aria-hidden="true"></span>
         <span>
-          Starting App Preview{startingServer ? ` — ${startingServer.framework || 'dev server'} :${startingServer.port}` : ''}…
+          Starting App Preview{startingServer ? ` — ${startingServer.framework || 'dev server'}${startingServer.port ? ` :${startingServer.port}` : ''}` : ''}…
         </span>
         {#if startElapsed != null}
           <small>{startElapsed}s elapsed{startElapsed > 20 ? ' — a native build can take minutes on first run' : ''}</small>
@@ -252,7 +272,7 @@
         <div class="sandbox-msg waiting">
           <span class="spinner" aria-hidden="true"></span>
           Waiting for the app window…
-          <small>The app builds &amp; launches before it appears here.</small>
+          <small>The app is up — attaching the live mirror. If its window is hidden or minimized, show it and it will appear here.</small>
         </div>
       {/if}
       <!-- MJPEG stream of the real app window; onload fires on the first frame. -->
@@ -361,6 +381,7 @@
   }
 
   .sandbox-body {
+    position: relative;
     flex: 1;
     min-height: 0;
     display: flex;
@@ -476,6 +497,33 @@
 
   .sandbox-msg.starting {
     max-width: min(640px, 90%);
+  }
+
+  .progress-track {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+  }
+
+  .progress-glide {
+    width: 35%;
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    animation: progress-glide 1.4s ease-in-out infinite;
+  }
+
+  @keyframes progress-glide {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(390%); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .progress-glide { animation: none; width: 100%; opacity: 0.4; }
   }
 
   .build-tail {
