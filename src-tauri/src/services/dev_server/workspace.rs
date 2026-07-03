@@ -172,7 +172,8 @@ pub(super) fn detect_workspace_servers(
         }
 
         for mut s in member_servers {
-            if !seen_ports.insert(s.port) {
+            // Port 0 = "no dev server" (static-frontend Tauri) — never deduped.
+            if s.port != 0 && !seen_ports.insert(s.port) {
                 continue; // a root-level or earlier member already owns this port
             }
             s.cwd = Some(dir.to_string_lossy().to_string());

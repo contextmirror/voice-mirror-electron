@@ -66,7 +66,11 @@ pub fn detect_dev_servers(project_root: &str) -> Vec<DetectedDevServer> {
 
     // 1. tauri.conf.json
     if let Some(server) = node::detect_from_tauri_conf(root, &pkg_manager) {
-        seen_ports.insert(server.port);
+        // Port 0 = "no dev server" (static-frontend Tauri app) — it must never
+        // participate in port dedupe (two such apps would shadow each other).
+        if server.port != 0 {
+            seen_ports.insert(server.port);
+        }
         servers.push(server);
     }
 

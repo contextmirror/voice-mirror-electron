@@ -648,7 +648,14 @@ async fn handle_capture_action(
                 };
                 frameworks = detected
                     .iter()
-                    .map(|d| format!("{} :{}", d.framework, d.port))
+                    .map(|d| {
+                        if d.port == 0 {
+                            // Static-frontend Tauri app: launchable, no dev port.
+                            format!("{} (no dev server)", d.framework)
+                        } else {
+                            format!("{} :{}", d.framework, d.port)
+                        }
+                    })
                     .collect();
 
                 // Nothing to launch — say so instead of faking success.
@@ -673,8 +680,10 @@ async fn handle_capture_action(
                 // Port-in-use conflict: do NOT claim a launch. The dev server can't
                 // bind and `beforeDevCommand` will terminate non-zero. (In dev,
                 // Voice Mirror itself occupies its own dev port — same symptom.)
+                // Port 0 = no dev server at all (static-frontend Tauri) — nothing
+                // to conflict with.
                 let dev_port = target.port;
-                let dev_busy = {
+                let dev_busy = dev_port != 0 && {
                     tokio::task::spawn_blocking(move || {
                         crate::services::dev_server::is_port_listening(dev_port)
                     })
@@ -795,8 +804,9 @@ async fn handle_capture_action(
                 _ => {
                     // Briefly poll the REAL ports from the ack. A cold Tauri build
                     // usually exceeds this window (we say so), but a warm rebuild /
-                    // immediate bind shows up.
-                    let dev_port = ack.dev_port;
+                    // immediate bind shows up. devPort 0 = static-frontend Tauri
+                    // (no dev server) — only the CDP port signals readiness.
+                    let dev_port = ack.dev_port.filter(|p| *p != 0);
                     let cdp_port = ack.cdp_port;
                     let mut cdp_up = false;
                     let mut dev_up = false;
@@ -844,14 +854,18 @@ async fn handle_capture_action(
                             dev_port.unwrap_or(0)
                         )
                     } else {
+                        let waiting_on = dev_port
+                            .map(|p| format!("The dev server hasn't bound :{} yet", p))
+                            .unwrap_or_else(|| {
+                                "It has no dev server (static frontend) — waiting on its debug port".to_string()
+                            });
                         format!(
-                            "Spawned {} (PTY confirmed). The dev server hasn't bound {} yet — a native \
-                             Tauri build can take a few minutes. Call sandbox_snapshot once the App \
-                             Preview appears. If nothing happens after a minute, check get_logs \
-                             channel='preview' and the project's dev-server terminal for build errors, \
-                             or launch the app yourself and use sandbox_attach.",
-                            framework,
-                            dev_port.map(|p| format!(":{}", p)).unwrap_or_else(|| "its port".to_string())
+                            "Spawned {} (PTY confirmed). {} — a native Tauri build can take a few \
+                             minutes. Call sandbox_snapshot once the App Preview appears. If nothing \
+                             happens after a minute, check get_logs channel='preview' and the project's \
+                             dev-server terminal for build errors, or launch the app yourself and use \
+                             sandbox_attach.",
+                            framework, waiting_on
                         )
                     };
 

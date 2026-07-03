@@ -73,3 +73,25 @@ describe('monorepo detection -- frontend cwd plumbing', () => {
     assert.ok(commands.includes('servers[0].cwd || projectPath'), 'command palette start must use cwd');
   });
 });
+
+describe('static-frontend Tauri apps (port 0 — no dev server)', () => {
+  const dsm = read('src', 'lib', 'stores', 'dev-server-manager.svelte.js');
+  const nodeRs = read('src-tauri', 'src', 'services', 'dev_server', 'node.rs');
+  const pipeRs = read('src-tauri', 'src', 'ipc', 'pipe_server.rs');
+
+  it('detection reports a devUrl-less tauri.conf.json as port 0', () => {
+    assert.ok(nodeRs.includes('port: 0'), 'node.rs must emit the port-0 shape');
+    assert.ok(nodeRs.includes('no dev server'), 'source must say why');
+  });
+
+  it('readiness falls back to the CDP port when there is no dev port', () => {
+    assert.ok(dsm.includes('const readinessPort = server.port || cdpPort'), 'watchStartup fallback');
+    assert.ok(dsm.includes('const pulsePort = state.port || state.cdpPort'), 'health sweep fallback');
+    assert.ok(dsm.includes('const verifyPort = state.port || state.cdpPort || server.port'), 'stale-running verify fallback');
+  });
+
+  it('port 0 never participates in port dedupe or busy checks', () => {
+    assert.ok(pipeRs.includes('dev_port != 0 &&'), 'pre-flight busy check must skip port 0');
+    assert.ok(pipeRs.includes('.filter(|p| *p != 0)'), 'post-ack polling must drop port 0');
+  });
+});
