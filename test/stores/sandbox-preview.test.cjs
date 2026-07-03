@@ -354,13 +354,20 @@ describe('SandboxPreview.svelte -- launch progress bar', () => {
     assert.ok(block.includes('{ ...best'), 'must snapshot the entry, not return best directly');
   });
 
-  it('estimates against the last-launch duration, indeterminate without one', () => {
+  it('estimates against the last-launch duration, default baseline on the first', () => {
     assert.ok(cmpSrc.includes('vm:lastLaunchMs:'), 'reads the persisted baseline');
     assert.ok(cmpSrc.includes('const progressPct'), 'has a progress derivation');
-    // No baseline → null → indeterminate glide; render must handle both.
-    assert.ok(cmpSrc.includes('progressPct == null'), 'null case renders the glide');
-    assert.ok(cmpSrc.includes('progress-fill'), 'numeric case renders a determinate fill');
+    // Always determinate now — a default baseline keeps the FIRST launch moving.
+    assert.ok(cmpSrc.includes('DEFAULT_BASELINE_MS'), 'first launch uses a default estimate');
+    assert.ok(cmpSrc.includes('progress-fill'), 'renders a determinate fill');
     assert.ok(cmpSrc.includes('role="progressbar"'), 'exposes an a11y progressbar');
+  });
+
+  it('flashes 100% on the first frame before hiding (visible completion)', () => {
+    assert.ok(cmpSrc.includes('justCompleted'), 'has a completion-flash flag');
+    assert.ok(cmpSrc.includes('if (justCompleted) return 100'), 'flash forces 100%');
+    // showProgress must keep the bar up during the flash even though hasFrame.
+    assert.ok(cmpSrc.includes('!hasFrame || justCompleted'), 'bar stays visible for the 100% flash');
   });
 
   it('the manager persists successful-launch duration on markRunning', () => {

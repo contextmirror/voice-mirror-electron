@@ -125,35 +125,52 @@
   // ── Determinate progress (Nathan's ask: a real 0→100%, not just a glide) ──
   // A cargo build has no knowable total, so we do what browsers do for page
   // loads: estimate against how long the LAST successful launch of this same
-  // project took (persisted by the dev-server manager on markRunning). First
-  // ever launch → no baseline → indeterminate glide. With a baseline the bar
-  // fills 0→90% over the estimate, then jumps: 90%+ once the build is done and
-  // we're attaching the mirror, 100% on the first painted frame.
+  // project took (persisted by the dev-server manager on markRunning). No
+  // stored baseline yet (first launch) → fall back to a sensible default so
+  // the bar still MOVES rather than streaking. The bar fills 0→90% over the
+  // estimate, holds ~95% once the build is done and we're attaching the
+  // mirror, then flashes 100% on the first painted frame before disappearing.
+  const DEFAULT_BASELINE_MS = 45000; // ~a warm-ish native dev build
   function readLastLaunchMs(projectPath) {
-    if (!projectPath) return null;
+    if (!projectPath) return DEFAULT_BASELINE_MS;
     try {
       const v = localStorage.getItem(`vm:lastLaunchMs:${projectPath}`);
       const n = v ? Number(v) : NaN;
-      return Number.isFinite(n) && n > 1000 ? n : null;
+      return Number.isFinite(n) && n > 1000 ? n : DEFAULT_BASELINE_MS;
     } catch {
-      return null;
+      return DEFAULT_BASELINE_MS;
     }
   }
   const baselineMs = $derived(readLastLaunchMs(startingServer?.projectPath));
-  // null → indeterminate (glide); a number 0..100 → determinate width.
+
+  // Flash 100% for a beat when the first frame paints, so the bar visibly
+  // COMPLETES instead of vanishing mid-fill (Nathan: "there's no 100%").
+  let justCompleted = $state(false);
+  let sawFrame = false;
+  $effect(() => {
+    if (hasFrame && !sawFrame) {
+      sawFrame = true;
+      justCompleted = true;
+      const t = setTimeout(() => { justCompleted = false; }, 650);
+      return () => clearTimeout(t);
+    }
+    if (!hasFrame) sawFrame = false;
+  });
+
+  // Determinate width 0..100 (always a number now — no indeterminate path).
   const progressPct = $derived.by(() => {
-    if (hasFrame) return 100;
+    if (justCompleted) return 100;
     if (startingServer) {
-      // Build/launch in flight.
-      if (!baselineMs || startElapsed == null) return null; // no estimate → glide
-      return Math.min(90, Math.round((startElapsed * 1000 / baselineMs) * 90));
+      // Build/launch in flight — estimate against the baseline, cap at 90%.
+      if (startElapsed == null) return 5;
+      return Math.max(5, Math.min(90, Math.round((startElapsed * 1000 / baselineMs) * 90)));
     }
     // Build done (status flipped to running) — mirror is attaching. Hold near
     // the end so the bar reads "almost there" rather than snapping to empty.
     if (loading || !url || !hasFrame) return 95;
     return 100;
   });
-  const showProgress = $derived(!confirmStart && !error && !showEmpty && !hasFrame);
+  const showProgress = $derived(!confirmStart && !error && !showEmpty && (!hasFrame || justCompleted));
 </script>
 
 <div class="sandbox-preview">
@@ -223,22 +240,18 @@
   </div>
   <div class="sandbox-body">
     {#if showProgress}
-      <!-- Launch progress. Determinate (0→100%) when we have a last-launch
-           baseline to estimate against; an indeterminate glide on the first
-           ever launch (no baseline yet). -->
+      <!-- Determinate 0→100% launch progress: estimated against the last
+           successful launch (or a default on the first), holds ~95% while the
+           mirror attaches, flashes 100% on the first painted frame. -->
       <div
         class="progress-track"
         role="progressbar"
         aria-label="App launch progress"
         aria-valuemin="0"
         aria-valuemax="100"
-        aria-valuenow={progressPct ?? undefined}
+        aria-valuenow={progressPct}
       >
-        {#if progressPct == null}
-          <div class="progress-glide"></div>
-        {:else}
-          <div class="progress-fill" style="width: {progressPct}%"></div>
-        {/if}
+        <div class="progress-fill" style="width: {progressPct}%"></div>
       </div>
     {/if}
     {#if confirmStart}
@@ -566,14 +579,6 @@
     z-index: 2;
   }
 
-  .progress-glide {
-    width: 35%;
-    height: 100%;
-    background: var(--accent);
-    border-radius: 2px;
-    animation: progress-glide 1.4s ease-in-out infinite;
-  }
-
   .progress-fill {
     height: 100%;
     background: var(--accent);
@@ -582,13 +587,7 @@
     transition: width 0.6s ease-out;
   }
 
-  @keyframes progress-glide {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(390%); }
-  }
-
   @media (prefers-reduced-motion: reduce) {
-    .progress-glide { animation: none; width: 100%; opacity: 0.4; }
     .progress-fill { transition: none; }
   }
 
