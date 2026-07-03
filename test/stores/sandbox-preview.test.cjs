@@ -259,3 +259,46 @@ describe('sandbox-preview: multi-window', () => {
     assert.ok(!src.includes('sandboxActiveHwnd'), 'Should NOT poll sandbox_active_hwnd per tick');
   });
 });
+
+// -- Launch-failure surfacing (Phase 2: the panel must never spin forever) --
+
+describe('sandbox-preview.svelte.js -- launchFailed', () => {
+  const wsSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'components', 'lens', 'LensWorkspace.svelte'),
+    'utf-8'
+  );
+  const dsmSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'lib', 'stores', 'dev-server-manager.svelte.js'),
+    'utf-8'
+  );
+
+  it('exposes launchFailed(reason) that resolves the Starting state', () => {
+    assert.ok(src.includes('launchFailed(reason)'), 'Store should expose launchFailed');
+    const block = src.split('launchFailed(reason)')[1]?.slice(0, 400) || '';
+    assert.ok(block.includes('if (active) return'), 'Must not clobber a live session');
+    assert.ok(block.includes('loading = false'), 'Must leave the loading state');
+    assert.ok(block.includes('error ='), 'Must surface the reason via the error state');
+  });
+
+  it('requestStart clears a previous launch failure (retry works)', () => {
+    const block = src.split('async requestStart()')[1]?.slice(0, 400) || '';
+    assert.ok(block.includes("error = ''"), 'Retry must clear the prior error');
+  });
+
+  it('LensWorkspace feeds every refusal path into launchFailed', () => {
+    const occurrences = (wsSrc.match(/sandboxPreviewStore\.launchFailed\(/g) || []).length;
+    assert.ok(
+      occurrences >= 4,
+      `no-path / refused-outcome / no-server / catch must all resolve the panel (found ${occurrences})`
+    );
+  });
+
+  it('a non-quiet demotion resolves the panel too (port never bound)', () => {
+    const block = dsmSrc.split('function demoteToStopped')[1]?.split('\n  function')[0] || '';
+    assert.ok(block.includes('sandboxPreviewStore.launchFailed('), 'Demotion must resolve the panel');
+    assert.ok(
+      block.indexOf('sandboxPreviewStore.launchFailed(') > block.indexOf('if (!opts.quiet)'),
+      'Quiet (pre-relaunch housekeeping) demotions must NOT flash an error'
+    );
+  });
+});

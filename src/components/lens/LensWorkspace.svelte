@@ -329,6 +329,7 @@
         if (!path) {
           logPreview('warn', '[launch] start requested but no project path available (no active project in the Lens workspace)').catch(() => {});
           ack('refused', { reason: 'No project path available — open a project in the Lens workspace or pass an explicit `path`' });
+          sandboxPreviewStore.launchFailed('No project is open — open a project folder first.');
           return;
         }
         try {
@@ -351,13 +352,20 @@
               cdpPort: outcome?.cdpPort ?? undefined,
               framework: outcome?.framework ?? target.framework,
             });
+            if (outcome?.status === 'refused') {
+              sandboxPreviewStore.launchFailed(outcome.reason || 'The launcher refused to start the app.');
+            }
           } else {
             logPreview('warn', `[launch] no dev server detected in ${path}`).catch(() => {});
             ack('refused', { reason: `No dev server detected in ${path}` });
+            sandboxPreviewStore.launchFailed(
+              `No dev server detected in ${path}. If this folder holds several projects, open one app's own folder instead.`
+            );
           }
         } catch (err) {
           logPreview('error', `[launch] start failed: ${err?.message || err}`).catch(() => {});
           ack('refused', { reason: `Launch failed in the frontend: ${err?.message || err}` });
+          sandboxPreviewStore.launchFailed(`Launch failed: ${err?.message || err}`);
         }
       });
 

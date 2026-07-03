@@ -144,7 +144,19 @@
         </label>
       </div>
     {:else if error}
-      <div class="sandbox-msg error">{error}</div>
+      <!-- The launch was refused or died before a session opened (no dev server
+           detected, crash loop, port never bound…). Say WHY + how to recover,
+           never an infinite "Starting…". -->
+      <div class="sandbox-msg error">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="4" width="18" height="16" rx="2" /><line x1="12" y1="9" x2="12" y2="13" /><circle cx="12" cy="16" r="0.5" fill="currentColor" />
+        </svg>
+        <span>{error}</span>
+        <small>Full launch log: Output panel → App Preview channel.</small>
+        <button class="open-app-cta" onclick={() => sandboxPreviewStore.requestStart()}>
+          Try again
+        </button>
+      </div>
     {:else if showEmpty}
       <!-- An explicit disconnect (the app exited / no mirrorable window, or the
            first-load wait timed out) OVERRIDES a painted stale frame AND the

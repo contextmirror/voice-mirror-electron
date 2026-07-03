@@ -11,6 +11,7 @@ import { terminalTabsStore } from './terminal-tabs.svelte.js';
 import { lensStore } from './lens.svelte.js';
 import { toastStore } from './toast.svelte.js';
 import { outputStore } from './output.svelte.js';
+import { sandboxPreviewStore } from './sandbox-preview.svelte.js';
 
 // -- Constants --
 const POLL_INTERVAL = 500;
@@ -591,6 +592,14 @@ function createDevServerManager() {
     });
     plog('warn', `[lifecycle] ${state.framework || 'server'} :${state.port} (${projectPath}) marked stopped: ${reason}`);
     if (!opts.quiet) {
+      // A launch that died before ever opening a preview session would
+      // otherwise strand the App panel on "Starting App Preview…" forever —
+      // resolve it with the reason. (No-op when a live session is active; the
+      // stream's own disconnect detection owns that state. Quiet demotions are
+      // internal housekeeping right before a relaunch — no error flash.)
+      sandboxPreviewStore.launchFailed(
+        `${state.framework || 'Dev server'} on :${state.port} stopped — ${reason}`
+      );
       toastStore.addToast({
         message: `${state.framework || 'Dev server'} on :${state.port} stopped — ${reason}`,
         severity: 'warning',

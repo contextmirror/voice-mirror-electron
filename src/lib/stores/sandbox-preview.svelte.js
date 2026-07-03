@@ -292,7 +292,25 @@ function createSandboxPreviewStore() {
       confirmStart = false;
       visible = true;
       userHidden = false;
+      error = ''; // a retry supersedes a previous launch failure
       await emit('sandbox-start-request', { force: true });
+    },
+
+    /**
+     * A launch this panel may be waiting on was REFUSED or died before any
+     * session opened (no dev server detected, crash loop, spawn failure, port
+     * never bound…). Surface the reason in-panel instead of leaving
+     * "Starting App Preview…" up forever — nothing else would ever resolve it,
+     * because a refused launch never registers a CDP port for syncAuto.
+     * No-op when a session is active (the live stream's own disconnect
+     * detection owns that state).
+     * @param {string} reason
+     */
+    launchFailed(reason) {
+      if (active) return;
+      confirmStart = false;
+      loading = false;
+      error = reason || 'The launch failed.';
     },
 
     /**
