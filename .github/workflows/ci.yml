@@ -65,9 +65,12 @@ jobs:
         working-directory: src-tauri
         shell: bash
         run: |
-          cargo build --bin voice-mirror-mcp
+          # Placeholder first: the sidecar is a bin of the same crate, so
+          # building it runs the same tauri build script that checks the file.
           mkdir -p binaries
           triple=$(rustc -vV | sed -n 's/^host: //p')
+          touch "binaries/voice-mirror-mcp-$triple"
+          cargo build --bin voice-mirror-mcp
           cp "target/debug/voice-mirror-mcp" "binaries/voice-mirror-mcp-$triple"
 
       - name: Cargo check
@@ -122,9 +125,12 @@ jobs:
         working-directory: src-tauri
         shell: bash
         run: |
-          cargo build --bin voice-mirror-mcp
+          # Placeholder first: the sidecar is a bin of the same crate, so
+          # building it runs the same tauri build script that checks the file.
           mkdir -p binaries
           triple=$(rustc -vV | sed -n 's/^host: //p')
+          touch "binaries/voice-mirror-mcp-$triple"
+          cargo build --bin voice-mirror-mcp
           cp "target/debug/voice-mirror-mcp" "binaries/voice-mirror-mcp-$triple"
 
       - name: Cargo test
@@ -214,10 +220,13 @@ jobs:
         working-directory: src-tauri
         shell: bash
         run: |
-          cargo build --release --bin voice-mirror-mcp --target ${{ matrix.target }}
+          # Placeholder first: the sidecar is a bin of the same crate, so
+          # building it runs the same tauri build script that checks the file.
           mkdir -p binaries
           ext=""
           if [ "$RUNNER_OS" = "Windows" ]; then ext=".exe"; fi
+          touch "binaries/voice-mirror-mcp-${{ matrix.target }}$ext"
+          cargo build --release --bin voice-mirror-mcp --target ${{ matrix.target }}
           cp "target/${{ matrix.target }}/release/voice-mirror-mcp$ext" \
              "binaries/voice-mirror-mcp-${{ matrix.target }}$ext"
 

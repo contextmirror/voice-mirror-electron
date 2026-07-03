@@ -103,10 +103,13 @@ jobs:
         working-directory: src-tauri
         shell: bash
         run: |
-          cargo build --release --bin voice-mirror-mcp --target ${{ matrix.target }}
+          # Placeholder first: the sidecar is a bin of the same crate, so
+          # building it runs the same tauri build script that checks the file.
           mkdir -p binaries
           ext=""
           if [ "$RUNNER_OS" = "Windows" ]; then ext=".exe"; fi
+          touch "binaries/voice-mirror-mcp-${{ matrix.target }}$ext"
+          cargo build --release --bin voice-mirror-mcp --target ${{ matrix.target }}
           cp "target/${{ matrix.target }}/release/voice-mirror-mcp$ext" \
              "binaries/voice-mirror-mcp-${{ matrix.target }}$ext"
 
