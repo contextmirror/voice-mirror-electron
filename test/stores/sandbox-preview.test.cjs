@@ -302,3 +302,34 @@ describe('sandbox-preview.svelte.js -- launchFailed', () => {
     );
   });
 });
+
+// -- Build-output tail in the Starting state (Phase 2: the wait narrates itself) --
+
+describe('SandboxPreview.svelte -- starting-state build tail', () => {
+  const cmpSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'components', 'lens', 'preview', 'SandboxPreview.svelte'),
+    'utf-8'
+  );
+
+  it('derives the in-flight launch from the dev-server manager', () => {
+    assert.ok(cmpSrc.includes('devServerManager'), 'component should read the manager');
+    assert.ok(cmpSrc.includes("s.status === 'starting'"), 'should find the starting entry');
+  });
+
+  it('tails the launch project channel into the panel', () => {
+    assert.ok(cmpSrc.includes('outputChannel'), 'tail source is the launch output channel');
+    assert.ok(cmpSrc.includes('projectEntries'), 'reads outputStore.projectEntries');
+    assert.ok(cmpSrc.includes('build-tail'), 'renders the tail block');
+  });
+
+  it('does not depend on the Output tab having been opened', () => {
+    // The project-channel stream flows only once the output store listens;
+    // the preview must arm that itself (startListening is idempotent).
+    assert.ok(cmpSrc.includes('outputStore.startListening()'), 'preview must arm the stream');
+  });
+
+  it('shows elapsed seconds with a cold-build hint', () => {
+    assert.ok(cmpSrc.includes('startElapsed'), 'elapsed ticker');
+    assert.ok(cmpSrc.includes('native build can take minutes'), 'sets expectation on long builds');
+  });
+});

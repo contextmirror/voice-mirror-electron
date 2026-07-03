@@ -10,6 +10,8 @@
    */
   import { sandboxPreviewStore } from '../../../lib/stores/sandbox-preview.svelte.js';
   import { projectStore } from '../../../lib/stores/project.svelte.js';
+  import { devServerManager } from '../../../lib/stores/dev-server-manager.svelte.js';
+  import { outputStore } from '../../../lib/stores/output.svelte.js';
 
   const url = $derived(sandboxPreviewStore.streamUrl);
   const loading = $derived(sandboxPreviewStore.loading);
@@ -53,6 +55,48 @@
   // Show the clear empty state (not the spinner) once the store knows there's no
   // mirrorable window, or the first-load wait has timed out.
   const showEmpty = $derived(noWindow || stalled);
+
+  // ── Build-output tail while a launch is in flight (Phase 2: honest states) ──
+  // A cold `tauri dev` build compiles for minutes; a bare "Starting…" spinner
+  // reads as "hung". The launch's terminal output already streams into its
+  // project channel — mirror the last few lines right here so the wait
+  // narrates itself (npm install / cargo compile / vite ready / errors).
+  const startingServer = $derived.by(() => {
+    let best = null;
+    for (const [, s] of devServerManager.servers) {
+      if (s.status === 'starting' && (!best || (s.startedAt || 0) > (best.startedAt || 0))) {
+        best = s;
+      }
+    }
+    return best;
+  });
+  const TAIL_LINES = 8;
+  const buildTail = $derived.by(() => {
+    const ch = startingServer?.outputChannel;
+    if (!ch) return [];
+    const entries = outputStore.projectEntries[ch] || [];
+    return entries.slice(-TAIL_LINES);
+  });
+
+  // The project-channel stream only flows once the output store listens —
+  // normally the Output panel's mount does that, but the preview must not
+  // depend on the user having opened that tab. startListening is idempotent.
+  $effect(() => {
+    if (startingServer) outputStore.startListening();
+  });
+
+  // Elapsed-seconds ticker for the starting state (1s cadence, only while
+  // a launch is actually in flight).
+  let nowTick = $state(Date.now());
+  $effect(() => {
+    if (!startingServer) return;
+    nowTick = Date.now();
+    const t = setInterval(() => { nowTick = Date.now(); }, 1000);
+    return () => clearInterval(t);
+  });
+  const startElapsed = $derived(
+    startingServer?.startedAt ? Math.max(0, Math.round((nowTick - startingServer.startedAt) / 1000)) : null
+  );
 </script>
 
 <div class="sandbox-preview">
@@ -186,7 +230,23 @@
         {/if}
       </div>
     {:else if loading || !url}
-      <div class="sandbox-msg">Starting App Preview…</div>
+      <div class="sandbox-msg starting">
+        <span class="spinner" aria-hidden="true"></span>
+        <span>
+          Starting App Preview{startingServer ? ` — ${startingServer.framework || 'dev server'} :${startingServer.port}` : ''}…
+        </span>
+        {#if startElapsed != null}
+          <small>{startElapsed}s elapsed{startElapsed > 20 ? ' — a native build can take minutes on first run' : ''}</small>
+        {/if}
+        {#if buildTail.length > 0}
+          <!-- Live tail of the launch's terminal output (its project channel) -->
+          <div class="build-tail" role="log" aria-label="Build output">
+            {#each buildTail as e (e.id)}
+              <div class="tail-line" class:tail-error={e.level === 'ERROR'} class:tail-warn={e.level === 'WARN'}>{e.message}</div>
+            {/each}
+          </div>
+        {/if}
+      </div>
     {:else}
       {#if !hasFrame}
         <div class="sandbox-msg waiting">
@@ -412,6 +472,39 @@
     border-top-color: var(--accent);
     border-radius: 50%;
     animation: sandbox-spin 0.8s linear infinite;
+  }
+
+  .sandbox-msg.starting {
+    max-width: min(640px, 90%);
+  }
+
+  .build-tail {
+    margin-top: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--bg) 60%, transparent);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--muted);
+    text-align: left;
+    overflow: hidden;
+  }
+
+  .tail-line {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tail-line.tail-error {
+    color: var(--danger);
+  }
+
+  .tail-line.tail-warn {
+    color: var(--warning, #d29922);
   }
 
   @keyframes sandbox-spin {
