@@ -106,12 +106,30 @@ async function startListening() {
   if (listening) return;
   listening = true;
 
-  // Load initial entries from backend
+  // Load initial entries from backend. get_output_logs returns the IpcResponse
+  // envelope { success, data: { entries } } — reading `result.entries` (the old
+  // code) silently loaded NOTHING, so the panel only ever showed events that
+  // arrived after it was first opened (the App-Preview-looks-empty bug).
   for (const ch of SYSTEM_CHANNELS) {
     try {
       const result = await getOutputLogs({ channel: ch, last: MAX_ENTRIES });
-      if (result?.entries) {
-        entries[ch] = result.entries;
+      const history = result?.data?.entries;
+      if (Array.isArray(history) && history.length > 0) {
+        entries[ch] = history;
+      }
+    } catch {
+      // Backend may not be ready yet — that's fine
+    }
+  }
+
+  // Same for project channels registered before the panel first opened
+  // (the dev-server manager registers them at spawn time, panel or no panel).
+  for (const pc of projectChannelList) {
+    try {
+      const result = await getOutputLogs({ channel: pc.label, last: MAX_ENTRIES });
+      const history = result?.data?.entries;
+      if (Array.isArray(history) && history.length > 0) {
+        projectChannelEntries[pc.label] = history;
       }
     } catch {
       // Backend may not be ready yet — that's fine
