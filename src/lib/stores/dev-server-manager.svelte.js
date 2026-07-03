@@ -239,16 +239,19 @@ function createDevServerManager() {
     // forever; now it's demoted and the launch proceeds.
     if (state.status === 'running' || state.status === 'idle') {
       let listening = false;
+      // Static-frontend Tauri apps have no dev port — their CDP debug port is
+      // the liveness signal instead.
+      const verifyPort = state.port || state.cdpPort || server.port;
       try {
-        const probe = await probePort(state.port ?? server.port);
+        const probe = verifyPort ? await probePort(verifyPort) : null;
         listening = !!probe?.data?.listening;
       } catch {
         // Probe failure = can't confirm it's alive = treat as not listening.
       }
 
       if (!listening) {
-        plog('warn', `[launch] ${label}: tracked status='${state.status}' but port :${state.port ?? server.port} is NOT listening — demoting stale entry, relaunching`);
-        demoteToStopped(projectPath, `port :${state.port ?? server.port} was not listening (stale entry)`, { quiet: true });
+        plog('warn', `[launch] ${label}: tracked status='${state.status}' but port :${verifyPort} is NOT listening — demoting stale entry, relaunching`);
+        demoteToStopped(projectPath, `port :${verifyPort} was not listening (stale entry)`, { quiet: true });
       } else if (opts.force) {
         // User-initiated relaunch (Open app / App tab) tears the verified-running
         // server down first so it always yields a fresh window.
@@ -318,8 +321,9 @@ function createDevServerManager() {
 
     // Build output channel label
     const folderName = projectPath.split(/[/\\]/).filter(Boolean).pop() || 'project';
+    // Port 0 = static-frontend Tauri app (no dev server) — label without it.
     const channelLabel = server.framework
-      ? `${folderName} (${server.framework} :${server.port})`
+      ? (server.port ? `${folderName} (${server.framework} :${server.port})` : `${folderName} (${server.framework})`)
       : `${folderName} (:${server.port})`;
 
     // Register project output channel (before spawn so channel exists when output starts)
@@ -382,7 +386,7 @@ function createDevServerManager() {
     // to hunt down and kill processes by hand. killPortProcess (netstat→PID→taskkill
     // /F) makes every launch self-healing regardless of what VM tracked.
     try {
-      const probe = await probePort(server.port);
+      const probe = server.port ? await probePort(server.port) : null;
       if (probe?.data?.listening) {
         plog('info', `[launch] ${label}: freeing held dev port :${server.port} before launch`);
         await killPortProcess(server.port);
@@ -498,10 +502,19 @@ function createDevServerManager() {
       return !!s && s.shellId === shellId && (s.status === 'starting' || s.status === 'idle');
     };
 
+    // Readiness signal: the dev port when the app has one; otherwise (a
+    // static-frontend Tauri app, port 0) the CDP debug port the launcher
+    // injected — it binds when the app window actually exists.
+    const readinessPort = server.port || cdpPort;
     const initialTimeout = hasSetup ? SETUP_POLL_TIMEOUT : POLL_TIMEOUT;
     let ready = false;
+    if (!readinessPort) {
+      // Nothing pollable at all — trust the spawn and let the health sweep own it.
+      markRunning(projectPath, server, cdpPort);
+      return;
+    }
     try {
-      ready = await pollPort(server.port, projectPath, initialTimeout);
+      ready = await pollPort(readinessPort, projectPath, initialTimeout);
     } catch (err) {
       if (err?.message === 'cancelled') return; // stopped/crashed during poll
       throw err;
@@ -509,24 +522,24 @@ function createDevServerManager() {
 
     if (!ready) {
       if (!stillMine()) return;
-      plog('warn', `[launch] ${label}: port not listening after ${initialTimeout / 1000}s — still watching, status stays 'starting'`);
+      plog('warn', `[launch] ${label}: port :${readinessPort} not listening after ${initialTimeout / 1000}s — still watching, status stays 'starting'`);
       toastStore.addToast({
         message: hasSetup
           ? 'Setup may still be running — check terminal'
-          : `Still building/starting :${server.port} — check the terminal if this persists`,
+          : `Still building/starting ${server.framework || 'app'}${server.port ? ` :${server.port}` : ''} — check the terminal if this persists`,
         severity: 'warning',
         key: `dev-server-${projectPath}`,
       });
       try {
-        ready = await pollPort(server.port, projectPath, EXTENDED_POLL_TIMEOUT);
+        ready = await pollPort(readinessPort, projectPath, EXTENDED_POLL_TIMEOUT);
       } catch (err) {
         if (err?.message === 'cancelled') return;
         throw err;
       }
       if (!ready) {
         if (!stillMine()) return;
-        plog('error', `[launch] ${label}: giving up — port :${server.port} never listened within ${(initialTimeout + EXTENDED_POLL_TIMEOUT) / 60000}min`);
-        demoteToStopped(projectPath, `dev server never bound :${server.port} — check the terminal for build errors`);
+        plog('error', `[launch] ${label}: giving up — port :${readinessPort} never listened within ${(initialTimeout + EXTENDED_POLL_TIMEOUT) / 60000}min`);
+        demoteToStopped(projectPath, `nothing listened on :${readinessPort} — check the terminal for build errors`);
         return;
       }
     }
@@ -548,7 +561,7 @@ function createDevServerManager() {
       stopReason: null,
       healthMisses: 0,
     });
-    plog('info', `[launch] ${server.framework || 'server'} :${server.port}: READY — port listening${cdpPort ? `, CDP :${cdpPort}` : ''}`);
+    plog('info', `[launch] ${server.framework || 'server'}${server.port ? ` :${server.port}` : ''}: READY${cdpPort ? ` — CDP :${cdpPort} live` : ' — port listening'}`);
     if (cdpPort) {
       // Tauri app: the App Preview (the real app via CDP) is the canonical
       // view. Don't also load the web frontend into the Lens browser — it's
@@ -562,7 +575,9 @@ function createDevServerManager() {
       lensNavigate(server.url).catch(() => {});
     }
     toastStore.addToast({
-      message: `${server.framework || 'Server'} ready on :${server.port}`,
+      message: server.port
+        ? `${server.framework || 'Server'} ready on :${server.port}`
+        : `${server.framework || 'App'} is up`,
       severity: 'success',
       key: `dev-server-${projectPath}`,
     });
@@ -628,10 +643,12 @@ function createDevServerManager() {
     for (const [pp, state] of servers) {
       if (state.status !== 'running' && state.status !== 'idle') continue;
       anyAlive = true;
-      if (!state.port) continue;
+      // Static-frontend Tauri apps (no dev port): the CDP port is the pulse.
+      const pulsePort = state.port || state.cdpPort;
+      if (!pulsePort) continue;
       let listening = false;
       try {
-        const probe = await probePort(state.port);
+        const probe = await probePort(pulsePort);
         listening = !!probe?.data?.listening;
       } catch {
         // Probe failure counts as a miss.
@@ -643,9 +660,9 @@ function createDevServerManager() {
       } else {
         const misses = (s.healthMisses || 0) + 1;
         updateState(pp, { healthMisses: misses });
-        plog('warn', `[health] ${s.framework || 'server'} :${s.port}: port probe miss ${misses}/${HEALTH_CHECK_MISSES}`);
+        plog('warn', `[health] ${s.framework || 'server'} :${pulsePort}: port probe miss ${misses}/${HEALTH_CHECK_MISSES}`);
         if (misses >= HEALTH_CHECK_MISSES) {
-          demoteToStopped(pp, `port :${s.port} stopped listening (the process likely exited)`);
+          demoteToStopped(pp, `port :${pulsePort} stopped listening (the process likely exited)`);
         }
       }
     }

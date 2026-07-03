@@ -381,12 +381,12 @@ describe('StatusDropdown.svelte: manage view interactive controls', () => {
   });
 
   it('has handleStop function', () => {
-    assert.ok(src.includes('function handleStop()'));
+    assert.ok(src.includes('function handleStop(server)'));
     assert.ok(src.includes('devServerManager.stopServer'));
   });
 
   it('has handleRestart function', () => {
-    assert.ok(src.includes('function handleRestart()'));
+    assert.ok(src.includes('function handleRestart(server)'));
     assert.ok(src.includes('devServerManager.restartServer'));
   });
 
@@ -416,7 +416,7 @@ describe('StatusDropdown.svelte: manage view interactive controls', () => {
   });
 
   it('Stop button calls handleStop for managed or handleStopExternal for external', () => {
-    assert.ok(src.includes('state.managed ? handleStop() : handleStopExternal(server)'));
+    assert.ok(src.includes('state.managed ? handleStop(server) : handleStopExternal(server)'));
   });
 
   it('has Starting indicator with animated dot', () => {

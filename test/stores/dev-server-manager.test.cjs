@@ -545,8 +545,8 @@ describe('dev-server-manager.svelte.js -- force-restart guard', () => {
     // The phantom-entry bug: status='running' forever while nothing listened,
     // so every launch silently no-oped. The guard must probe before no-oping.
     assert.ok(
-      block.includes('probePort(state.port ?? server.port)'),
-      "must probe the tracked port before honoring status='running'"
+      block.includes('probePort(verifyPort)'),
+      "must probe the tracked port (dev port, else CDP) before honoring status='running'"
     );
     assert.ok(
       block.includes('demoteToStopped('),

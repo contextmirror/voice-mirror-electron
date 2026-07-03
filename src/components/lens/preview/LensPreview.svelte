@@ -209,7 +209,9 @@
       if (stoppedServer) {
         // Skip the offer if the dev server manager already has this server as running/starting
         // (can happen when detection re-fires while a server is mid-start)
-        const existingState = devServerManager.getServerStatus(project.path);
+        // Monorepo workspace members carry their own spawn dir (`cwd`).
+        const launchPath = stoppedServer.cwd || project.path;
+        const existingState = devServerManager.getServerStatus(launchPath);
         if (existingState && (existingState.status === 'running' || existingState.status === 'starting')) {
           console.log('[lens] Server already running/starting, skipping offer');
         } else {
@@ -227,7 +229,7 @@
                   {
                     label: 'Set up & start',
                     callback: () => {
-                      devServerManager.startServer(stoppedServer, project.path, packageManager);
+                      devServerManager.startServer(stoppedServer, launchPath, packageManager);
                     },
                   },
                   {
@@ -248,13 +250,13 @@
                     label: 'Always start',
                     callback: () => {
                       projectStore.updateActiveField('autoStartServer', true);
-                      devServerManager.startServer(stoppedServer, project.path, packageManager);
+                      devServerManager.startServer(stoppedServer, launchPath, packageManager);
                     },
                   },
                   {
                     label: 'Start once',
                     callback: () => {
-                      devServerManager.startServer(stoppedServer, project.path, packageManager);
+                      devServerManager.startServer(stoppedServer, launchPath, packageManager);
                     },
                   },
                   {
@@ -266,7 +268,7 @@
             }
           } else if (autoStart === true) {
             // User opted in — auto-start silently
-            devServerManager.startServer(stoppedServer, project.path, packageManager);
+            devServerManager.startServer(stoppedServer, launchPath, packageManager);
           }
           // autoStart === false → do nothing
         }

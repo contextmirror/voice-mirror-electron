@@ -22,28 +22,51 @@ fn extract_bun_port_from_script(cmd: &str, root: &Path) -> Option<u16> {
     caps.get(1)?.as_str().parse::<u16>().ok()
 }
 
-/// Detect a dev server from `src-tauri/tauri.conf.json`'s `build.devUrl`.
+/// Detect a Tauri app from `src-tauri/tauri.conf.json`.
+///
+/// With `build.devUrl` the frontend runs on a dev server at that port. WITHOUT
+/// it the app serves a static `frontendDist` directly (the vanilla
+/// `create-tauri-app` template) — still perfectly launchable via `tauri dev`,
+/// just with NO dev port to poll: `port` is 0 ("no dev server"), and readiness
+/// is judged by the CDP debug port instead (the launcher allocates one for
+/// every Tauri app).
 pub(super) fn detect_from_tauri_conf(root: &Path, pkg_manager: &str) -> Option<DetectedDevServer> {
     let conf_path = root.join("src-tauri").join("tauri.conf.json");
     let content = std::fs::read_to_string(&conf_path).ok()?;
     let json: serde_json::Value = serde_json::from_str(&content).ok()?;
-    let dev_url = json.get("build")?.get("devUrl")?.as_str()?;
-    let port = extract_port_from_url(dev_url)?;
-    Some(DetectedDevServer {
-        framework: "Tauri".to_string(),
-        port,
-        url: dev_url.to_string(),
-        // Run the actual Tauri app (`tauri dev`), not just the web frontend.
-        // `tauri dev` runs the `beforeDevCommand` (the frontend) itself AND
-        // compiles + launches the native app window — the window that exposes
-        // CDP for the sandbox live preview. Running only the frontend (the old
-        // `npm run dev`) served the web part but never started the app, so its
-        // CDP port had nothing to connect to. One command = no port clash.
-        start_command: make_start_command(pkg_manager, "tauri dev"),
-        source: "tauri.conf.json".to_string(),
-        running: false,
-        ..Default::default()
-    })
+
+    // Run the actual Tauri app (`tauri dev`), not just the web frontend.
+    // `tauri dev` runs the `beforeDevCommand` (the frontend) itself AND
+    // compiles + launches the native app window — the window that exposes
+    // CDP for the sandbox live preview. Running only the frontend (the old
+    // `npm run dev`) served the web part but never started the app, so its
+    // CDP port had nothing to connect to. One command = no port clash.
+    let start_command = make_start_command(pkg_manager, "tauri dev");
+
+    let dev_url = json
+        .get("build")
+        .and_then(|b| b.get("devUrl"))
+        .and_then(|u| u.as_str());
+    match dev_url.and_then(extract_port_from_url) {
+        Some(port) => Some(DetectedDevServer {
+            framework: "Tauri".to_string(),
+            port,
+            url: dev_url.unwrap_or_default().to_string(),
+            start_command,
+            source: "tauri.conf.json".to_string(),
+            running: false,
+            ..Default::default()
+        }),
+        None => Some(DetectedDevServer {
+            framework: "Tauri".to_string(),
+            port: 0, // no dev server — static frontendDist
+            url: String::new(),
+            start_command,
+            source: "tauri.conf.json (static frontend, no dev server)".to_string(),
+            running: false,
+            ..Default::default()
+        }),
+    }
 }
 
 /// Detect a dev server from `vite.config.{js,ts,mjs,mts}` server.port.
@@ -518,6 +541,32 @@ mod tests {
         assert_eq!(server.port, 1420);
         assert_eq!(server.url, "http://localhost:1420");
         assert_eq!(server.source, "tauri.conf.json");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_detect_tauri_conf_without_dev_url_is_port_zero() {
+        // The vanilla create-tauri-app template: static frontendDist, NO
+        // build.devUrl — still launchable via `tauri dev`. Detection must
+        // report it (port 0 = no dev server) instead of finding nothing
+        // (live repro: preview-testbed/tauri-vanilla, found=0, unlaunchable).
+        let dir = std::env::temp_dir().join("vm_test_tauri_conf_nodev");
+        let tauri_dir = dir.join("src-tauri");
+        let _ = std::fs::create_dir_all(&tauri_dir);
+
+        std::fs::write(
+            tauri_dir.join("tauri.conf.json"),
+            r#"{ "build": { "frontendDist": "../src" } }"#,
+        )
+        .unwrap();
+
+        let server = detect_from_tauri_conf(&dir, "npm").unwrap();
+        assert_eq!(server.framework, "Tauri");
+        assert_eq!(server.port, 0);
+        assert!(server.url.is_empty());
+        assert!(server.start_command.contains("tauri dev"));
+        assert!(server.source.contains("no dev server"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }
