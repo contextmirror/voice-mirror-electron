@@ -333,3 +333,39 @@ describe('SandboxPreview.svelte -- starting-state build tail', () => {
     assert.ok(cmpSrc.includes('native build can take minutes'), 'sets expectation on long builds');
   });
 });
+
+// -- Determinate launch progress (Nathan's ask: a real 0→100% bar) --
+
+describe('SandboxPreview.svelte -- launch progress bar', () => {
+  const cmpSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'components', 'lens', 'preview', 'SandboxPreview.svelte'),
+    'utf-8'
+  );
+  const dsmSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'lib', 'stores', 'dev-server-manager.svelte.js'),
+    'utf-8'
+  );
+
+  it('the startingServer derivation returns a fresh snapshot, not the live ref', () => {
+    // The manager mutates Map entries in place; returning the same object
+    // reference made later field updates (outputChannel) invisible to
+    // dependents. A shallow copy per recompute keeps them tracking.
+    const block = cmpSrc.split('const startingServer = $derived.by(')[1]?.split('});')[0] || '';
+    assert.ok(block.includes('{ ...best'), 'must snapshot the entry, not return best directly');
+  });
+
+  it('estimates against the last-launch duration, indeterminate without one', () => {
+    assert.ok(cmpSrc.includes('vm:lastLaunchMs:'), 'reads the persisted baseline');
+    assert.ok(cmpSrc.includes('const progressPct'), 'has a progress derivation');
+    // No baseline → null → indeterminate glide; render must handle both.
+    assert.ok(cmpSrc.includes('progressPct == null'), 'null case renders the glide');
+    assert.ok(cmpSrc.includes('progress-fill'), 'numeric case renders a determinate fill');
+    assert.ok(cmpSrc.includes('role="progressbar"'), 'exposes an a11y progressbar');
+  });
+
+  it('the manager persists successful-launch duration on markRunning', () => {
+    const block = dsmSrc.split('function markRunning')[1]?.split('\n  function')[0] || '';
+    assert.ok(block.includes('vm:lastLaunchMs:'), 'markRunning must persist the duration');
+    assert.ok(block.includes('prev?.startedAt'), 'measured from startedAt');
+  });
+});

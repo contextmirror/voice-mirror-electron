@@ -554,6 +554,16 @@ function createDevServerManager() {
    * web projects. Starts the runtime health sweep.
    */
   function markRunning(projectPath, server, cdpPort) {
+    // Remember how long THIS launch took so the App Preview panel can render a
+    // real 0→100% bar next time (estimate against the last success). Capture
+    // before clearing startedAt below. Ignore absurd values (clock jumps).
+    const prev = servers.get(projectPath);
+    if (prev?.startedAt) {
+      const dur = Date.now() - prev.startedAt;
+      if (dur > 1000 && dur < 30 * 60 * 1000) {
+        try { localStorage.setItem(`vm:lastLaunchMs:${projectPath}`, String(dur)); } catch { /* private mode / quota */ }
+      }
+    }
     updateState(projectPath, {
       status: 'running',
       lastActiveTime: Date.now(),

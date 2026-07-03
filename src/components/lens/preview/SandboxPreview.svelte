@@ -64,12 +64,20 @@
   // narrates itself (npm install / cargo compile / vite ready / errors).
   const startingServer = $derived.by(() => {
     let best = null;
-    for (const [, s] of devServerManager.servers) {
+    let bestKey = null;
+    for (const [pp, s] of devServerManager.servers) {
       if (s.status === 'starting' && (!best || (s.startedAt || 0) > (best.startedAt || 0))) {
         best = s;
+        bestKey = pp;
       }
     }
-    return best;
+    // SNAPSHOT, not the live reference. The manager's Map entries are plain
+    // objects mutated in place (reactivity comes from reassigning the Map) —
+    // returning the same reference made every later field update INVISIBLE
+    // to dependents (outputChannel lands a beat after 'starting', so the
+    // build tail + wiring diagnostic never armed; found live 2026-07-04).
+    // A fresh shallow copy per recompute keeps dependents tracking.
+    return best ? { ...best, projectPath: bestKey } : null;
   });
   const TAIL_LINES = 8;
   const buildTail = $derived.by(() => {
@@ -113,6 +121,39 @@
   const startElapsed = $derived(
     startingServer?.startedAt ? Math.max(0, Math.round((nowTick - startingServer.startedAt) / 1000)) : null
   );
+
+  // ── Determinate progress (Nathan's ask: a real 0→100%, not just a glide) ──
+  // A cargo build has no knowable total, so we do what browsers do for page
+  // loads: estimate against how long the LAST successful launch of this same
+  // project took (persisted by the dev-server manager on markRunning). First
+  // ever launch → no baseline → indeterminate glide. With a baseline the bar
+  // fills 0→90% over the estimate, then jumps: 90%+ once the build is done and
+  // we're attaching the mirror, 100% on the first painted frame.
+  function readLastLaunchMs(projectPath) {
+    if (!projectPath) return null;
+    try {
+      const v = localStorage.getItem(`vm:lastLaunchMs:${projectPath}`);
+      const n = v ? Number(v) : NaN;
+      return Number.isFinite(n) && n > 1000 ? n : null;
+    } catch {
+      return null;
+    }
+  }
+  const baselineMs = $derived(readLastLaunchMs(startingServer?.projectPath));
+  // null → indeterminate (glide); a number 0..100 → determinate width.
+  const progressPct = $derived.by(() => {
+    if (hasFrame) return 100;
+    if (startingServer) {
+      // Build/launch in flight.
+      if (!baselineMs || startElapsed == null) return null; // no estimate → glide
+      return Math.min(90, Math.round((startElapsed * 1000 / baselineMs) * 90));
+    }
+    // Build done (status flipped to running) — mirror is attaching. Hold near
+    // the end so the bar reads "almost there" rather than snapping to empty.
+    if (loading || !url || !hasFrame) return 95;
+    return 100;
+  });
+  const showProgress = $derived(!confirmStart && !error && !showEmpty && !hasFrame);
 </script>
 
 <div class="sandbox-preview">
@@ -181,9 +222,24 @@
     </button>
   </div>
   <div class="sandbox-body">
-    {#if !confirmStart && !error && !showEmpty && (loading || !url || !hasFrame)}
-      <!-- Indeterminate progress bar: launch in flight / mirror attaching. -->
-      <div class="progress-track" aria-hidden="true"><div class="progress-glide"></div></div>
+    {#if showProgress}
+      <!-- Launch progress. Determinate (0→100%) when we have a last-launch
+           baseline to estimate against; an indeterminate glide on the first
+           ever launch (no baseline yet). -->
+      <div
+        class="progress-track"
+        role="progressbar"
+        aria-label="App launch progress"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow={progressPct ?? undefined}
+      >
+        {#if progressPct == null}
+          <div class="progress-glide"></div>
+        {:else}
+          <div class="progress-fill" style="width: {progressPct}%"></div>
+        {/if}
+      </div>
     {/if}
     {#if confirmStart}
       <!-- USER clicked App with no session: confirm before launching a dev server
@@ -504,9 +560,10 @@
     top: 0;
     left: 0;
     right: 0;
-    height: 2px;
+    height: 3px;
     overflow: hidden;
     background: color-mix(in srgb, var(--accent) 15%, transparent);
+    z-index: 2;
   }
 
   .progress-glide {
@@ -517,6 +574,14 @@
     animation: progress-glide 1.4s ease-in-out infinite;
   }
 
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 0 2px 2px 0;
+    /* Ease the width so estimate ticks + the checkpoint jumps glide smoothly. */
+    transition: width 0.6s ease-out;
+  }
+
   @keyframes progress-glide {
     0% { transform: translateX(-100%); }
     100% { transform: translateX(390%); }
@@ -524,6 +589,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .progress-glide { animation: none; width: 100%; opacity: 0.4; }
+    .progress-fill { transition: none; }
   }
 
   .build-tail {
