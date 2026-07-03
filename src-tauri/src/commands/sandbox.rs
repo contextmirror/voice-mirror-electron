@@ -5,7 +5,10 @@
 //! Voice Mirror, and the AI can see/interact with the real running app through
 //! the same element-ref model it uses for websites.
 
+use serde::Deserialize;
+
 use super::IpcResponse;
+use crate::services::launch::LaunchAck;
 
 /// Snapshot an external app's UI via its CDP remote-debugging `port`.
 ///
@@ -113,4 +116,51 @@ pub async fn sandbox_list_windows(port: u16) -> IpcResponse {
 pub fn sandbox_stream_stop(port: u16) -> IpcResponse {
     crate::services::sandbox_stream::stop(port);
     IpcResponse::ok(serde_json::json!({ "ok": true }))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SandboxStartAckParams {
+    pub launch_id: u64,
+    #[serde(flatten)]
+    pub ack: LaunchAck,
+}
+
+/// The frontend's mandatory acknowledgement of a `sandbox-start-request` event.
+/// Resolves the backend waiter registered by the `sandbox_start` MCP tool, so
+/// the tool's response reports what ACTUALLY happened (spawned / already-running
+/// / refused) instead of optimistically claiming a launch.
+#[tauri::command]
+pub fn sandbox_start_ack(params: SandboxStartAckParams) -> IpcResponse {
+    tracing::info!(
+        target: "preview",
+        "[launch:{}] frontend ack: status={} reason={:?} devPort={:?} cdpPort={:?} framework={:?}",
+        params.launch_id,
+        params.ack.status,
+        params.ack.reason,
+        params.ack.dev_port,
+        params.ack.cdp_port,
+        params.ack.framework,
+    );
+    let delivered = crate::services::launch::ack(params.launch_id, params.ack);
+    if !delivered {
+        // The waiter already timed out (reported "dropped") or the id is stale.
+        tracing::warn!(
+            target: "preview",
+            "[launch:{}] ack arrived but nothing was waiting (backend timed out first?)",
+            params.launch_id
+        );
+    }
+    IpcResponse::ok(serde_json::json!({ "delivered": delivered }))
+}
+
+/// Allocate a genuinely free CDP debug port for a dev-app launch. Replaces the
+/// old `9223 + (dev_port % 1000)` formula, which collided for dev ports 1000
+/// apart (3000/4000, 1420/2420) and was duplicated in JS + Rust.
+#[tauri::command]
+pub fn find_free_cdp_port() -> IpcResponse {
+    match crate::services::launch::find_free_cdp_port() {
+        Some(port) => IpcResponse::ok(serde_json::json!({ "port": port })),
+        None => IpcResponse::err("No free CDP port in the 9223-9499 scan range"),
+    }
 }

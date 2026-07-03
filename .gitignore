@@ -7,6 +7,9 @@ stats.html
 
 # Rust
 src-tauri/target/
+# Secondary cargo target dir used while the dev app holds file locks in target/
+# (see docs/design/app-preview-reliability.md "Working on this")
+src-tauri/target-audit/
 
 # Staged MCP sidecar for externalBin bundling (built artifact, copied at build time)
 src-tauri/binaries/

@@ -290,6 +290,9 @@ describe('api.js -- exported async functions', () => {
     'sandboxStreamStart',
     'sandboxStreamStop',
     'sandboxListWindows',
+    'sandboxStartAck',
+    'findFreeCdpPort',
+    'logPreview',
     // Design Overlay
     'designCommand',
     'designExpandTreeNode',

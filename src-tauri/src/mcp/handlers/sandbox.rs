@@ -251,9 +251,10 @@ pub async fn handle_sandbox_start(
     pipe: Option<&Arc<PipeRouter>>,
 ) -> McpToolResult {
     info!("[sandbox_start] launching the app + live preview");
-    // Generous: the app-side arm briefly polls the dev/CDP ports (~10s) to give a
-    // real launch signal before replying.
-    match run(pipe, "sandbox_start", args, Duration::from_secs(30)).await {
+    // Generous: the app-side arm waits for the frontend's launch ACK (≤15s)
+    // and then briefly polls the dev/CDP ports (~10s) to give a real launch
+    // signal before replying — worst case ~25s, so leave headroom.
+    match run(pipe, "sandbox_start", args, Duration::from_secs(40)).await {
         Err(e) => e,
         Ok(resp) => {
             let msg = resp

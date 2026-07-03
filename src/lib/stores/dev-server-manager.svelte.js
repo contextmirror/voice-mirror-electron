@@ -6,7 +6,7 @@
  * to cap concurrent running servers.
  */
 
-import { terminalSpawn, terminalInput, terminalKill, probePort, lensNavigate, killPortProcess, sandboxSetActivePort, sandboxClearActivePort } from '../api.js';
+import { terminalSpawn, terminalInput, terminalKill, probePort, lensNavigate, killPortProcess, sandboxSetActivePort, sandboxClearActivePort, findFreeCdpPort, logPreview } from '../api.js';
 import { terminalTabsStore } from './terminal-tabs.svelte.js';
 import { lensStore } from './lens.svelte.js';
 import { toastStore } from './toast.svelte.js';
@@ -20,6 +20,27 @@ const IDLE_TIMEOUT = 300000; // 5 minutes
 const MAX_CONCURRENT = 3;
 const CRASH_LOOP_COUNT = 3;
 const CRASH_LOOP_WINDOW = 300000; // 5 minutes
+// After the initial poll times out we keep watching at a slower cadence rather
+// than lying with status='running' — a cold `tauri dev` build can take minutes.
+const EXTENDED_POLL_TIMEOUT = 600000; // 10 more minutes of slow watching
+// Runtime health re-verification: status='running' must mean a listening port.
+const HEALTH_CHECK_INTERVAL = 15000;
+const HEALTH_CHECK_MISSES = 2; // consecutive failed probes before demotion
+// A 'starting' entry older than this can be force-relaunched (stale start).
+const STALE_STARTING_MS = 60000;
+
+/**
+ * Log an App-Preview / dev-server lifecycle event to the `preview` output
+ * channel (ring buffer + preview.jsonl) so launches are diagnosable after the
+ * fact — console.* alone vanishes with the webview. Mirrors to the console.
+ * @param {'error'|'warn'|'info'|'debug'} level
+ * @param {string} message
+ */
+function plog(level, message) {
+  logPreview(level, message).catch(() => {});
+  const fn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.info;
+  fn(`[preview] ${message}`);
+}
 
 /**
  * @typedef {Object} ServerState
@@ -34,6 +55,9 @@ const CRASH_LOOP_WINDOW = 300000; // 5 minutes
  * @property {boolean} crashLoopDetected
  * @property {string|null} outputChannel
  * @property {number|null} cdpPort - CDP remote-debugging port (Tauri apps only), for sandbox preview.
+ * @property {number|null} startedAt - When the current 'starting' phase began (stale-start detection).
+ * @property {string|null} stopReason - Why the server is stopped (honest-status UX).
+ * @property {number} healthMisses - Consecutive failed runtime port probes.
  */
 
 function createDevServerManager() {
@@ -66,6 +90,9 @@ function createDevServerManager() {
         crashLoopDetected: false,
         outputChannel: null,
         cdpPort: null,
+        startedAt: null,
+        stopReason: null,
+        healthMisses: 0,
       });
       // Trigger reactivity by reassigning
       servers = new Map(servers);
@@ -189,33 +216,87 @@ function createDevServerManager() {
 
   /**
    * Start a dev server for a project.
+   *
+   * Returns an HONEST outcome (fed back to sandbox_start via the launch ACK):
+   * `{ status: 'spawned'|'already-running'|'already-starting'|'refused',
+   *    reason?, devPort?, cdpPort?, framework? }`.
+   * 'spawned' means the PTY exists and the start command was sent — readiness
+   * is watched in the background; status only becomes 'running' when the port
+   * actually listens.
+   *
    * @param {{ url: string, port: number, framework?: string, startCommand?: string }} server
    * @param {string} projectPath
    * @param {string} [packageManager]
    */
   async function startServer(server, projectPath, packageManager, opts = {}) {
     const state = getOrCreateState(projectPath);
+    const label = `${server.framework || 'server'} :${server.port} (${projectPath})`;
 
-    // Already running or starting. A user-initiated relaunch (force) tears the
-    // (possibly stale) RUNNING server down first so "Open app" / the App tab always
-    // yields a fresh window — otherwise a leftover 'running' status silently no-ops
-    // (e.g. after the user manually closed the app window). But NEVER force-restart
-    // a server that's still STARTING: a relaunch click mid-launch must let the
-    // in-flight start finish, not kill+respawn it (avoids churning a just-started app).
-    if (state.status === 'running' || state.status === 'starting') {
-      if (!opts.force || state.status === 'starting') return;
-      await stopServer(projectPath);
+    // 'running'/'idle' is only trusted after re-verifying the port listens.
+    // A phantom entry (PTY dropped to a shell prompt after the app exited —
+    // no shell-exit event, port long gone) used to no-op every relaunch here
+    // forever; now it's demoted and the launch proceeds.
+    if (state.status === 'running' || state.status === 'idle') {
+      let listening = false;
+      try {
+        const probe = await probePort(state.port ?? server.port);
+        listening = !!probe?.data?.listening;
+      } catch {
+        // Probe failure = can't confirm it's alive = treat as not listening.
+      }
+
+      if (!listening) {
+        plog('warn', `[launch] ${label}: tracked status='${state.status}' but port :${state.port ?? server.port} is NOT listening — demoting stale entry, relaunching`);
+        demoteToStopped(projectPath, `port :${state.port ?? server.port} was not listening (stale entry)`, { quiet: true });
+      } else if (opts.force) {
+        // User-initiated relaunch (Open app / App tab) tears the verified-running
+        // server down first so it always yields a fresh window.
+        plog('info', `[launch] ${label}: force relaunch of a verified-running server`);
+        await stopServer(projectPath);
+      } else {
+        plog('info', `[launch] ${label}: already running (port re-verified listening) — no new launch`);
+        return {
+          status: 'already-running',
+          devPort: state.port,
+          cdpPort: state.cdpPort,
+          framework: state.framework,
+        };
+      }
+    }
+
+    // A launch already in flight must be left to finish (a relaunch click
+    // mid-build must not kill+respawn a compiling app) — UNLESS it's stale:
+    // force + 'starting' older than STALE_STARTING_MS gets torn down, which
+    // un-wedges the stop-then-start race that used to recreate phantoms.
+    if (state.status === 'starting') {
+      const age = state.startedAt ? Date.now() - state.startedAt : Infinity;
+      if (opts.force && age > STALE_STARTING_MS) {
+        plog('warn', `[launch] ${label}: force relaunch of a stale 'starting' entry (${Math.round(age / 1000)}s old)`);
+        await stopServer(projectPath);
+      } else {
+        plog('info', `[launch] ${label}: launch already in flight — coalescing this request into it`);
+        return {
+          status: 'already-starting',
+          devPort: state.port,
+          cdpPort: state.cdpPort,
+          framework: state.framework,
+        };
+      }
     }
 
     // Crash loop protection
     if (state.crashLoopDetected) {
+      const reason = `Crash loop detected for ${server.framework || 'server'} (${CRASH_LOOP_COUNT} crashes in ${CRASH_LOOP_WINDOW / 60000}min) — not auto-restarting`;
+      plog('warn', `[launch] ${label}: refused — ${reason}`);
       toastStore.addToast({
         message: `Crash loop detected for ${server.framework || 'server'} — not restarting`,
         severity: 'error',
         key: `dev-server-crash-${projectPath}`,
       });
-      return;
+      return { status: 'refused', reason };
     }
+
+    plog('info', `[launch] ${label}: starting (force=${opts.force === true})`);
 
     // Set status to 'starting' synchronously to prevent race conditions
     updateState(projectPath, {
@@ -226,6 +307,9 @@ function createDevServerManager() {
       startCommand: server.startCommand || null,
       // setupCommands intentionally not stored — venv persists after first setup, restart doesn't need it
       lastActiveTime: Date.now(),
+      startedAt: Date.now(),
+      stopReason: null,
+      healthMisses: 0,
     });
 
     // Evict LRU if at capacity (after marking as starting so guard check works)
@@ -248,13 +332,28 @@ function createDevServerManager() {
     // For Tauri apps, enable CDP remote debugging so the sandbox tools (and the
     // AI) can see/drive the real app window at its true size. The env var is
     // inherited down the npm -> cargo -> app.exe chain to the built WebView2 app.
-    // A distinct high port derived from the dev port avoids clashing with it.
-    // CRITICAL: 9222 is Voice Mirror's OWN host CDP port (see HOST_CDP_PORT in
-    // lib.rs). Base 9223 guarantees the dev app NEVER lands on the host port
-    // (which would make the sandbox tools snapshot the IDE itself). Old math
-    // `9222 + (port % 1000)` hit 9222 for any port%1000==0 (3000/4000/5000/8000…).
+    // The port comes from the backend's allocator (bind-tested free, reserved
+    // against concurrent launches, never the host's own 9222) — the old derived
+    // formula `9223 + (port % 1000)` collided for dev ports 1000 apart
+    // (3000/4000, 1420/2420) and was duplicated in JS + Rust.
     const isTauri = (server.framework || '').toLowerCase() === 'tauri';
-    const cdpPort = isTauri ? 9223 + (server.port % 1000) : null;
+    let cdpPort = null;
+    if (isTauri) {
+      try {
+        const r = await findFreeCdpPort();
+        cdpPort = r?.data?.port ?? null;
+      } catch {
+        // Allocator unreachable — fall through to the legacy derivation.
+      }
+      if (cdpPort) {
+        plog('info', `[launch] ${label}: allocated CDP debug port :${cdpPort}`);
+      } else {
+        // Last resort: launching with NO debug port would silently kill the
+        // whole see-and-drive loop, so the legacy formula beats nothing.
+        cdpPort = 9223 + (server.port % 1000);
+        plog('warn', `[launch] ${label}: find_free_cdp_port failed — falling back to derived CDP port :${cdpPort}`);
+      }
+    }
     // WebView2 browser args (one env var, SPACE-SEPARATED). Alongside the CDP
     // remote-debugging port we disable Chromium's occlusion/background throttling:
     // when the dev app sits behind Voice Mirror it is "occluded", and Chromium
@@ -284,35 +383,41 @@ function createDevServerManager() {
     try {
       const probe = await probePort(server.port);
       if (probe?.data?.listening) {
-        console.info(`[dev-server] freeing held dev port ${server.port} before launch`);
+        plog('info', `[launch] ${label}: freeing held dev port :${server.port} before launch`);
         await killPortProcess(server.port);
       }
       // A Tauri app.exe binds the CDP debug port; free it too so the new app can bind
       // it (else the live preview's CDP attach fails against a stale instance).
+      // With allocator-issued ports this is a no-op belt-and-braces check.
       if (cdpPort) {
         const cdpProbe = await probePort(cdpPort);
-        if (cdpProbe?.data?.listening) await killPortProcess(cdpPort);
+        if (cdpProbe?.data?.listening) {
+          plog('info', `[launch] ${label}: freeing held CDP port :${cdpPort} before launch`);
+          await killPortProcess(cdpPort);
+        }
       }
       // Let the OS release the sockets before the new process tries to bind.
       await new Promise((r) => setTimeout(r, 350));
     } catch (e) {
-      console.warn('[dev-server] pre-launch port free failed (continuing):', e);
+      plog('warn', `[launch] ${label}: pre-launch port free failed (continuing): ${e?.message || e}`);
     }
 
     // Spawn PTY
+    let shellId;
     try {
       const result = await terminalSpawn({ cwd: projectPath, outputChannel: channelLabel, env: spawnEnv });
       if (!result?.success || !result?.data?.id) {
-        updateState(projectPath, { status: 'stopped' });
+        updateState(projectPath, { status: 'stopped', stopReason: 'failed to spawn a terminal', startedAt: null });
+        plog('error', `[launch] ${label}: terminalSpawn failed: ${result?.error || 'no shell id returned'}`);
         toastStore.addToast({
           message: 'Failed to spawn terminal for dev server',
           severity: 'error',
           key: `dev-server-${projectPath}`,
         });
-        return;
+        return { status: 'refused', reason: 'Failed to spawn a terminal for the dev server' };
       }
 
-      const shellId = result.data.id;
+      shellId = result.data.id;
       updateState(projectPath, { shellId });
 
       // Add terminal tab
@@ -346,56 +451,199 @@ function createDevServerManager() {
       } else {
         await terminalInput(shellId, startCommand + '\n');
       }
-
-      // Poll port (may be cancelled via cancelPoll)
-      // Use longer timeout when setup commands are present (pip install can take minutes)
-      const hasSetup = server.setupCommands && server.setupCommands.length > 0;
-      let ready = false;
-      try {
-        ready = await pollPort(server.port, projectPath, hasSetup ? SETUP_POLL_TIMEOUT : POLL_TIMEOUT);
-      } catch (err) {
-        if (err?.message === 'cancelled') return;
-        throw err;
-      }
-
-      if (ready) {
-        updateState(projectPath, { status: 'running', lastActiveTime: Date.now() });
-        if (cdpPort) {
-          // Tauri app: the App Preview (the real app via CDP) is the canonical
-          // view. Don't also load the web frontend into the Lens browser — it's
-          // the same app shown stretched, which is confusing. Register the CDP
-          // port so the App Preview + the AI's sandbox_* tools use it.
-          sandboxSetActivePort(cdpPort).catch((err) =>
-            console.warn('[dev-server-manager] sandboxSetActivePort failed:', err)
-          );
-        } else {
-          // Web project: show it in the Lens browser as before.
-          await lensNavigate(server.url);
-        }
-        toastStore.addToast({
-          message: `${server.framework || 'Server'} ready on :${server.port}`,
-          severity: 'success',
-          key: `dev-server-${projectPath}`,
-        });
-      } else {
-        // Timeout -- don't kill, let user check terminal
-        updateState(projectPath, { status: 'running', lastActiveTime: Date.now() });
-        toastStore.addToast({
-          message: hasSetup
-            ? "Setup may still be running — check terminal"
-            : "Server didn't start — check terminal",
-          severity: hasSetup ? 'warning' : 'error',
-          key: `dev-server-${projectPath}`,
-        });
-      }
+      plog('info', `[launch] ${label}: PTY ${shellId} spawned, command sent: ${startCommand}`);
     } catch (err) {
-      console.error('[dev-server-manager] Start failed:', err);
-      updateState(projectPath, { status: 'stopped' });
+      plog('error', `[launch] ${label}: start failed: ${err?.message || err}`);
+      updateState(projectPath, { status: 'stopped', stopReason: String(err?.message || err), startedAt: null });
       toastStore.addToast({
         message: `Dev server start failed: ${err.message || err}`,
         severity: 'error',
         key: `dev-server-${projectPath}`,
       });
+      return { status: 'refused', reason: `Dev server start failed: ${err?.message || err}` };
+    }
+
+    // Watch readiness in the BACKGROUND — the caller (and the sandbox_start
+    // ACK) gets the honest 'spawned' outcome now; status only becomes
+    // 'running' when the port actually listens.
+    const hasSetup = !!(server.setupCommands && server.setupCommands.length > 0);
+    watchStartup(projectPath, server, cdpPort, hasSetup, shellId).catch((err) => {
+      plog('error', `[launch] ${label}: startup watcher crashed: ${err?.message || err}`);
+    });
+
+    return {
+      status: 'spawned',
+      devPort: server.port,
+      cdpPort,
+      framework: server.framework || null,
+    };
+  }
+
+  /**
+   * Background readiness watcher for a just-spawned dev server.
+   *
+   * Initial poll (30s, or 5min with setup commands) → if not ready, KEEP
+   * WATCHING for up to EXTENDED_POLL_TIMEOUT more instead of lying with
+   * status='running' (the old behavior, which minted phantom entries): a cold
+   * `tauri dev` build legitimately takes minutes. The port binding promotes to
+   * 'running'; giving up demotes to stopped(reason).
+   */
+  async function watchStartup(projectPath, server, cdpPort, hasSetup, shellId) {
+    const label = `${server.framework || 'server'} :${server.port}`;
+    // Still the launch this watcher belongs to? ('idle' = backgrounded by a
+    // project switch mid-build — keep watching, matching the old promotion.)
+    const stillMine = () => {
+      const s = servers.get(projectPath);
+      return !!s && s.shellId === shellId && (s.status === 'starting' || s.status === 'idle');
+    };
+
+    const initialTimeout = hasSetup ? SETUP_POLL_TIMEOUT : POLL_TIMEOUT;
+    let ready = false;
+    try {
+      ready = await pollPort(server.port, projectPath, initialTimeout);
+    } catch (err) {
+      if (err?.message === 'cancelled') return; // stopped/crashed during poll
+      throw err;
+    }
+
+    if (!ready) {
+      if (!stillMine()) return;
+      plog('warn', `[launch] ${label}: port not listening after ${initialTimeout / 1000}s — still watching, status stays 'starting'`);
+      toastStore.addToast({
+        message: hasSetup
+          ? 'Setup may still be running — check terminal'
+          : `Still building/starting :${server.port} — check the terminal if this persists`,
+        severity: 'warning',
+        key: `dev-server-${projectPath}`,
+      });
+      try {
+        ready = await pollPort(server.port, projectPath, EXTENDED_POLL_TIMEOUT);
+      } catch (err) {
+        if (err?.message === 'cancelled') return;
+        throw err;
+      }
+      if (!ready) {
+        if (!stillMine()) return;
+        plog('error', `[launch] ${label}: giving up — port :${server.port} never listened within ${(initialTimeout + EXTENDED_POLL_TIMEOUT) / 60000}min`);
+        demoteToStopped(projectPath, `dev server never bound :${server.port} — check the terminal for build errors`);
+        return;
+      }
+    }
+
+    if (!stillMine()) return; // superseded by a stop/relaunch mid-poll
+    markRunning(projectPath, server, cdpPort);
+  }
+
+  /**
+   * Promote a server to 'running' (its port is verified listening) and wire
+   * up the preview: CDP port registration for Tauri apps, Lens navigation for
+   * web projects. Starts the runtime health sweep.
+   */
+  function markRunning(projectPath, server, cdpPort) {
+    updateState(projectPath, {
+      status: 'running',
+      lastActiveTime: Date.now(),
+      startedAt: null,
+      stopReason: null,
+      healthMisses: 0,
+    });
+    plog('info', `[launch] ${server.framework || 'server'} :${server.port}: READY — port listening${cdpPort ? `, CDP :${cdpPort}` : ''}`);
+    if (cdpPort) {
+      // Tauri app: the App Preview (the real app via CDP) is the canonical
+      // view. Don't also load the web frontend into the Lens browser — it's
+      // the same app shown stretched, which is confusing. Register the CDP
+      // port so the App Preview + the AI's sandbox_* tools use it.
+      sandboxSetActivePort(cdpPort).catch((err) =>
+        plog('warn', `[launch] sandboxSetActivePort(${cdpPort}) failed: ${err?.message || err}`)
+      );
+    } else {
+      // Web project: show it in the Lens browser as before.
+      lensNavigate(server.url).catch(() => {});
+    }
+    toastStore.addToast({
+      message: `${server.framework || 'Server'} ready on :${server.port}`,
+      severity: 'success',
+      key: `dev-server-${projectPath}`,
+    });
+    ensureHealthSweep();
+  }
+
+  /**
+   * Mark a server stopped WITHOUT killing its PTY (the shell may hold the
+   * build errors the user needs to read). Clears the preview wiring so
+   * nothing keeps pointing at a dead port. The reason lands in
+   * `state.stopReason` + the preview channel — never a silent phantom.
+   */
+  function demoteToStopped(projectPath, reason, opts = {}) {
+    const state = servers.get(projectPath);
+    if (!state) return;
+    cancelPoll(projectPath);
+    cancelIdleTimer(projectPath);
+    if (state.cdpPort) {
+      sandboxClearActivePort().catch(() => {});
+    }
+    updateState(projectPath, {
+      status: 'stopped',
+      stopReason: reason,
+      cdpPort: null,
+      startedAt: null,
+      healthMisses: 0,
+    });
+    plog('warn', `[lifecycle] ${state.framework || 'server'} :${state.port} (${projectPath}) marked stopped: ${reason}`);
+    if (!opts.quiet) {
+      toastStore.addToast({
+        message: `${state.framework || 'Dev server'} on :${state.port} stopped — ${reason}`,
+        severity: 'warning',
+        key: `dev-server-${projectPath}`,
+      });
+    }
+  }
+
+  /** @type {ReturnType<typeof setInterval>|null} */
+  let healthSweepTimer = null;
+
+  /**
+   * Periodic truth check: every server claiming 'running'/'idle' must have a
+   * listening port; HEALTH_CHECK_MISSES consecutive failed probes demote it to
+   * stopped(reason). A PTY can outlive the dev server inside it (the app exits,
+   * the shell prompt remains — no shell-exit event ever fires), so shell
+   * liveness alone cannot be trusted. Kills phantom 'running' entries.
+   */
+  function ensureHealthSweep() {
+    if (healthSweepTimer != null) return;
+    healthSweepTimer = setInterval(sweepHealth, HEALTH_CHECK_INTERVAL);
+  }
+
+  async function sweepHealth() {
+    let anyAlive = false;
+    for (const [pp, state] of servers) {
+      if (state.status !== 'running' && state.status !== 'idle') continue;
+      anyAlive = true;
+      if (!state.port) continue;
+      let listening = false;
+      try {
+        const probe = await probePort(state.port);
+        listening = !!probe?.data?.listening;
+      } catch {
+        // Probe failure counts as a miss.
+      }
+      const s = servers.get(pp);
+      if (!s || (s.status !== 'running' && s.status !== 'idle')) continue; // changed mid-probe
+      if (listening) {
+        if (s.healthMisses) updateState(pp, { healthMisses: 0 });
+      } else {
+        const misses = (s.healthMisses || 0) + 1;
+        updateState(pp, { healthMisses: misses });
+        plog('warn', `[health] ${s.framework || 'server'} :${s.port}: port probe miss ${misses}/${HEALTH_CHECK_MISSES}`);
+        if (misses >= HEALTH_CHECK_MISSES) {
+          demoteToStopped(pp, `port :${s.port} stopped listening (the process likely exited)`);
+        }
+      }
+    }
+    // Nothing left to watch — stop sweeping until the next markRunning().
+    if (!anyAlive && healthSweepTimer != null) {
+      clearInterval(healthSweepTimer);
+      healthSweepTimer = null;
     }
   }
 
@@ -418,6 +666,8 @@ function createDevServerManager() {
     cancelPoll(projectPath);
     cancelIdleTimer(projectPath);
 
+    plog('info', `[lifecycle] stopping ${framework || 'server'} :${port} (${projectPath})`);
+
     // Capture shellId, then clear it BEFORE killing so handleShellExit
     // won't match this shell and wrongly report it as a crash.
     const shellId = state.shellId;
@@ -425,6 +675,9 @@ function createDevServerManager() {
       status: 'stopped',
       shellId: null,
       cdpPort: null,
+      startedAt: null,
+      stopReason: 'stopped',
+      healthMisses: 0,
     });
 
     try {
@@ -603,6 +856,12 @@ function createDevServerManager() {
     // diagnostics (crashedServers list, crash toasts on the next launch).
     const cleanExit = exitCode === undefined || exitCode === 0;
     const isCrash = wasRunning || !cleanExit;
+    plog(
+      isCrash ? 'error' : 'info',
+      `[lifecycle] ${state.framework || 'server'} :${state.port} (${crashedProject}) shell exited ` +
+        `(code=${exitCode ?? 'unknown'}, was=${state.status}) — marking ${isCrash ? 'crashed' : 'stopped'}` +
+        (crashLoopDetected ? ' [CRASH LOOP — auto-restart disabled]' : '')
+    );
     updateState(crashedProject, {
       status: isCrash ? 'crashed' : 'stopped',
       shellId: null,
@@ -611,6 +870,11 @@ function createDevServerManager() {
       // contribute to the crash-loop window.
       lastCrashTime: isCrash ? now : lastCrashTime,
       crashLoopDetected,
+      startedAt: null,
+      stopReason: isCrash
+        ? `shell exited unexpectedly (code=${exitCode ?? 'unknown'})`
+        : 'shell exited cleanly',
+      healthMisses: 0,
     });
 
     cancelPoll(crashedProject);
@@ -696,6 +960,10 @@ function createDevServerManager() {
     MAX_CONCURRENT,
     CRASH_LOOP_COUNT,
     CRASH_LOOP_WINDOW,
+    EXTENDED_POLL_TIMEOUT,
+    HEALTH_CHECK_INTERVAL,
+    HEALTH_CHECK_MISSES,
+    STALE_STARTING_MS,
   };
 }
 
@@ -709,4 +977,8 @@ export {
   MAX_CONCURRENT,
   CRASH_LOOP_COUNT,
   CRASH_LOOP_WINDOW,
+  EXTENDED_POLL_TIMEOUT,
+  HEALTH_CHECK_INTERVAL,
+  HEALTH_CHECK_MISSES,
+  STALE_STARTING_MS,
 };

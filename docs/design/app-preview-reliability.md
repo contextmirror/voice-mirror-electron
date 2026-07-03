@@ -100,27 +100,49 @@ Supporting evidence:
 ## The plan
 
 ### Phase 0 — bootstrap (required before anything is testable)
-- [ ] **VM single-instance → release-only** (mirror Yap fix
+- [x] **VM single-instance → release-only** (mirror Yap fix
       `nayballs/Yap@e0012a9` in `lib.rs`); duplicate release launch should
       show/focus the main window. Without this, a dev VM cannot run beside the
       installed VM that the developer is talking through.
+      *(Done 2026-07-03 — plugin cfg-gated `not(debug_assertions)`; duplicate
+      release launch shows/unminimizes/focuses `main`.)*
 
 ### Phase 1 — stability (the "it just doesn't work" killers)
-- [ ] **Dev-server lifecycle owns truth**: `status=running` must be tied to a
+- [x] **Dev-server lifecycle owns truth**: `status=running` must be tied to a
       live PTY *and* a listening port, re-verified on every poll; process exit
       or port loss ⇒ `status=stopped(reason)`. Kills the phantom-entry bug
       (evidence #2/#4, mode 1/15).
-- [ ] **`sandbox_start` stops lying**: it returns only what actually happened
+      *(Done — startServer re-probes before honoring 'running'; 15s health
+      sweep demotes after 2 misses with `stopReason`; startup watcher keeps
+      'starting' honest (30s poll → 10min extended → demote), never mints
+      'running' on timeout; force can tear down a stale >60s 'starting';
+      `preview-launch` health contract catches wedged launches.)*
+- [x] **`sandbox_start` stops lying**: it returns only what actually happened
       (spawned / already-running-verified / refused(reason) / dropped(reason)).
       The frontend hop must ACK back through the pipe; no ACK in N s ⇒ report
       the drop honestly (mode 2).
-- [ ] **Log the whole launch lifecycle** to the `preview` channel: every
+      *(Done — every `sandbox-start-request` carries a `launchId`; frontend
+      MUST answer via the `sandbox_start_ack` command (services/launch.rs
+      registry); 15s ACK timeout ⇒ status "dropped". Response `status` is one
+      of spawned / already-running / already-starting / refused / dropped.)*
+- [x] **Log the whole launch lifecycle** to the `preview` channel: every
       decision, spawn, poll result, downgrade, teardown — with the failing
       value in the message.
-- [ ] **stderr ≠ ERROR** in project channels: classify by content
+      *(Done — Rust side logs with `target: "preview"`; frontend logs via the
+      new `log_preview` command (dev-server-manager `plog()` + LensWorkspace),
+      which routes through tracing so entries land in preview.jsonl too.)*
+- [x] **stderr ≠ ERROR** in project channels: classify by content
       (error/warning regexes), default stderr→info. Fixes cry-wolf logs.
-- [ ] **Real port allocation**: spawner binds port 0 (or scans) and *returns*
+      *(Done — actual culprit wasn't stderr mapping: `has_http_error_status`
+      treated any bare 4xx/5xx-looking token as an HTTP status, so Vite's
+      "ready in 594 ms" logged as ERROR. It now requires an HTTP method token
+      before the status.)*
+- [x] **Real port allocation**: spawner binds port 0 (or scans) and *returns*
       the CDP port; formula removed from both sides (mode 3).
+      *(Done — `find_free_cdp_port` (services/launch.rs) bind-tests 9223-9499
+      with a 5-min reservation against concurrent launches; frontend uses it
+      (legacy formula kept only as a logged last-resort fallback); pipe_server
+      reads the actual port from the launch ACK instead of recomputing.)*
 
 ### Phase 2 — the honest preview panel
 - [ ] Preview panel states: `building (cargo output tail)` → `starting` →

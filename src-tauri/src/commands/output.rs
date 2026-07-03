@@ -39,6 +39,28 @@ pub fn log_frontend_error(
 }
 
 #[derive(Debug, Deserialize)]
+pub struct PreviewLogParams {
+    pub level: String,
+    pub message: String,
+}
+
+/// Log a frontend App-Preview lifecycle event into the `preview` channel.
+///
+/// Routed through `tracing` with `target: "preview"` (NOT `OutputStore::inject`)
+/// so the entry reaches the ring buffer AND `preview.jsonl` — `inject()` skips
+/// the file sink, and launch history must survive a crash to be diagnosable.
+#[tauri::command]
+pub fn log_preview(params: PreviewLogParams) -> Result<(), String> {
+    match params.level.to_ascii_lowercase().as_str() {
+        "error" => tracing::error!(target: "preview", "{}", params.message),
+        "warn" => tracing::warn!(target: "preview", "{}", params.message),
+        "debug" => tracing::debug!(target: "preview", "{}", params.message),
+        _ => tracing::info!(target: "preview", "{}", params.message),
+    }
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
 pub struct GetLogsParams {
     pub channel: Option<String>,
     pub level: Option<String>,

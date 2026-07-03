@@ -595,6 +595,34 @@ export async function sandboxListWindows(port) {
 }
 
 /**
+ * Acknowledge a `sandbox-start-request` event back to the backend, so the
+ * sandbox_start MCP tool reports what ACTUALLY happened instead of guessing.
+ * @param {{launchId: number, status: string, reason?: string, devPort?: number, cdpPort?: number, framework?: string}} params
+ */
+export async function sandboxStartAck(params) {
+  return invoke('sandbox_start_ack', { params });
+}
+
+/**
+ * Allocate a genuinely free CDP debug port for a dev-app launch (replaces the
+ * old derived-port formula, which collided for dev ports 1000 apart).
+ * @returns {Promise<{success: boolean, data?: {port: number}}>}
+ */
+export async function findFreeCdpPort() {
+  return invoke('find_free_cdp_port');
+}
+
+/**
+ * Log an App-Preview lifecycle event to the `preview` output channel
+ * (ring buffer + preview.jsonl), so launch decisions survive for diagnosis.
+ * @param {string} level - error | warn | info | debug
+ * @param {string} message
+ */
+export async function logPreview(level, message) {
+  return invoke('log_preview', { params: { level, message } });
+}
+
+/**
  * Check if a specific port is accepting TCP connections on localhost.
  * @param {number} port - Port number to probe.
  * @returns {Promise<{success: boolean, data?: {listening: boolean}}>}

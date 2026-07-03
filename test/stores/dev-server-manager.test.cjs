@@ -248,9 +248,12 @@ describe('dev-server-manager.svelte.js -- startServer behavior', () => {
     assert.ok(block.includes("severity: 'success'"), 'Should show success toast on ready');
   });
 
-  it('shows error toast on timeout', () => {
-    const block = src.split('async function startServer')[1] || '';
-    assert.ok(block.includes("Server didn't start"), 'Should show timeout error toast');
+  it('warns honestly on initial timeout instead of claiming running', () => {
+    // Old behavior set status='running' on timeout (minting phantom entries);
+    // the watcher now says it's still building and keeps status='starting'.
+    const block = src.split('async function watchStartup')[1] || '';
+    assert.ok(block.includes('Still building/starting'), 'Should show the still-watching warning toast');
+    assert.ok(!/(status:\s*'running'[\s\S]{0,200}not ready)/.test(block), 'Must not mark running on timeout');
   });
 
   it('handles package manager prefix replacement', () => {
@@ -491,8 +494,9 @@ describe('dev-server-manager.svelte.js -- pollPort cancellation', () => {
     assert.ok(block.includes('poll.interval') || block.includes('clearInterval(poll.interval)'), 'Should clear interval from poll object');
   });
 
-  it('startServer catches cancelled pollPort rejection', () => {
-    const block = src.split('async function startServer')[1]?.split('async function')[0] || '';
+  it('watchStartup catches cancelled pollPort rejection', () => {
+    // Readiness polling lives in the background watcher now, not startServer.
+    const block = src.split('async function watchStartup')[1]?.split('\n  async function')[0] || '';
     assert.ok(block.includes("err?.message === 'cancelled'"), 'Should catch cancelled poll rejection');
   });
 });
@@ -513,19 +517,41 @@ describe('dev-server-manager.svelte.js -- startServer race condition fix', () =>
 // -- force-restart guard (don't churn an in-flight launch) --
 
 describe('dev-server-manager.svelte.js -- force-restart guard', () => {
-  it('only tears down a RUNNING server on force, never a STARTING one', () => {
-    const block = src.split('async function startServer')[1]?.split('async function')[0] || '';
-    // A relaunch click mid-launch must let the in-flight start finish: when status
-    // is 'starting' it returns early regardless of force, instead of stopServer().
+  it('coalesces into a FRESH starting entry instead of killing it', () => {
+    const block = src.split('async function startServer')[1]?.split('\n  async function')[0] || '';
+    // A relaunch click mid-launch must let the in-flight start finish: a fresh
+    // 'starting' entry returns 'already-starting' instead of stopServer().
     assert.ok(
-      block.includes("!opts.force || state.status === 'starting'"),
-      'force should bail out when the server is still starting'
+      block.includes("status: 'already-starting'"),
+      'a fresh in-flight launch should be coalesced, not churned'
     );
   });
 
-  it('still force-restarts a (possibly stale) running server', () => {
-    const block = src.split('async function startServer')[1]?.split('async function')[0] || '';
+  it('force CAN tear down a STALE starting entry (un-wedges the stop-start race)', () => {
+    const block = src.split('async function startServer')[1]?.split('\n  async function')[0] || '';
+    assert.ok(
+      block.includes('STALE_STARTING_MS'),
+      "force + 'starting' older than STALE_STARTING_MS must be relaunchable"
+    );
+  });
+
+  it('still force-restarts a running server', () => {
+    const block = src.split('async function startServer')[1]?.split('\n  async function')[0] || '';
     assert.ok(block.includes('await stopServer(projectPath)'), 'force on running should stop then restart');
+  });
+
+  it("re-verifies a tracked 'running' port before trusting it", () => {
+    const block = src.split('async function startServer')[1]?.split('\n  async function')[0] || '';
+    // The phantom-entry bug: status='running' forever while nothing listened,
+    // so every launch silently no-oped. The guard must probe before no-oping.
+    assert.ok(
+      block.includes('probePort(state.port ?? server.port)'),
+      "must probe the tracked port before honoring status='running'"
+    );
+    assert.ok(
+      block.includes('demoteToStopped('),
+      'a dead tracked port must demote the stale entry and relaunch'
+    );
   });
 });
 
@@ -610,11 +636,17 @@ describe('dev-server-manager.svelte.js -- sandbox CDP', () => {
   });
 
   it('registers the active sandbox port only once the app is confirmed ready', () => {
-    // sandboxSetActivePort must sit inside the `if (ready)` block, gated on cdpPort.
-    const readyBlock = src.split('if (ready)')[1]?.split('} else {')[0] || '';
+    // sandboxSetActivePort must live in markRunning(), which the startup
+    // watcher only calls after pollPort confirms the port listens.
+    const markBlock = src.split('function markRunning')[1]?.split('\n  function')[0] || '';
     assert.ok(
-      readyBlock.includes('sandboxSetActivePort'),
+      markBlock.includes('sandboxSetActivePort'),
       'Should register the active port after readiness (no connection-refused race)'
+    );
+    const watchBlock = src.split('async function watchStartup')[1]?.split('\n  function markRunning')[0] || '';
+    assert.ok(
+      watchBlock.includes('markRunning('),
+      'watchStartup should promote via markRunning after the port listens'
     );
   });
 
@@ -630,6 +662,55 @@ describe('dev-server-manager.svelte.js -- MAX_CONCURRENT accounting', () => {
     const start = src.indexOf('function countRunning');
     const chunk = src.slice(start, start + 700);
     assert.ok(chunk.includes("state.status === 'starting'"), 'starting servers count toward MAX_CONCURRENT');
+  });
+});
+
+// -- Phase 1 reliability: lifecycle owns truth (app-preview-reliability.md) --
+
+describe('dev-server-manager.svelte.js -- lifecycle truth (Phase 1)', () => {
+  it('startServer returns an honest outcome object', () => {
+    const block = src.split('async function startServer')[1]?.split('\n  async function')[0] || '';
+    for (const status of ['spawned', 'already-running', 'already-starting', 'refused']) {
+      assert.ok(block.includes(`status: '${status}'`), `startServer should be able to return '${status}'`);
+    }
+  });
+
+  it('has a runtime health sweep that demotes dead servers', () => {
+    assert.ok(src.includes('function ensureHealthSweep'), 'Should have ensureHealthSweep');
+    const block = src.split('async function sweepHealth')[1] || '';
+    assert.ok(block.includes('HEALTH_CHECK_MISSES'), 'Sweep should use the consecutive-miss threshold');
+    assert.ok(block.includes('demoteToStopped('), 'Sweep must demote on repeated misses');
+  });
+
+  it('demoteToStopped clears the sandbox CDP wiring and records a reason', () => {
+    const block = src.split('function demoteToStopped')[1]?.split('\n  function')[0] || '';
+    assert.ok(block.includes('sandboxClearActivePort'), 'Demotion must clear the active CDP port');
+    assert.ok(block.includes('stopReason: reason'), 'Demotion must record WHY (honest-status UX)');
+    assert.ok(!block.includes('terminalKill'), 'Demotion must NOT kill the PTY (it holds build errors)');
+  });
+
+  it('keeps watching after the initial poll timeout (extended poll)', () => {
+    const block = src.split('async function watchStartup')[1]?.split('\n  function markRunning')[0] || '';
+    assert.ok(block.includes('EXTENDED_POLL_TIMEOUT'), 'Cold tauri dev builds outrun 30s — keep watching');
+    assert.ok(block.includes('demoteToStopped('), 'Giving up must demote with a reason, not linger');
+  });
+
+  it('allocates the CDP port from the backend instead of the old formula', () => {
+    const block = src.split('async function startServer')[1]?.split('\n  async function')[0] || '';
+    assert.ok(block.includes('findFreeCdpPort()'), 'Should ask the backend allocator for a free port');
+  });
+
+  it('logs launch lifecycle to the preview channel', () => {
+    assert.ok(src.includes('function plog'), 'Should have the preview-channel log helper');
+    assert.ok(src.includes('logPreview('), 'plog should route through the log_preview command');
+    const startBlock = src.split('async function startServer')[1] || '';
+    assert.ok((startBlock.match(/plog\(/g) || []).length >= 5, 'Launch decisions should be logged');
+  });
+
+  it('tracks startedAt / stopReason / healthMisses on server state', () => {
+    for (const field of ['startedAt: null', 'stopReason: null', 'healthMisses: 0']) {
+      assert.ok(src.includes(field), `getOrCreateState should initialize ${field}`);
+    }
   });
 });
 

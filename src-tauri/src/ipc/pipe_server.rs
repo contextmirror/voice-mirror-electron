@@ -620,161 +620,252 @@ async fn handle_capture_action(
         "sandbox_start" => {
             // The agent's FIRST port of call: launch the app it's building with a
             // SAFE (non-host) CDP port and open the live preview. The actual start
-            // is done by the frontend's devServerManager (it injects the safe
-            // debug-port env var + registers the active sandbox port); we detect
-            // the dev server here, REFUSE to claim a launch on a port conflict, and
-            // briefly poll the derived CDP port so the response tells the truth.
+            // is done by the frontend's devServerManager (it allocates a free
+            // debug port, injects the env var + registers the active sandbox).
+            // Every request carries a launchId the frontend MUST acknowledge via
+            // the sandbox_start_ack command — no ACK means the request was
+            // dropped (workspace unmounted, no project) and we say so instead of
+            // claiming "launching". The ACK also carries the ACTUAL dev/CDP ports
+            // (the old derived-port formula is gone), which we then poll briefly
+            // so the response reports real signals.
             let path = args
                 .get("path")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
+            info!(target: "preview", "[launch] sandbox_start requested, path={:?}", path);
 
-            // No explicit path: the frontend resolves the active project. We can't
-            // pre-check ports here, so emit and report HONESTLY that it's unconfirmed.
-            let Some(path) = path else {
-                app.emit("sandbox-start-request", serde_json::json!({ "path": null }))
-                    .map_err(|e| format!("Failed to emit sandbox-start-request: {}", e))?;
-                return Ok(serde_json::json!({
-                    "launching": true,
-                    "detected": Vec::<String>::new(),
-                    "message": "Kicked off a launch for the active project. A native Tauri build can \
-                                take a few minutes — call sandbox_snapshot once the App Preview appears. \
-                                If nothing shows, pass an explicit `path`, make sure Voice Mirror is on \
-                                the Lens workspace, or launch the app yourself and use sandbox_attach."
-                }));
-            };
-
-            let detected = {
-                let p = path.clone();
-                tokio::task::spawn_blocking(move || crate::services::dev_server::detect_dev_servers(&p))
+            // Pre-flight (only possible with an explicit path): refuse honestly
+            // when nothing is launchable or the dev port is already held.
+            let mut frameworks: Vec<String> = Vec::new();
+            if let Some(ref p) = path {
+                let detected = {
+                    let p = p.clone();
+                    tokio::task::spawn_blocking(move || {
+                        crate::services::dev_server::detect_dev_servers(&p)
+                    })
                     .await
                     .map_err(|e| format!("Detection task panicked: {}", e))?
-            };
+                };
+                frameworks = detected
+                    .iter()
+                    .map(|d| format!("{} :{}", d.framework, d.port))
+                    .collect();
 
-            let frameworks: Vec<String> = detected
-                .iter()
-                .map(|d| format!("{} :{}", d.framework, d.port))
-                .collect();
+                // Nothing to launch — say so instead of faking success.
+                let Some(target) = detected
+                    .iter()
+                    .find(|d| d.framework.eq_ignore_ascii_case("tauri"))
+                    .or_else(|| detected.first())
+                else {
+                    info!(target: "preview", "[launch] refused: no dev server detected in {}", p);
+                    return Ok(serde_json::json!({
+                        "launching": false,
+                        "status": "refused",
+                        "detected": frameworks,
+                        "message": format!(
+                            "No dev server detected in {}. Nothing was launched. Check the path or add a \
+                             dev script (e.g. a Tauri/Vite project with `npm run dev`).",
+                            p
+                        )
+                    }));
+                };
 
-            // Nothing to launch — say so instead of faking success.
-            let Some(target) = detected
-                .iter()
-                .find(|d| d.framework.eq_ignore_ascii_case("tauri"))
-                .or_else(|| detected.first())
-            else {
-                return Ok(serde_json::json!({
-                    "launching": false,
-                    "detected": frameworks,
-                    "message": format!(
-                        "No dev server detected in {}. Nothing was launched. Check the path or add a \
-                         dev script (e.g. a Tauri/Vite project with `npm run dev`).",
-                        path
-                    )
-                }));
-            };
-
-            let dev_port = target.port;
-            let is_tauri = target.framework.eq_ignore_ascii_case("tauri");
-            // Mirror the frontend's CDP-port math (dev-server-manager.svelte.js).
-            let cdp_port: Option<u16> = if is_tauri { Some(9223 + (dev_port % 1000)) } else { None };
-
-            // Port-in-use conflict: do NOT claim a launch. The dev server can't bind
-            // and `beforeDevCommand` will terminate non-zero. (In dev, Voice Mirror
-            // itself occupies its own dev port — same symptom.)
-            let dev_busy = {
-                let p = dev_port;
-                tokio::task::spawn_blocking(move || crate::services::dev_server::is_port_listening(p))
+                // Port-in-use conflict: do NOT claim a launch. The dev server can't
+                // bind and `beforeDevCommand` will terminate non-zero. (In dev,
+                // Voice Mirror itself occupies its own dev port — same symptom.)
+                let dev_port = target.port;
+                let dev_busy = {
+                    tokio::task::spawn_blocking(move || {
+                        crate::services::dev_server::is_port_listening(dev_port)
+                    })
                     .await
                     .unwrap_or(false)
-            };
-            if dev_busy {
-                // Name the process holding the port so the agent doesn't have to
-                // shell out to PowerShell/netstat to find it.
-                let holder = {
-                    let p = dev_port;
-                    tokio::task::spawn_blocking(move || crate::services::ports::describe_port_holder(p))
+                };
+                if dev_busy {
+                    // Name the process holding the port so the agent doesn't have
+                    // to shell out to PowerShell/netstat to find it.
+                    let holder = {
+                        tokio::task::spawn_blocking(move || {
+                            crate::services::ports::describe_port_holder(dev_port)
+                        })
                         .await
                         .unwrap_or_default()
-                };
-                return Ok(serde_json::json!({
-                    "launching": false,
-                    "detected": frameworks,
-                    "message": format!(
-                        "Port {} is already in use{}, so {} can't start there — its dev server would \
-                         fail with 'Port {} is already in use' and beforeDevCommand would exit non-zero. \
-                         Nothing was launched. If your app is ALREADY running on :{} with a debug port, \
-                         call sandbox_attach with that --remote-debugging-port. Otherwise stop whatever \
-                         is holding :{} (use list_ports to see it) and retry sandbox_start.",
-                        dev_port, holder, target.framework, dev_port, dev_port, dev_port
-                    )
-                }));
+                    };
+                    info!(
+                        target: "preview",
+                        "[launch] refused: dev port :{} already in use{}",
+                        dev_port, holder
+                    );
+                    return Ok(serde_json::json!({
+                        "launching": false,
+                        "status": "refused",
+                        "detected": frameworks,
+                        "message": format!(
+                            "Port {} is already in use{}, so {} can't start there — its dev server would \
+                             fail with 'Port {} is already in use' and beforeDevCommand would exit non-zero. \
+                             Nothing was launched. If your app is ALREADY running on :{} with a debug port, \
+                             call sandbox_attach with that --remote-debugging-port. Otherwise stop whatever \
+                             is holding :{} (use list_ports to see it) and retry sandbox_start.",
+                            dev_port, holder, target.framework, dev_port, dev_port, dev_port
+                        )
+                    }));
+                }
             }
 
-            // Port is free — kick off the real launch via the frontend.
+            // Register the ACK waiter BEFORE emitting so the frontend's answer
+            // can't race past us, then hand the launch to the frontend.
+            let (launch_id, ack_rx) = crate::services::launch::register();
             app.emit(
                 "sandbox-start-request",
-                serde_json::json!({ "path": path.clone() }),
+                serde_json::json!({ "path": path, "launchId": launch_id }),
             )
-            .map_err(|e| format!("Failed to emit sandbox-start-request: {}", e))?;
+            .map_err(|e| {
+                crate::services::launch::cancel(launch_id);
+                format!("Failed to emit sandbox-start-request: {}", e)
+            })?;
+            info!(target: "preview", "[launch:{}] emitted sandbox-start-request", launch_id);
 
-            // Briefly poll for a real signal. A cold Tauri build usually exceeds
-            // this window (we say so), but a warm rebuild / immediate bind shows up.
-            let mut cdp_up = false;
-            let mut dev_up = false;
-            for _ in 0..20 {
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                if let Some(cp) = cdp_port {
-                    let up = tokio::task::spawn_blocking(move || {
-                        crate::services::dev_server::is_port_listening(cp)
-                    })
-                    .await
-                    .unwrap_or(false);
-                    if up {
-                        cdp_up = true;
-                        break;
-                    }
+            // The frontend hop must ACK; no ACK in 15s ⇒ the request was dropped.
+            const ACK_TIMEOUT_SECS: u64 = 15;
+            let ack = match tokio::time::timeout(
+                std::time::Duration::from_secs(ACK_TIMEOUT_SECS),
+                ack_rx,
+            )
+            .await
+            {
+                Ok(Ok(ack)) => ack,
+                _ => {
+                    crate::services::launch::cancel(launch_id);
+                    warn!(
+                        target: "preview",
+                        "[launch:{}] DROPPED: no frontend ack within {}s",
+                        launch_id, ACK_TIMEOUT_SECS
+                    );
+                    return Ok(serde_json::json!({
+                        "launching": false,
+                        "status": "dropped",
+                        "detected": frameworks,
+                        "message": format!(
+                            "The launch request was DROPPED — the frontend never acknowledged it \
+                             within {}s. Nothing was launched. Make sure Voice Mirror is on the Lens \
+                             workspace with a project open, or launch the app yourself with \
+                             --remote-debugging-port and call sandbox_attach.",
+                            ACK_TIMEOUT_SECS
+                        )
+                    }));
                 }
-                if !dev_up {
-                    let p = dev_port;
-                    dev_up = tokio::task::spawn_blocking(move || {
-                        crate::services::dev_server::is_port_listening(p)
-                    })
-                    .await
-                    .unwrap_or(false);
-                }
-            }
-
-            let message = if cdp_up {
-                format!(
-                    "Launched {} — its debug port (:{}) is up. Call sandbox_snapshot / \
-                     sandbox_screenshot to see and drive it.",
-                    target.framework,
-                    cdp_port.unwrap_or(0)
-                )
-            } else if dev_up {
-                format!(
-                    "Launched {} — the dev server is up on :{}. The app window/debug port is still \
-                     coming up; call sandbox_snapshot in a few seconds.",
-                    target.framework, dev_port
-                )
-            } else {
-                format!(
-                    "Kicked off {}. The dev server hasn't bound :{} yet — a native Tauri build can take \
-                     a few minutes. Call sandbox_snapshot once the App Preview appears. If nothing happens \
-                     after a minute, check the project's dev-server terminal for build errors, or launch \
-                     the app yourself and use sandbox_attach.",
-                    target.framework, dev_port
-                )
             };
 
-            Ok(serde_json::json!({
-                "launching": true,
-                "ready": cdp_up,
-                "detected": frameworks,
-                "cdpPort": cdp_port,
-                "devPort": dev_port,
-                "message": message,
-            }))
+            let framework = ack.framework.clone().unwrap_or_else(|| "dev server".to_string());
+            match ack.status.as_str() {
+                "refused" => {
+                    let reason = ack.reason.unwrap_or_else(|| "unspecified".to_string());
+                    Ok(serde_json::json!({
+                        "launching": false,
+                        "status": "refused",
+                        "detected": frameworks,
+                        "message": format!("Nothing was launched — the launcher refused: {}", reason),
+                    }))
+                }
+                "already-running" => Ok(serde_json::json!({
+                    "launching": false,
+                    "status": "already-running",
+                    "detected": frameworks,
+                    "cdpPort": ack.cdp_port,
+                    "devPort": ack.dev_port,
+                    "message": format!(
+                        "{} is already running (dev port {:?} verified listening) — no new launch. \
+                         Call sandbox_snapshot / sandbox_screenshot to see and drive it.",
+                        framework, ack.dev_port
+                    ),
+                })),
+                "already-starting" => Ok(serde_json::json!({
+                    "launching": true,
+                    "status": "already-starting",
+                    "detected": frameworks,
+                    "cdpPort": ack.cdp_port,
+                    "devPort": ack.dev_port,
+                    "message": format!(
+                        "{} launch already in flight — this request was coalesced into it. A native \
+                         Tauri build can take minutes; call sandbox_snapshot once the App Preview appears.",
+                        framework
+                    ),
+                })),
+                // "spawned" (or anything unexpected — the PTY did spawn)
+                _ => {
+                    // Briefly poll the REAL ports from the ack. A cold Tauri build
+                    // usually exceeds this window (we say so), but a warm rebuild /
+                    // immediate bind shows up.
+                    let dev_port = ack.dev_port;
+                    let cdp_port = ack.cdp_port;
+                    let mut cdp_up = false;
+                    let mut dev_up = false;
+                    for _ in 0..20 {
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        if let Some(cp) = cdp_port {
+                            let up = tokio::task::spawn_blocking(move || {
+                                crate::services::dev_server::is_port_listening(cp)
+                            })
+                            .await
+                            .unwrap_or(false);
+                            if up {
+                                cdp_up = true;
+                                break;
+                            }
+                        }
+                        if !dev_up {
+                            if let Some(p) = dev_port {
+                                dev_up = tokio::task::spawn_blocking(move || {
+                                    crate::services::dev_server::is_port_listening(p)
+                                })
+                                .await
+                                .unwrap_or(false);
+                            }
+                        }
+                    }
+                    info!(
+                        target: "preview",
+                        "[launch:{}] spawned; after poll: dev_up={} cdp_up={} (dev={:?} cdp={:?})",
+                        launch_id, dev_up, cdp_up, dev_port, cdp_port
+                    );
+
+                    let message = if cdp_up {
+                        format!(
+                            "Launched {} — its debug port (:{}) is up. Call sandbox_snapshot / \
+                             sandbox_screenshot to see and drive it.",
+                            framework,
+                            cdp_port.unwrap_or(0)
+                        )
+                    } else if dev_up {
+                        format!(
+                            "Launched {} — the dev server is up on :{}. The app window/debug port is \
+                             still coming up; call sandbox_snapshot in a few seconds.",
+                            framework,
+                            dev_port.unwrap_or(0)
+                        )
+                    } else {
+                        format!(
+                            "Spawned {} (PTY confirmed). The dev server hasn't bound {} yet — a native \
+                             Tauri build can take a few minutes. Call sandbox_snapshot once the App \
+                             Preview appears. If nothing happens after a minute, check get_logs \
+                             channel='preview' and the project's dev-server terminal for build errors, \
+                             or launch the app yourself and use sandbox_attach.",
+                            framework,
+                            dev_port.map(|p| format!(":{}", p)).unwrap_or_else(|| "its port".to_string())
+                        )
+                    };
+
+                    Ok(serde_json::json!({
+                        "launching": true,
+                        "status": "spawned",
+                        "ready": cdp_up,
+                        "detected": frameworks,
+                        "cdpPort": cdp_port,
+                        "devPort": dev_port,
+                        "message": message,
+                    }))
+                }
+            }
         }
         "sandbox_attach" => {
             // Register an already-running CDP app (the agent launched it with the

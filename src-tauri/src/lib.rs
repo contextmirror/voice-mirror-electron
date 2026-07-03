@@ -191,14 +191,29 @@ pub fn run() {
         );
     }
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    // Single-instance: RELEASE builds only. Dev builds must coexist with an
+    // installed Voice Mirror — with the plugin on, a `tauri dev` instance pings
+    // the running installed app and silently exits within seconds, which broke
+    // every "run the dev build beside the app" workflow (mirrors the Yap fix,
+    // nayballs/Yap@e0012a9). On a duplicate release launch, surface the app
+    // instead of doing nothing.
+    #[cfg(not(debug_assertions))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        use tauri::Manager;
+        info!("Second instance detected, focusing existing window");
+        if let Some(main) = app.get_webview_window("main") {
+            let _ = main.show();
+            let _ = main.unminimize();
+            let _ = main.set_focus();
+        }
+    }));
+
+    builder
         .plugin(tauri_plugin_decorum::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {
-            // If user tries to launch a second instance, focus the existing window
-            info!("Second instance detected, focusing existing window");
-        }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
@@ -375,6 +390,8 @@ pub fn run() {
             sandbox_cmds::sandbox_stream_stop,
             sandbox_cmds::sandbox_list_windows,
             sandbox_cmds::sandbox_active_hwnd,
+            sandbox_cmds::sandbox_start_ack,
+            sandbox_cmds::find_free_cdp_port,
             screenshot_cmds::save_image_to_temp,
             screenshot_cmds::list_monitors,
             screenshot_cmds::list_windows,
@@ -588,6 +605,7 @@ pub fn run() {
             output_cmds::get_output_logs,
             output_cmds::export_diagnostics,
             output_cmds::log_frontend_error,
+            output_cmds::log_preview,
             output_cmds::register_project_channel,
             output_cmds::unregister_project_channel,
             output_cmds::list_project_channels,

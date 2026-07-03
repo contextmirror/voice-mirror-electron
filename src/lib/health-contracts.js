@@ -11,6 +11,7 @@
 
 import { diagnosticsStore } from './stores/diagnostics.svelte.js';
 import { updaterStore } from './stores/updater.svelte.js';
+import { devServerManager, POLL_TIMEOUT, EXTENDED_POLL_TIMEOUT } from './stores/dev-server-manager.svelte.js';
 import { detectEspeak, detectGpu, detectProviders, listSttModels, readFileBase64 } from './api.js';
 import { resolveViewerType } from './viewer-type.js';
 
@@ -117,6 +118,41 @@ export function registerAllContracts(deps) {
         return { healthy: true, message: `${runningCount} dev server(s) running` };
       }
       return { healthy: true, message: 'No dev server detected' };
+    },
+  });
+
+  // ── App Preview launch lifecycle ──
+  diagnosticsStore.registerHealthContract({
+    name: 'preview-launch',
+    description: 'App Preview launch lifecycle (spawn → readiness → tier) truthfulness',
+    check() {
+      const wedged = [];
+      const demoted = [];
+      const now = Date.now();
+      // A 'starting' entry older than the ENTIRE watch window means the
+      // background watcher died or was never wired — exactly the phantom-entry
+      // class of bug this contract exists to catch.
+      const maxStarting = POLL_TIMEOUT + EXTENDED_POLL_TIMEOUT + 60000;
+      for (const [projectPath, state] of devServerManager.servers) {
+        if (state.status === 'starting' && state.startedAt && now - state.startedAt > maxStarting) {
+          wedged.push(`${projectPath} (starting for ${Math.round((now - state.startedAt) / 60000)}min)`);
+        }
+        if (state.status === 'stopped' && state.stopReason && state.stopReason !== 'stopped') {
+          demoted.push(`${projectPath}: ${state.stopReason}`);
+        }
+      }
+      if (wedged.length > 0) {
+        return {
+          healthy: false,
+          message: `Wedged launch(es) — watcher lost them: ${wedged.join('; ')}`,
+          details: { wedged },
+        };
+      }
+      if (demoted.length > 0) {
+        // Honest demotions are the system WORKING — surface them as info.
+        return { healthy: true, message: `Lifecycle OK; last demotions: ${demoted.join('; ')}` };
+      }
+      return { healthy: true, message: 'Launch lifecycle consistent' };
     },
   });
 

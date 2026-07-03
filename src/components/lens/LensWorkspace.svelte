@@ -26,7 +26,7 @@
   import { browserTabsStore } from '../../lib/stores/browser-tabs.svelte.js';
   import { browserHistoryStore } from '../../lib/stores/browser-history.svelte.js';
   import { downloadsStore } from '../../lib/stores/downloads.svelte.js';
-  import { lensSetVisible, startFileWatching, stopFileWatching, lensCapturePreview, lspShutdown, lensSetZoom, lensGetZoom, designGetElement, lensOpenDevtools, lensCloseDevtools, lensResizeDevtools, lensSetDevtoolsVisible, findDevtoolsUrl, detectDevServers } from '../../lib/api.js';
+  import { lensSetVisible, startFileWatching, stopFileWatching, lensCapturePreview, lspShutdown, lensSetZoom, lensGetZoom, designGetElement, lensOpenDevtools, lensCloseDevtools, lensResizeDevtools, lensSetDevtoolsVisible, findDevtoolsUrl, detectDevServers, sandboxStartAck, logPreview } from '../../lib/api.js';
   import { unwrapResult } from '../../lib/utils.js';
   import { navigationStore } from '../../lib/stores/navigation.svelte.js';
   import { attachmentsStore } from '../../lib/stores/attachments.svelte.js';
@@ -314,9 +314,21 @@
 
     (async () => {
       const start = await listen('sandbox-start-request', async (e) => {
+        // Every start request MUST be acknowledged so the sandbox_start MCP
+        // tool reports what actually happened instead of claiming "launching"
+        // for requests that were silently dropped here.
+        const launchId = e?.payload?.launchId;
+        const ack = (status, extra = {}) => {
+          if (launchId == null) return;
+          sandboxStartAck({ launchId, status, ...extra }).catch((err) =>
+            console.warn('[sandbox] start ack failed:', err)
+          );
+        };
+
         const path = e?.payload?.path || projectStore.root || projectStore.activeProject?.path;
         if (!path) {
-          console.warn('[sandbox] start requested but no project path available');
+          logPreview('warn', '[launch] start requested but no project path available (no active project in the Lens workspace)').catch(() => {});
+          ack('refused', { reason: 'No project path available — open a project in the Lens workspace or pass an explicit `path`' });
           return;
         }
         try {
@@ -330,14 +342,22 @@
           if (target) {
             // `force` (from the user's Open-app/App-tab path) tears down a stale
             // 'running' server first so the relaunch isn't a silent no-op.
-            devServerManager.startServer(target, path, data.packageManager, {
+            const outcome = await devServerManager.startServer(target, path, data.packageManager, {
               force: e?.payload?.force === true,
             });
+            ack(outcome?.status || 'spawned', {
+              reason: outcome?.reason,
+              devPort: outcome?.devPort ?? target.port,
+              cdpPort: outcome?.cdpPort ?? undefined,
+              framework: outcome?.framework ?? target.framework,
+            });
           } else {
-            console.warn('[sandbox] start: no dev server detected in', path);
+            logPreview('warn', `[launch] no dev server detected in ${path}`).catch(() => {});
+            ack('refused', { reason: `No dev server detected in ${path}` });
           }
         } catch (err) {
-          console.warn('[sandbox] start failed:', err);
+          logPreview('error', `[launch] start failed: ${err?.message || err}`).catch(() => {});
+          ack('refused', { reason: `Launch failed in the frontend: ${err?.message || err}` });
         }
       });
 
