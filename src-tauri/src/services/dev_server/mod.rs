@@ -7,10 +7,12 @@
 //! Split into sub-modules by ecosystem:
 //! - `node` — Node.js/JS framework detection (package.json, vite config, etc.)
 //! - `python` — Python framework detection (requirements.txt, pyproject.toml, etc.)
+//! - `workspace` — monorepo member scan (workspaces globs, apps/*, pnpm-workspace)
 //! - `util` — Shared helpers (port probing, package manager, parsing)
 
 mod node;
 mod python;
+mod workspace;
 pub(crate) mod util;
 
 use std::path::Path;
@@ -41,6 +43,11 @@ pub struct DetectedDevServer {
     /// Commands to run to set up the environment (e.g. ["python -m venv .venv", "pip install -r requirements.txt"])
     #[serde(default)]
     pub setup_commands: Vec<String>,
+    /// Directory to spawn the dev server in when it is NOT the scanned root —
+    /// set for monorepo workspace members (e.g. `<root>/apps/docs`). `None`
+    /// means the scanned project root itself.
+    #[serde(default)]
+    pub cwd: Option<String>,
 }
 
 /// Scan a project directory and return all detected dev servers.
@@ -88,6 +95,14 @@ pub fn detect_dev_servers(project_root: &str) -> Vec<DetectedDevServer> {
 
     // 5. Python project detection
     for server in python::detect_python_servers(root, &mut seen_ports) {
+        servers.push(server);
+    }
+
+    // 6. Monorepo workspace members (apps/*, workspaces globs, pnpm-workspace).
+    // Root-level results stay first, so launch-target preference ("Tauri, else
+    // first detected") favors the root app when one exists. The root's package
+    // manager is reused — member dirs don't carry their own lockfiles.
+    for server in workspace::detect_workspace_servers(root, &pkg_manager, &mut seen_ports) {
         servers.push(server);
     }
 

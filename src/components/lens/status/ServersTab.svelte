@@ -33,9 +33,9 @@
    * @returns {{ status: string, crashLoopDetected: boolean, managed: boolean }}
    */
   function getServerState(server) {
-    const project = projectStore.activeProject;
-    if (!project?.path) return { status: server.running ? 'running' : 'stopped', crashLoopDetected: false, managed: false };
-    const managed = devServerManager.getServerStatus(project.path);
+    const key = serverKey(server);
+    if (!key) return { status: server.running ? 'running' : 'stopped', crashLoopDetected: false, managed: false };
+    const managed = devServerManager.getServerStatus(key);
     if (managed && managed.port === server.port) {
       return { status: managed.status, crashLoopDetected: managed.crashLoopDetected, managed: true };
     }
@@ -89,25 +89,34 @@
     devServerManager.stopExternalServer(server.port);
   }
 
+  /**
+   * The lifecycle-manager key for a server: monorepo workspace members carry
+   * their own spawn dir (`cwd`); everything else keys on the project root.
+   * Start/stop/restart/status MUST all use this or stops silently no-op.
+   */
+  function serverKey(server) {
+    return server?.cwd || projectStore.activeProject?.path || null;
+  }
+
   /** Start a dev server via the lifecycle manager */
   function handleStart(server) {
-    const project = projectStore.activeProject;
-    if (!project?.path) return;
-    devServerManager.startServer(server, project.path, detectedPackageManager);
+    const key = serverKey(server);
+    if (!key) return;
+    devServerManager.startServer(server, key, detectedPackageManager);
   }
 
   /** Stop a dev server via the lifecycle manager */
-  function handleStop() {
-    const project = projectStore.activeProject;
-    if (!project?.path) return;
-    devServerManager.stopServer(project.path);
+  function handleStop(server) {
+    const key = serverKey(server);
+    if (!key) return;
+    devServerManager.stopServer(key);
   }
 
   /** Restart a dev server via the lifecycle manager */
-  function handleRestart() {
-    const project = projectStore.activeProject;
-    if (!project?.path) return;
-    devServerManager.restartServer(project.path);
+  function handleRestart(server) {
+    const key = serverKey(server);
+    if (!key) return;
+    devServerManager.restartServer(key);
   }
 
   // Run detection on mount + poll every 5s
@@ -171,19 +180,19 @@
             <span class="starting-dot"></span> Starting...
           </button>
         {:else if state.status === 'running'}
-          <button class="action-btn stop-btn" type="button" onclick={() => state.managed ? handleStop() : handleStopExternal(server)}>
+          <button class="action-btn stop-btn" type="button" onclick={() => state.managed ? handleStop(server) : handleStopExternal(server)}>
             Stop
           </button>
         {:else if state.status === 'crashed'}
           {#if state.crashLoopDetected}
             <span class="crash-loop-warning">Crash loop — check terminal</span>
           {:else}
-            <button class="action-btn restart-btn" type="button" onclick={handleRestart}>
+            <button class="action-btn restart-btn" type="button" onclick={() => handleRestart(server)}>
               Restart
             </button>
           {/if}
         {:else if state.status === 'idle'}
-          <button class="action-btn idle-stop-btn" type="button" onclick={handleStop}>
+          <button class="action-btn idle-stop-btn" type="button" onclick={() => handleStop(server)}>
             Stop
           </button>
         {/if}

@@ -140,7 +140,7 @@ describe('ServersTab', () => {
   });
 
   it('Stop button calls handleStop for managed or handleStopExternal for external', () => {
-    assert.ok(src.includes('state.managed ? handleStop() : handleStopExternal(server)'));
+    assert.ok(src.includes('state.managed ? handleStop(server) : handleStopExternal(server)'));
   });
 
   // ── Manage button ──
@@ -226,15 +226,17 @@ describe('ServersTab devServerManager integration', () => {
   });
 
   it('calls devServerManager.startServer in handleStart', () => {
-    assert.ok(src.includes('devServerManager.startServer(server, project.path'));
+    // serverKey = server.cwd || project.path — monorepo members spawn in their own dir.
+    assert.ok(src.includes('devServerManager.startServer(server, key'));
+    assert.ok(src.includes('server?.cwd ||'));
   });
 
   it('calls devServerManager.stopServer in handleStop', () => {
-    assert.ok(src.includes('devServerManager.stopServer(project.path)'));
+    assert.ok(src.includes('devServerManager.stopServer(key)'));
   });
 
   it('calls devServerManager.restartServer in handleRestart', () => {
-    assert.ok(src.includes('devServerManager.restartServer(project.path)'));
+    assert.ok(src.includes('devServerManager.restartServer(key)'));
   });
 
   it('stores detected package manager from detection result', () => {

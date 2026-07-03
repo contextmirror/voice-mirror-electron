@@ -116,14 +116,23 @@
   let detectedPackageManager = $state(null);
 
   /**
+   * The lifecycle-manager key for a server: monorepo workspace members carry
+   * their own spawn dir (`cwd`); everything else keys on the project root.
+   * Start/stop/status MUST all use this or stops silently no-op.
+   */
+  function serverKey(server) {
+    return server?.cwd || projectStore.activeProject?.path || null;
+  }
+
+  /**
    * Get the devServerManager status for a given server (same logic as ServersTab).
    * @param {Object} server
    * @returns {{ status: string, crashLoopDetected: boolean, managed: boolean }}
    */
   function getServerState(server) {
-    const project = projectStore.activeProject;
-    if (!project?.path) return { status: server.running ? 'running' : 'stopped', crashLoopDetected: false, managed: false };
-    const managed = devServerManager.getServerStatus(project.path);
+    const key = serverKey(server);
+    if (!key) return { status: server.running ? 'running' : 'stopped', crashLoopDetected: false, managed: false };
+    const managed = devServerManager.getServerStatus(key);
     if (managed && managed.port === server.port) {
       return { status: managed.status, crashLoopDetected: managed.crashLoopDetected, managed: true };
     }
@@ -132,16 +141,16 @@
 
   /** Start a dev server via the lifecycle manager (spawns terminal + runs command) */
   function handleStart(server) {
-    const project = projectStore.activeProject;
-    if (!project?.path) return;
-    devServerManager.startServer(server, project.path, detectedPackageManager);
+    const key = serverKey(server);
+    if (!key) return;
+    devServerManager.startServer(server, key, detectedPackageManager);
   }
 
   /** Stop a managed server (one we started) via the lifecycle manager */
-  function handleStop() {
-    const project = projectStore.activeProject;
-    if (!project?.path) return;
-    devServerManager.stopServer(project.path);
+  function handleStop(server) {
+    const key = serverKey(server);
+    if (!key) return;
+    devServerManager.stopServer(key);
   }
 
   /** Stop an external server by killing its port process */
@@ -150,10 +159,10 @@
   }
 
   /** Restart a dev server via the lifecycle manager */
-  function handleRestart() {
-    const project = projectStore.activeProject;
-    if (!project?.path) return;
-    devServerManager.restartServer(project.path);
+  function handleRestart(server) {
+    const key = serverKey(server);
+    if (!key) return;
+    devServerManager.restartServer(key);
   }
 
   /** Re-run detection to refresh server list */
@@ -265,20 +274,20 @@
                   <span class="manage-starting-label"><span class="starting-dot"></span> Starting</span>
                 {:else if state.status === 'running'}
                   <span class="manage-status-label running">Running</span>
-                  <button class="manage-action-btn manage-stop-btn" type="button" onclick={(e) => { e.stopPropagation(); state.managed ? handleStop() : handleStopExternal(server); }}>
+                  <button class="manage-action-btn manage-stop-btn" type="button" onclick={(e) => { e.stopPropagation(); state.managed ? handleStop(server) : handleStopExternal(server); }}>
                     Stop
                   </button>
                 {:else if state.status === 'crashed'}
                   {#if state.crashLoopDetected}
                     <span class="crash-loop-text">Crash loop</span>
                   {:else}
-                    <button class="manage-action-btn manage-restart-btn" type="button" onclick={(e) => { e.stopPropagation(); handleRestart(); }}>
+                    <button class="manage-action-btn manage-restart-btn" type="button" onclick={(e) => { e.stopPropagation(); handleRestart(server); }}>
                       Restart
                     </button>
                   {/if}
                 {:else if state.status === 'idle'}
                   <span class="manage-status-label idle">Idle</span>
-                  <button class="manage-action-btn manage-stop-btn" type="button" onclick={(e) => { e.stopPropagation(); handleStop(); }}>
+                  <button class="manage-action-btn manage-stop-btn" type="button" onclick={(e) => { e.stopPropagation(); handleStop(server); }}>
                     Stop
                   </button>
                 {/if}

@@ -341,9 +341,12 @@
           const target =
             servers.find((s) => (s.framework || '').toLowerCase() === 'tauri') || servers[0];
           if (target) {
+            // Monorepo workspace members carry their own spawn dir (`cwd`) —
+            // the dev server must run in apps/<member>, not the workspace root.
+            const launchPath = target.cwd || path;
             // `force` (from the user's Open-app/App-tab path) tears down a stale
             // 'running' server first so the relaunch isn't a silent no-op.
-            const outcome = await devServerManager.startServer(target, path, data.packageManager, {
+            const outcome = await devServerManager.startServer(target, launchPath, data.packageManager, {
               force: e?.payload?.force === true,
             });
             ack(outcome?.status || 'spawned', {
