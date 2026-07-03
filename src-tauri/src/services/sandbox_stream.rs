@@ -315,32 +315,60 @@ pub async fn list_windows(cdp_port: u16) -> Result<Vec<AppWindow>, String> {
         ));
     }
     let windows = crate::commands::screenshot::list_visible_windows_metadata()?;
-    let main_proc = match cdp_page_title(cdp_port).await {
-        Some(title) => {
-            let t = title.trim().to_lowercase();
-            windows
-                .iter()
-                .find(|w| {
-                    let wt = w.title.trim().to_lowercase();
-                    !wt.is_empty() && (wt == t || wt.contains(&t) || t.contains(&wt))
-                })
-                .map(|w| w.process_name.clone())
-        }
-        None => None,
-    };
-    let result = match main_proc {
-        Some(proc) if !proc.is_empty() => windows
+
+    // Identify the app's windows by PROCESS — the port-listener PID or an
+    // ancestor (see app_pids_for_cdp_port). This is title-independent: the old
+    // path resolved the app's process by matching the CDP page title against a
+    // window title, but they legitimately differ (the vanilla create-tauri-app
+    // template's page title "Tauri App" vs its window "tauri-vanilla"), so it
+    // returned an EMPTY list and the preview poll wrongly declared a live,
+    // mirrored window "closed" ~2s after it attached.
+    let app_pids = app_pids_for_cdp_port(cdp_port);
+    let result: Vec<AppWindow> = if !app_pids.is_empty() {
+        windows
             .into_iter()
-            .filter(|w| w.process_name == proc && !w.title.trim().is_empty())
-            // Never list Voice Mirror's own windows as app targets.
+            .filter(|w| !w.title.trim().is_empty())
             .filter(|w| !crate::services::sandbox::is_host_window(w.hwnd, &w.title))
+            .filter(|w| {
+                crate::services::sandbox::pid_of_hwnd(w.hwnd)
+                    .map(|p| app_pids.contains(&p))
+                    .unwrap_or(false)
+            })
             .map(|w| AppWindow {
                 visible: is_hwnd_presentable(w.hwnd),
                 hwnd: w.hwnd,
                 title: w.title,
             })
-            .collect(),
-        _ => Vec::new(),
+            .collect()
+    } else {
+        // Fallback (couldn't resolve the port's PID): the legacy CDP-title →
+        // process-name match.
+        let main_proc = match cdp_page_title(cdp_port).await {
+            Some(title) => {
+                let t = title.trim().to_lowercase();
+                windows
+                    .iter()
+                    .find(|w| {
+                        let wt = w.title.trim().to_lowercase();
+                        !wt.is_empty() && (wt == t || wt.contains(&t) || t.contains(&wt))
+                    })
+                    .map(|w| w.process_name.clone())
+            }
+            None => None,
+        };
+        match main_proc {
+            Some(proc) if !proc.is_empty() => windows
+                .into_iter()
+                .filter(|w| w.process_name == proc && !w.title.trim().is_empty())
+                .filter(|w| !crate::services::sandbox::is_host_window(w.hwnd, &w.title))
+                .map(|w| AppWindow {
+                    visible: is_hwnd_presentable(w.hwnd),
+                    hwnd: w.hwnd,
+                    title: w.title,
+                })
+                .collect(),
+            _ => Vec::new(),
+        }
     };
     Ok(result)
 }
