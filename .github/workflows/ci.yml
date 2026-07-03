@@ -157,11 +157,16 @@ jobs:
           cargo build --bin voice-mirror-mcp
           cp "target/debug/voice-mirror-mcp$ext" "binaries/voice-mirror-mcp-$triple$ext"
 
-      # Compile-proof only: the test harness exe fails to LOAD on Windows
-      # with STATUS_ENTRYPOINT_NOT_FOUND — pre-existing, tracked in #45.
-      # Restore `cargo test` when that's fixed.
+      # The lib test harness fails to LOAD on Windows (WebView2Loader.dll
+      # entry point — see #45), so: compile-proof the lib tests, and RUN the
+      # MCP binary tests, which don't link WebView2. Restore plain
+      # `cargo test` when #45 is fixed.
       - name: Cargo build tests (see issue 45)
         run: cargo build --tests
+        working-directory: src-tauri
+
+      - name: Cargo test (MCP binary)
+        run: cargo test --bin voice-mirror-mcp
         working-directory: src-tauri
 
       - name: Run npm tests
