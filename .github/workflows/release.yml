@@ -151,6 +151,12 @@ jobs:
             -o -name "*.json" -o -name "*.sig" \
             -o -name "*.tar.gz" -o -name "*.zip" \
           \) -exec cp {} release-files/ \;
+          # Evergreen alias: lets the website deep-link
+          # releases/latest/download/voice-mirror-x64-setup.exe
+          setup=$(ls release-files/*_x64-setup.exe 2>/dev/null | head -1)
+          if [ -n "$setup" ]; then
+            cp "$setup" release-files/voice-mirror-x64-setup.exe
+          fi
           echo "=== Release files ==="
           ls -la release-files/
 

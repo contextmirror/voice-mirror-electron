@@ -466,8 +466,16 @@ describe('voice-adapters.js', () => {
     assert.ok(src.includes("edge:"), 'Should support edge TTS');
   });
 
-  it('supports piper TTS', () => {
-    assert.ok(src.includes("piper:"), 'Should support piper TTS');
+  it('only lists adapters the backend implements (no qwen/piper)', () => {
+    assert.ok(!src.includes("qwen:"), 'qwen has no backend TTS implementation');
+    assert.ok(!src.includes("piper:"), 'piper has no backend TTS implementation');
+  });
+
+  it('lists all five CLI agents in PROVIDER_GROUPS source', () => {
+    const providersSrc = readLib('providers.js');
+    for (const p of ['claude', 'opencode', 'codex', 'gemini-cli', 'kimi-cli']) {
+      assert.ok(providersSrc.includes(`'${p}'`), `CLI agent '${p}' should be selectable`);
+    }
   });
 
   it('exports STT_REGISTRY', () => {
