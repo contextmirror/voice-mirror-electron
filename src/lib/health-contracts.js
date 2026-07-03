@@ -15,6 +15,9 @@ import { devServerManager, POLL_TIMEOUT, EXTENDED_POLL_TIMEOUT } from './stores/
 import { detectEspeak, detectGpu, detectProviders, listSttModels, readFileBase64 } from './api.js';
 import { resolveViewerType } from './viewer-type.js';
 
+/** One-shot cache for the gpu health contract — hardware is static per session. */
+let gpuCheckResult = null;
+
 /**
  * Register all health contracts with the diagnostics store.
  * Called once from App.svelte on mount.
@@ -301,16 +304,22 @@ export function registerAllContracts(deps) {
     name: 'gpu',
     description: 'GPU / CUDA acceleration (advisory)',
     async check() {
+      // Hardware doesn't change mid-session: detect ONCE and cache. Re-running
+      // detect_gpu every 30s health tick spawned nvidia-smi twice a minute and
+      // spammed the App channel with "NVIDIA GPU detected" on every call.
+      if (gpuCheckResult) return gpuCheckResult;
       try {
         const d = (await detectGpu())?.data ?? {};
         if (d.available && d.cudaCompiled && d.vendor === 'nvidia') {
-          return { healthy: true, message: `GPU: ${d.name} (CUDA accelerated)`, details: d };
+          gpuCheckResult = { healthy: true, message: `GPU: ${d.name} (CUDA accelerated)`, details: d };
+        } else if (d.available) {
+          gpuCheckResult = { healthy: true, message: `GPU: ${d.name || d.vendor} (CPU inference — no CUDA)`, details: d };
+        } else {
+          gpuCheckResult = { healthy: true, message: 'No discrete GPU — CPU inference', details: d };
         }
-        if (d.available) {
-          return { healthy: true, message: `GPU: ${d.name || d.vendor} (CPU inference — no CUDA)`, details: d };
-        }
-        return { healthy: true, message: 'No discrete GPU — CPU inference', details: d };
+        return gpuCheckResult;
       } catch (e) {
+        // Don't cache failures — the backend may just not be ready yet.
         return { healthy: true, message: `GPU check unavailable: ${e?.message || e}` };
       }
     },
