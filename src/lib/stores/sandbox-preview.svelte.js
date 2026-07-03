@@ -169,6 +169,22 @@ function createSandboxPreviewStore() {
     // follow, so we only reconcile a CLOSED followed window here as a backstop.
     if (userPinned) return;
 
+    // RECOVERY: we'd already given up ("The app window was closed.") but the
+    // app is back with a mirrorable window — the CDP port went down and came
+    // back with new windows. Classic case: `tauri dev` restarts the app (new
+    // PID + HWND) right after a fresh build writes its gen/ files, so the
+    // window we first mirrored closes and a replacement appears seconds later.
+    // Auto re-target instead of stranding the user on the empty state needing
+    // an "Open app" click.
+    if (noWindow) {
+      const revive = windows.filter((w) => w.visible);
+      if (revive.length > 0) {
+        noWindow = false;
+        startStream(revive[0].hwnd);
+      }
+      return;
+    }
+
     // The window we're mirroring has CLOSED (e.g. you closed Settings) and the
     // backend close-retarget event hasn't reached us. `windows` is the
     // authoritative LIVE window list for the app's process — if currentHwnd isn't

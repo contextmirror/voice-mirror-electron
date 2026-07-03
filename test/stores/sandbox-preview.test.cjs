@@ -376,3 +376,17 @@ describe('SandboxPreview.svelte -- launch progress bar', () => {
     assert.ok(block.includes('prev?.startedAt'), 'measured from startedAt');
   });
 });
+
+// -- Auto-recovery when the app restarts (tauri dev relaunch → new window) --
+
+describe('sandbox-preview.svelte.js -- restart recovery', () => {
+  it('re-targets a fresh window after having given up (noWindow)', () => {
+    // A fresh `tauri dev` build restarts the app once (gen/ files) — the first
+    // mirrored window closes, CDP drops then returns with a new window. The
+    // poll must auto-recover instead of stranding "The app window was closed."
+    const block = src.split('async function refreshWindows')[1]?.split('function startPolling')[0] || '';
+    assert.ok(block.includes('if (noWindow) {'), 'recovery branch keyed on the given-up state');
+    assert.ok(block.includes('noWindow = false'), 'recovery clears the empty state');
+    assert.ok(/if \(noWindow\) \{[\s\S]*startStream\(/.test(block), 'recovery re-targets a live window');
+  });
+});
