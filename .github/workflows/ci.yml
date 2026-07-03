@@ -276,7 +276,11 @@ jobs:
         with:
           # Updater artifacts need the signing key — release-only. CI smoke
           # builds skip them so signing secrets never flow into PR runs.
-          args: --target ${{ matrix.target }} --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          # Also drop the `cuda` feature: whisper-rs-sys requires a CUDA
+          # toolkit (CUDA_PATH) that hosted runners don't have. Shipping
+          # builds are made locally where CUDA exists; CPU/Vulkan whisper
+          # still compiles here.
+          args: --target ${{ matrix.target }} --config '{"build":{"features":["native-ml"]},"bundle":{"createUpdaterArtifacts":false}}'
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
