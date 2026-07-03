@@ -30,7 +30,13 @@
 
 > **Alpha — Windows-first launch.** Voice Mirror is in active development. The full voice → build → see → fix loop (live App Preview, native-app driving, push-to-talk) is **Windows-only** for v1. The macOS/Linux builds run the chat, terminal, and editor, but not yet the live-preview loop. Bug reports and feedback welcome via [GitHub Issues](https://github.com/contextmirror/voice-mirror/issues) or [Discord](https://discord.com/invite/JBpsSFB7EQ).
 
-<!-- Screenshot placeholder — drop a launch screenshot of the Lens workspace + live App Preview here. -->
+<p align="center">
+  <a href="https://contextmirror.com/">
+    <img src="docs/demo.gif" alt="Voice Mirror demo — say it, Claude writes and runs it, the sign-up page renders live, and the AI drives and verifies it" width="800" />
+  </a>
+  <br/>
+  <sub>▶ <a href="https://contextmirror.com/">Watch the full one-minute promo (with sound) on contextmirror.com</a></sub>
+</p>
 
 ---
 
