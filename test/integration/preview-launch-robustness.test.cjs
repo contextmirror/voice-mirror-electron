@@ -46,10 +46,19 @@ describe('launch fix 2 -- corepack bridge for pinned yarn/pnpm', () => {
     assert.ok(util.includes('pub fn ensure_corepack_shims'), 'helper must exist');
     assert.ok(util.includes('pub fn intended_package_manager'), 'reads the pinned manager');
     assert.ok(util.includes('packageManager'), 'honors the corepack packageManager field');
-    assert.ok(util.includes('--install-directory'), 'generates shims into a VM dir, not the Node install');
+    // Shims are WRITTEN directly (absolute node + <mgr>.js) — NOT via a
+    // `corepack enable` subprocess, which exits non-zero in some Node/env
+    // combinations and generates drive-dependent relative-path shims.
+    assert.ok(util.includes('fn write_manager_shims'), 'writes shims directly');
+    assert.ok(util.includes('corepack') && util.includes('dist'), 'shims exec node <corepack>/dist/<mgr>.js');
+    // Must not INVOKE `corepack enable` (it exits 1 in-app). Its distinctive
+    // flag `--install-directory` is the tell that the subprocess is back.
+    assert.ok(!util.includes('--install-directory'), 'must NOT shell out to `corepack enable`');
     // The dev server spawns in a MEMBER dir (excalidraw-app); the manager is
     // pinned at the monorepo ROOT — so resolution must walk up parent dirs.
     assert.ok(util.includes('dir = d.parent()'), 'intended_package_manager walks up to the workspace root');
+    // Every branch must log to the preview channel — no more silent no-ops.
+    assert.ok(util.includes('target: "preview"'), 'corepack decisions log to the preview channel');
   });
   it('is registered as a Tauri command', () => {
     assert.ok(sandboxCmds.includes('pub fn ensure_corepack_shims'), 'command wrapper');

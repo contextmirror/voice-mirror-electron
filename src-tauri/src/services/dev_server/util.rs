@@ -138,78 +138,130 @@ pub fn intended_package_manager(project_root: &str) -> Option<String> {
 /// The real-world gap (live repro: excalidraw): a repo pins
 /// `packageManager: yarn@1.22.22` and its start script is `yarn && vite`, but
 /// the user never `npm i -g yarn`'d. The npm-fallback can't save it — the
-/// SCRIPT ITSELF calls `yarn`. corepack (bundled with Node ≥16.9) is the
-/// standard bridge: it reads `packageManager` and runs the pinned version.
+/// SCRIPT ITSELF calls `yarn`. corepack (bundled with Node ≥16.9) ships the
+/// manager as `node_modules/corepack/dist/<mgr>.js`.
 ///
-/// Rather than mutate the user's Node install (a bare `corepack enable` writes
-/// shims into the Node bin dir and can need admin), we generate shims into a
-/// VM-owned dir and hand it back for the launcher to prepend — so BOTH the
-/// outer command and any inner `yarn`/`pnpm` calls in the script resolve.
+/// We write shims OURSELVES (a `<mgr>.cmd`/`.ps1`/POSIX launcher that runs
+/// `node <corepack>/dist/<mgr>.js`) into a VM-owned dir and hand it back for
+/// the launcher to prepend — so BOTH the outer command and any inner
+/// `yarn`/`pnpm` calls in the script resolve, without touching the user's Node
+/// install. We deliberately do NOT shell out to `corepack enable`: it exits
+/// non-zero in some Node/env combinations (observed live: Node 24, inside the
+/// app process, exit 1) and its relative-path shims assume the shim dir and
+/// Node share a drive. Direct absolute-path shims are deterministic.
+///
+/// Every decision logs to the `preview` channel (preview.jsonl) so a silent
+/// no-op is never again invisible.
 pub fn ensure_corepack_shims(project_root: &str) -> Option<String> {
-    let manager = intended_package_manager(project_root)?;
+    let manager = match intended_package_manager(project_root) {
+        Some(m) => m,
+        None => {
+            tracing::info!(target: "preview", "[corepack] no pinned yarn/pnpm under {project_root} — no bridge needed");
+            return None;
+        }
+    };
     // npm always ships with Node; bun is not a corepack-managed tool.
     if manager == "npm" || manager == "bun" {
         return None;
     }
     if is_command_available(&manager) {
-        return None; // already runnable — no bridge needed
+        tracing::info!(target: "preview", "[corepack] `{manager}` already on PATH — no bridge needed");
+        return None;
     }
-    if !is_command_available("corepack") {
-        tracing::warn!(
-            "[dev-server] project needs `{}` but neither it nor corepack is installed",
-            manager
-        );
+
+    // Locate node + corepack's bundled `<mgr>.js` (we invoke it directly).
+    let Some(node) = resolve_node_exe() else {
+        tracing::warn!(target: "preview", "[corepack] `{manager}` is needed but node isn't on PATH — cannot bridge");
+        return None;
+    };
+    let Some(node_dir) = node.parent() else {
+        return None;
+    };
+    let mgr_js = node_dir
+        .join("node_modules")
+        .join("corepack")
+        .join("dist")
+        .join(format!("{manager}.js"));
+    if !mgr_js.exists() {
+        tracing::warn!(target: "preview", "[corepack] {} missing (no corepack in this Node?) — cannot bridge `{manager}`", mgr_js.display());
         return None;
     }
 
     let shim_dir = dirs::data_dir()?.join("voice-mirror").join("corepack-shims");
     if let Err(e) = std::fs::create_dir_all(&shim_dir) {
-        tracing::warn!("[dev-server] could not create corepack shim dir: {}", e);
+        tracing::warn!(target: "preview", "[corepack] could not create shim dir {}: {e}", shim_dir.display());
+        return None;
+    }
+    if let Err(e) = write_manager_shims(&shim_dir, &manager, &node, &mgr_js) {
+        tracing::warn!(target: "preview", "[corepack] failed writing `{manager}` shims to {}: {e}", shim_dir.display());
         return None;
     }
 
-    // `corepack enable --install-directory <dir> <mgr>` writes the shims
-    // (cmd + ps1 + POSIX) without touching the Node install. Idempotent —
-    // safe to re-run every launch, cheap enough not to cache.
-    //
-    // On Windows corepack ships ONLY as `corepack.cmd` (a batch shim) — there is
-    // no `corepack.exe`. Rust's `Command::new("corepack")` uses CreateProcess,
-    // which CANNOT execute a `.cmd` directly (only real executables), so it
-    // fails even though `where corepack` finds the .cmd. Route through
-    // `cmd /c` so the batch shim actually runs. (This is why the bridge silently
-    // no-op'd: is_command_available→true via where.exe, but the spawn failed.)
-    let mut cmd = if cfg!(windows) {
-        let mut c = std::process::Command::new("cmd");
-        c.arg("/d").arg("/s").arg("/c").arg("corepack");
-        c
-    } else {
-        std::process::Command::new("corepack")
-    };
-    cmd.arg("enable")
-        .arg("--install-directory")
-        .arg(&shim_dir)
-        .arg(&manager)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
+    tracing::info!(target: "preview", "[corepack] bridge ready for `{manager}`: node {} → {}; PATH += {}", node.display(), mgr_js.display(), shim_dir.display());
+    Some(shim_dir.to_string_lossy().to_string())
+}
+
+/// Resolve the absolute path to node's executable via the platform PATH search
+/// (`where`/`which` — both real .exe's, so unlike a `.cmd` they spawn from Rust
+/// fine). Prefers a genuine `node.exe` on Windows over any `node.cmd` alias.
+fn resolve_node_exe() -> Option<std::path::PathBuf> {
+    let finder = if cfg!(windows) { "where" } else { "which" };
+    let mut cmd = std::process::Command::new(finder);
+    cmd.arg("node").stderr(std::process::Stdio::null());
     crate::util::hidden(&mut cmd);
-    match cmd.status() {
-        Ok(s) if s.success() => {
-            tracing::info!(
-                "[dev-server] corepack shims for `{}` → {}",
-                manager,
-                shim_dir.display()
-            );
-            Some(shim_dir.to_string_lossy().to_string())
+    let out = cmd.output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    for line in text.lines() {
+        let p = std::path::PathBuf::from(line.trim());
+        if !p.exists() {
+            continue;
         }
-        other => {
-            tracing::warn!(
-                "[dev-server] `corepack enable {}` failed: {:?}",
-                manager,
-                other
-            );
-            None
+        if !cfg!(windows)
+            || p.extension().map(|e| e.eq_ignore_ascii_case("exe")).unwrap_or(false)
+        {
+            return Some(p);
         }
     }
+    // Fallback: first existing entry even if not a .exe.
+    text.lines()
+        .map(|l| std::path::PathBuf::from(l.trim()))
+        .find(|p| p.exists())
+}
+
+/// Write `<mgr>` launcher shims (cmd + ps1 + POSIX) that exec
+/// `node <corepack>/dist/<mgr>.js` with ABSOLUTE paths, into `shim_dir`. The
+/// `.cmd` is the one that actually matters on Windows: npm runs scripts via
+/// `cmd /c <mgr> …`, so `<mgr>.cmd` on PATH is what resolves the inner call.
+fn write_manager_shims(
+    shim_dir: &std::path::Path,
+    manager: &str,
+    node: &std::path::Path,
+    mgr_js: &std::path::Path,
+) -> std::io::Result<()> {
+    let node_s = node.display().to_string();
+    let js_s = mgr_js.display().to_string();
+
+    let cmd_shim = format!("@echo off\r\n\"{node_s}\" \"{js_s}\" %*\r\n");
+    std::fs::write(shim_dir.join(format!("{manager}.cmd")), cmd_shim)?;
+
+    let ps_shim = format!("& \"{node_s}\" \"{js_s}\" @args\r\n");
+    std::fs::write(shim_dir.join(format!("{manager}.ps1")), ps_shim)?;
+
+    // POSIX shim for git-bash — node.exe accepts a Windows-form JS path arg.
+    let sh_path = shim_dir.join(manager);
+    std::fs::write(&sh_path, format!("#!/bin/sh\nexec \"{node_s}\" \"{js_s}\" \"$@\"\n"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&sh_path)?.permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&sh_path, perms)?;
+    }
+
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

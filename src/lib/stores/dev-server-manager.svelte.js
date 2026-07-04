@@ -436,6 +436,10 @@ function createDevServerManager() {
         spawnEnv.VM_PREPEND_PATH = shimDir;
         spawnEnv.COREPACK_ENABLE_DOWNLOAD_PROMPT = '0';
         plog('info', `[launch] ${label}: corepack bridge active (PATH += ${shimDir})`);
+      } else {
+        // Not silent: the backend logs the WHY to the preview channel (manager
+        // on PATH, not pinned, or node/corepack missing). Record that we asked.
+        plog('debug', `[launch] ${label}: no corepack bridge (see [corepack] preview logs for why)`);
       }
     } catch (e) {
       plog('warn', `[launch] ${label}: corepack bridge check failed (continuing): ${e?.message || e}`);
