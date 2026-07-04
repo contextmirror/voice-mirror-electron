@@ -595,6 +595,20 @@ export async function sandboxListWindows(port) {
 }
 
 /**
+ * Find a NATIVE app's OS window by walking the launch terminal's process tree
+ * (`cargo run` → app.exe). Returns `{ hwnd }` (null until the window appears).
+ * @param {string} shellId - the launching terminal session id
+ */
+export async function findNativeWindow(shellId) {
+  return invoke('find_native_window', { id: shellId });
+}
+
+/** Whether an OS window still exists — native-app liveness. Returns `{ alive }`. */
+export async function isWindowAlive(hwnd) {
+  return invoke('is_window_alive', { hwnd });
+}
+
+/**
  * Acknowledge a `sandbox-start-request` event back to the backend, so the
  * sandbox_start MCP tool reports what ACTUALLY happened instead of guessing.
  * @param {{launchId: number, status: string, reason?: string, devPort?: number, cdpPort?: number, framework?: string}} params

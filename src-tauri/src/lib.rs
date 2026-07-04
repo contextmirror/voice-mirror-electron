@@ -538,6 +538,8 @@ pub fn run() {
             terminal_cmds::terminal_input,
             terminal_cmds::terminal_resize,
             terminal_cmds::terminal_kill,
+            terminal_cmds::find_native_window,
+            terminal_cmds::is_window_alive,
             terminal_cmds::terminal_detect_profiles,
             // File watcher
             services::file_watcher::start_file_watching,

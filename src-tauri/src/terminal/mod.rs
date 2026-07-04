@@ -637,6 +637,16 @@ impl TerminalManager {
     }
 
     /// Kill a terminal session and remove it from the manager.
+    /// The OS process id of a session's PTY root (the shell). Used to find a
+    /// native app's window by walking this PID's process tree (the app is a
+    /// descendant: shell → cargo → app.exe). `None` if unknown/exited.
+    pub fn pid(&self, id: &str) -> Option<u32> {
+        self.sessions
+            .get(id)
+            .and_then(|s| s.child.as_ref())
+            .and_then(|c| c.process_id())
+    }
+
     pub fn kill(&mut self, id: &str) -> Result<(), String> {
         let mut session = self
             .sessions

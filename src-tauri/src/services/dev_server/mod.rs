@@ -10,6 +10,7 @@
 //! - `workspace` — monorepo member scan (workspaces globs, apps/*, pnpm-workspace)
 //! - `util` — Shared helpers (port probing, package manager, parsing)
 
+mod cargo;
 mod node;
 mod python;
 mod workspace;
@@ -48,6 +49,28 @@ pub struct DetectedDevServer {
     /// means the scanned project root itself.
     #[serde(default)]
     pub cwd: Option<String>,
+    /// A NATIVE desktop app (no web dev server / CDP): launched by its own build
+    /// command (e.g. `cargo run -p egui_demo_app`), previewed by mirroring its OS
+    /// window (found via the launch's process tree, not a CDP port) and driven
+    /// via UI Automation. `false` for web/CDP apps.
+    #[serde(default)]
+    pub native: bool,
+    /// For a native app with several runnable binaries (a Cargo workspace like
+    /// egui), the alternatives the user can switch to. Empty otherwise. The
+    /// chosen one is reflected in `start_command`; this is the picker's menu.
+    #[serde(default)]
+    pub run_targets: Vec<RunTarget>,
+}
+
+/// One runnable binary of a native project (a Cargo `bin` target), for the
+/// App Preview's "Run:" picker.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RunTarget {
+    /// Human label (the bin name, e.g. "egui_demo_app").
+    pub label: String,
+    /// The exact command to launch it (e.g. "cargo run -p egui_demo_app").
+    pub command: String,
 }
 
 /// Scan a project directory and return all detected dev servers.
@@ -129,9 +152,20 @@ pub fn detect_dev_servers(project_root: &str) -> Vec<DetectedDevServer> {
         }
     }
 
-    // Probe all ports
+    // 8. Native Rust (Cargo) desktop apps — a LAST resort, only when nothing
+    // web/CDP was found. A Cargo project (egui, iced, native winit) has no dev
+    // server; we run it via `cargo run` and mirror its OS window. Skipped for
+    // Tauri (already handled above — a Tauri app is also a Cargo project, but
+    // its CDP path is far richer than the native window mirror).
+    if servers.is_empty() {
+        if let Some(server) = cargo::detect_cargo_app(root) {
+            servers.push(server);
+        }
+    }
+
+    // Probe all ports (native apps have port 0 → never "running" by port).
     for server in &mut servers {
-        server.running = is_port_listening(server.port);
+        server.running = server.port != 0 && is_port_listening(server.port);
     }
 
     // Self-detection guard: when scanning our own project root, exclude the

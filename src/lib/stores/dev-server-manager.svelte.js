@@ -6,7 +6,7 @@
  * to cap concurrent running servers.
  */
 
-import { terminalSpawn, terminalInput, terminalKill, probePort, lensNavigate, killPortProcess, sandboxSetActivePort, sandboxClearActivePort, findFreeCdpPort, logPreview } from '../api.js';
+import { terminalSpawn, terminalInput, terminalKill, probePort, lensNavigate, killPortProcess, sandboxSetActivePort, sandboxClearActivePort, findFreeCdpPort, logPreview, findNativeWindow } from '../api.js';
 import { terminalTabsStore } from './terminal-tabs.svelte.js';
 import { lensStore } from './lens.svelte.js';
 import { toastStore } from './toast.svelte.js';
@@ -470,9 +470,14 @@ function createDevServerManager() {
 
     // Watch readiness in the BACKGROUND — the caller (and the sandbox_start
     // ACK) gets the honest 'spawned' outcome now; status only becomes
-    // 'running' when the port actually listens.
+    // 'running' when the app is actually up.
     const hasSetup = !!(server.setupCommands && server.setupCommands.length > 0);
-    watchStartup(projectPath, server, cdpPort, hasSetup, shellId).catch((err) => {
+    const watcher = server.native
+      // Native app: readiness = an OS window appears in the launch's process
+      // tree (there's no port to poll). Mirror it via WGC by HWND.
+      ? watchNativeStartup(projectPath, server, shellId)
+      : watchStartup(projectPath, server, cdpPort, hasSetup, shellId);
+    watcher.catch((err) => {
       plog('error', `[launch] ${label}: startup watcher crashed: ${err?.message || err}`);
     });
 
@@ -549,6 +554,75 @@ function createDevServerManager() {
 
     if (!stillMine()) return; // superseded by a stop/relaunch mid-poll
     markRunning(projectPath, server, cdpPort);
+  }
+
+  /**
+   * Background readiness watcher for a NATIVE desktop app (egui/iced, no CDP).
+   * There's no port to poll: `cargo run` compiles first, then a window appears
+   * owned by the launch's process tree. Poll for that window; when it shows,
+   * open the App Preview mirroring it (WGC by HWND). Same honest timeouts as the
+   * web watcher — a cold cargo build can take minutes.
+   */
+  async function watchNativeStartup(projectPath, server, shellId) {
+    const label = `${server.framework || 'app'} (native)`;
+    const stillMine = () => {
+      const s = servers.get(projectPath);
+      return !!s && s.shellId === shellId && (s.status === 'starting' || s.status === 'idle');
+    };
+    const deadline = Date.now() + POLL_TIMEOUT + EXTENDED_POLL_TIMEOUT;
+    let warned = false;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 1000));
+      if (!stillMine()) return;
+      let hwnd = null;
+      try {
+        const res = await findNativeWindow(shellId);
+        hwnd = res?.data?.hwnd ?? null;
+      } catch {
+        // backend not ready / transient — keep polling
+      }
+      if (hwnd) {
+        if (!stillMine()) return;
+        updateState(projectPath, {
+          status: 'running',
+          lastActiveTime: Date.now(),
+          startedAt: (() => {
+            const prev = servers.get(projectPath);
+            if (prev?.startedAt) {
+              const dur = Date.now() - prev.startedAt;
+              if (dur > 1000 && dur < 30 * 60 * 1000) {
+                try { localStorage.setItem(`vm:lastLaunchMs:${projectPath}`, String(dur)); } catch { /* ignore */ }
+              }
+            }
+            return null;
+          })(),
+          stopReason: null,
+          healthMisses: 0,
+        });
+        plog('info', `[launch] ${label}: window ${hwnd} appeared — mirroring via WGC`);
+        sandboxPreviewStore.openNative(hwnd);
+        toastStore.addToast({
+          message: `${server.framework || 'App'} is up`,
+          severity: 'success',
+          key: `dev-server-${projectPath}`,
+        });
+        ensureHealthSweep();
+        return;
+      }
+      const elapsed = Date.now() - (servers.get(projectPath)?.startedAt || Date.now());
+      if (!warned && elapsed > POLL_TIMEOUT) {
+        warned = true;
+        plog('warn', `[launch] ${label}: no window yet after ${POLL_TIMEOUT / 1000}s — still building/watching`);
+        toastStore.addToast({
+          message: `Still building ${server.framework || 'the app'} — check the terminal if this persists`,
+          severity: 'warning',
+          key: `dev-server-${projectPath}`,
+        });
+      }
+    }
+    if (!stillMine()) return;
+    plog('error', `[launch] ${label}: gave up — no app window appeared`);
+    demoteToStopped(projectPath, 'no app window appeared — check the terminal for build errors');
   }
 
   /**

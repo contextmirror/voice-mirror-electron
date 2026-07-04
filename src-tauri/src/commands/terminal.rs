@@ -105,6 +105,31 @@ pub fn terminal_resize(
     }
 }
 
+/// Find the OS window of a NATIVE app launched in terminal session `id` (e.g.
+/// `cargo run -p egui_demo_app`). Walks the PTY's process tree for a presentable
+/// window. Returns `{ hwnd }` (null while the app hasn't shown a window yet — a
+/// `cargo run` compiles first, so the frontend polls this). The native-app
+/// counterpart to CDP-port window matching.
+#[tauri::command(async)]
+pub fn find_native_window(state: State<'_, TerminalManagerState>, id: String) -> IpcResponse {
+    let pid = {
+        let manager = lock_terminal!(state);
+        manager.pid(&id)
+    };
+    let Some(pid) = pid else {
+        return IpcResponse::ok(serde_json::json!({ "hwnd": serde_json::Value::Null }));
+    };
+    let hwnd = crate::services::sandbox::find_window_in_process_tree(pid);
+    IpcResponse::ok(serde_json::json!({ "hwnd": hwnd }))
+}
+
+/// Whether an OS window still exists — native-app liveness (no CDP port to
+/// probe). Returns `{ alive }`.
+#[tauri::command]
+pub fn is_window_alive(hwnd: i64) -> IpcResponse {
+    IpcResponse::ok(serde_json::json!({ "alive": crate::services::sandbox::is_window_alive(hwnd) }))
+}
+
 /// Kill a terminal session.
 // `(async)`: TerminalManager::kill runs taskkill and then waits up to 3s for
 // the child to exit — far too long to block the main/UI thread.

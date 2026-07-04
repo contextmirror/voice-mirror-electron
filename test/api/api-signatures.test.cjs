@@ -292,6 +292,8 @@ describe('api.js -- exported async functions', () => {
     'sandboxListWindows',
     'sandboxStartAck',
     'findFreeCdpPort',
+    'findNativeWindow',
+    'isWindowAlive',
     'logPreview',
     // Design Overlay
     'designCommand',

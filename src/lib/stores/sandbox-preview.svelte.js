@@ -20,6 +20,7 @@ import {
   sandboxStreamStart,
   sandboxStreamStop,
   sandboxListWindows,
+  isWindowAlive,
 } from '../api.js';
 import { unwrapResult } from '../utils.js';
 import { projectStore } from './project.svelte.js';
@@ -38,6 +39,9 @@ function createSandboxPreviewStore() {
   // Default to maximized so a freshly-opened preview is big, not crammed.
   let maximized = $state(true);
   let cdpPort = $state(null);
+  // NATIVE session: a non-CDP desktop app (egui/iced) mirrored by HWND. No CDP
+  // port, no window-list switcher — liveness is "does the HWND still exist".
+  let native = $state(false);
   let streamUrl = $state('');
   let loading = $state(false);
   let error = $state('');
@@ -206,10 +210,33 @@ function createSandboxPreviewStore() {
     }
   }
 
+  /**
+   * NATIVE-session liveness backstop: no CDP port to probe, no window list — the
+   * mirror is one HWND, so liveness is simply "does that window still exist".
+   * When it's gone (the app closed), surface the empty state.
+   */
+  async function refreshNative() {
+    if (!active || !native || currentHwnd == null) return;
+    let alive = true;
+    try {
+      const res = await isWindowAlive(currentHwnd);
+      alive = unwrapResult(res)?.alive !== false;
+    } catch {
+      // Probe failure — don't tear down on a one-off; keep showing.
+      return;
+    }
+    if (!alive) {
+      noWindow = true;
+      currentHwnd = null;
+      streamUrl = ''; // drop the stale frame → clear "app window closed"
+    }
+  }
+
   function startPolling() {
     stopPolling();
-    pollTimer = setInterval(refreshWindows, POLL_INTERVAL);
-    refreshWindows();
+    const tick = native ? refreshNative : refreshWindows;
+    pollTimer = setInterval(tick, POLL_INTERVAL);
+    tick();
   }
   function stopPolling() {
     if (pollTimer) {
@@ -230,6 +257,47 @@ function createSandboxPreviewStore() {
     get currentHwnd() { return currentHwnd; },
     get noWindow() { return noWindow; },
     get confirmStart() { return confirmStart; },
+    get native() { return native; },
+
+    /**
+     * Begin a NATIVE live preview: mirror the OS window `hwnd` directly via WGC
+     * (no CDP port), for a native desktop app (egui/iced) launched by its own
+     * build command. Liveness is the window's existence, not a CDP port.
+     * @param {number} hwnd
+     */
+    async openNative(hwnd) {
+      if (!hwnd) return;
+      userHidden = false;
+      cdpPort = null; // native — no CDP
+      native = true;
+      active = true;
+      visible = true;
+      confirmStart = false;
+      maximized = true;
+      attached = false;
+      userPinned = false;
+      currentHwnd = hwnd;
+      windows = [];
+      noWindow = false;
+      listFailCount = 0;
+      error = '';
+      loading = true;
+      try {
+        // port 0 = no CDP; the backend WGC-mirrors the explicit HWND.
+        const res = await sandboxStreamStart(0, hwnd);
+        const data = unwrapResult(res);
+        if (data?.url) {
+          setStreamUrl(data.url);
+        } else {
+          error = 'Failed to start the App Preview.';
+        }
+      } catch (err) {
+        error = err?.message || String(err);
+      } finally {
+        loading = false;
+      }
+      startPolling();
+    },
 
     /**
      * Begin a live preview for the app on `port` (CDP) and show it. Idempotent:
@@ -427,12 +495,14 @@ function createSandboxPreviewStore() {
         followUnlisten();
         followUnlisten = null;
       }
+      const wasNative = native;
       active = false;
       visible = false;
       streamUrl = '';
       loading = false;
       error = '';
       cdpPort = null;
+      native = false;
       windows = [];
       currentHwnd = null;
       noWindow = false;
@@ -441,8 +511,10 @@ function createSandboxPreviewStore() {
       attached = false;
       userHidden = false;
       confirmStart = false;
-      if (port) {
-        sandboxStreamStop(port).catch(() => {});
+      // Native mirror runs off an MJPEG/WGC capture with no CDP port — stop()
+      // ignores the port and tears down window_stream globally, so pass 0.
+      if (port || wasNative) {
+        sandboxStreamStop(port || 0).catch(() => {});
       }
     },
   };

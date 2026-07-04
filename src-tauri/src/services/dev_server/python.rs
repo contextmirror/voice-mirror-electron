@@ -578,6 +578,7 @@ pub(super) fn detect_python_servers(
         needs_setup,
         setup_commands,
         cwd: None,
+        ..Default::default()
     });
 
     servers
