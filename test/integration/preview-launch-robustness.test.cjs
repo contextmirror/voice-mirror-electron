@@ -88,6 +88,17 @@ describe('launch fix 3 -- learn the real port from the dev server stdout', () =>
     assert.ok(dsm.includes('function scanOutputForPort'), 'sniffer helper');
     assert.ok(dsm.includes('ANSI_RE'), 'strips ANSI so bolded port digits are reachable');
   });
+  it('also catches URL-less announcements ("Listening on 5006", Express-style)', () => {
+    assert.ok(dsm.includes('LISTENING_RE'), 'no-URL fallback pattern');
+    assert.ok(dsm.includes('match(LOCALHOST_URL_RE) || msg.match(LISTENING_RE)'), 'URL match wins, listening-on is the fallback');
+  });
+  it('detects plain Node servers (node index.js) with the entry-file port', () => {
+    const nodeRs = read('src-tauri', 'src', 'services', 'dev_server', 'node.rs');
+    assert.ok(nodeRs.includes('"Node".to_string()'), 'generic Node fallback pattern exists');
+    assert.ok(nodeRs.includes('fn node_entry_port'), 'reads the port from the entry file');
+    assert.ok(nodeRs.includes('PORT\\s*(?:\\|\\||\\?\\?)\\s*'), 'covers `process.env.PORT || N`');
+  });
+
   it('retargets readiness + mirror to the announced port', () => {
     assert.ok(dsm.includes('let targetPort = cdpPort || server.port'), 'CDP-first, else the (correctable) dev port');
     assert.ok(dsm.includes('pollPort(() => targetPort'), 'polls via a getter so the correction takes effect mid-poll');

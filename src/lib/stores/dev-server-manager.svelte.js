@@ -190,6 +190,10 @@ function createDevServerManager() {
   const ANSI_RE = /\u001b\[[0-9;]*m/g;
   const LOCALHOST_URL_RE =
     /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):(\d{2,5})/;
+  // Plain Node/Express servers announce readiness WITHOUT a URL — the Heroku
+  // starter prints `Listening on 5006` (from `Listening on ${port}`). Catch
+  // "listening on/at [port] N" shapes as a fallback when no URL is printed.
+  const LISTENING_RE = /listening\s+(?:on|at)\s*(?:\*:|port\s*:?\s*)?(\d{2,5})\b/i;
 
   /**
    * The port a dev server actually bound, read from what it printed to its
@@ -206,7 +210,7 @@ function createDevServerManager() {
     if (!entries || !entries.length) return null;
     for (let i = entries.length - 1; i >= 0; i--) {
       const msg = (entries[i]?.message || '').replace(ANSI_RE, '');
-      const m = msg.match(LOCALHOST_URL_RE);
+      const m = msg.match(LOCALHOST_URL_RE) || msg.match(LISTENING_RE);
       if (m) {
         const p = Number(m[1]);
         if (p > 0 && p < 65536) return p;

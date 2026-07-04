@@ -254,6 +254,15 @@ pub(super) fn detect_from_package_json(root: &Path, pkg_manager: &str) -> Vec<De
                         server.url = format!("http://localhost:{}", port);
                     }
                 }
+                // A plain Node server's port usually lives in its entry file
+                // (`process.env.PORT || 5006`, `app.listen(8080)`) — read it so
+                // readiness doesn't poll a wrong default for 30s.
+                if server.framework == "Node" && extract_port_flag(cmd).is_none() {
+                    if let Some(port) = node_entry_port(root, cmd) {
+                        server.port = port;
+                        server.url = format!("http://localhost:{}", port);
+                    }
+                }
                 results.push(server);
             }
         }
@@ -478,12 +487,79 @@ pub(super) fn match_script_pattern(cmd: &str, script_key: &str, pkg_manager: &st
         });
     }
 
+    // Generic Node server (Express & friends): `node index.js`, `node --watch
+    // server.js`, `nodemon app.js`. No framework banner, no config file — the
+    // long tail of plain HTTP servers (live repro: the Heroku Express starter,
+    // start = `node index.js`, which detection refused with "no dev server").
+    // Matched LAST so every framework-specific pattern above wins first.
+    {
+        let tokens: Vec<&str> = cmd.split_whitespace().collect();
+        let is_node = matches!(tokens.first(), Some(&"node") | Some(&"nodemon"));
+        let entry_is_js = tokens
+            .last()
+            .map(|t| t.ends_with(".js") || t.ends_with(".mjs") || t.ends_with(".cjs"))
+            .unwrap_or(false);
+        if is_node && entry_is_js {
+            let port = port_override.unwrap_or(3000);
+            return Some(DetectedDevServer {
+                framework: "Node".to_string(),
+                port,
+                url: format!("http://localhost:{}", port),
+                start_command: make_start_command(pkg_manager, script_key),
+                source: "package.json".to_string(),
+                running: false,
+                ..Default::default()
+            });
+        }
+    }
+
     None
+}
+
+/// Best-effort port for a plain Node server, read from its entry file. Covers
+/// the two dominant idioms — `process.env.PORT || 5006` (env with a literal
+/// fallback) and `.listen(8080` — so readiness starts polling near the truth.
+/// The runtime stdout sniffer still corrects the final answer.
+pub(super) fn node_entry_port(root: &Path, cmd: &str) -> Option<u16> {
+    let entry = cmd.split_whitespace().last()?;
+    let content = std::fs::read_to_string(root.join(entry)).ok()?;
+    static NODE_PORT_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"(?:PORT\s*(?:\|\||\?\?)\s*|\.listen\(\s*)(\d{2,5})").unwrap()
+    });
+    NODE_PORT_RE.captures(&content)?.get(1)?.as_str().parse().ok()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_match_script_plain_node_server() {
+        // The Heroku Express starter: start = `node index.js` — previously no
+        // pattern matched and detection refused with "no dev server detected".
+        let server = match_script_pattern("node index.js", "start", "npm").unwrap();
+        assert_eq!(server.framework, "Node");
+        assert_eq!(server.port, 3000);
+        let watch = match_script_pattern("node --watch server.mjs", "dev", "npm").unwrap();
+        assert_eq!(watch.framework, "Node");
+        // But NOT arbitrary node invocations of non-JS things.
+        assert!(match_script_pattern("node --test", "start", "npm").is_none());
+    }
+
+    #[test]
+    fn test_node_entry_port_reads_the_entry_file() {
+        let dir = std::env::temp_dir().join(format!("vm_nodeport_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("index.js"),
+            "const port = process.env.PORT || 5006\napp.listen(port)\n",
+        )
+        .unwrap();
+        assert_eq!(node_entry_port(&dir, "node index.js"), Some(5006));
+        std::fs::write(dir.join("srv.js"), "app.listen(8123)\n").unwrap();
+        assert_eq!(node_entry_port(&dir, "node srv.js"), Some(8123));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn test_match_script_vite() {
