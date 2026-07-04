@@ -773,7 +773,12 @@ function createDevServerManager() {
         plog('warn', `[launch] sandboxSetActivePort(${cdpPort}) failed: ${err?.message || err}`)
       );
     } else {
-      // Web project: show it in the Lens browser as before.
+      // Web project (no CDP): a plain web app has no OS window to mirror — the
+      // render surface IS the page. Embed the dev-server URL in the App Preview
+      // (iframe, the Bolt DIY / Onlook pattern) so it renders live in-panel;
+      // uses the RETARGETED url/port when the server announced a different one.
+      sandboxPreviewStore.openWeb(server.url, server.port);
+      // Also point the Lens browser at it (URL bar / devtools entry point).
       lensNavigate(server.url).catch(() => {});
     }
     toastStore.addToast({

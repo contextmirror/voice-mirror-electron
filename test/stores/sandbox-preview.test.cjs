@@ -415,3 +415,53 @@ describe('SandboxPreview.svelte -- failing-launch hint', () => {
     assert.ok(cmpSrc.includes('build-warn'), 'renders the honest warning');
   });
 });
+
+describe('sandbox-preview: WEB sessions (plain web apps, no window to mirror)', () => {
+  // A plain web app (vite/next/CRA — excalidraw was the live repro) has no CDP
+  // port and no OS window: the render surface IS the page. The App Preview
+  // embeds the dev-server URL in an iframe (Bolt DIY / Onlook pattern) instead
+  // of spinning "Starting…" forever waiting for a window mirror.
+  const cmpSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'components', 'lens', 'preview', 'SandboxPreview.svelte'),
+    'utf-8'
+  );
+  const dsmSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'lib', 'stores', 'dev-server-manager.svelte.js'),
+    'utf-8'
+  );
+
+  it('store exposes an openWeb(url, port) session mode', () => {
+    assert.ok(src.includes('openWeb(url, port)'), 'openWeb entry point');
+    assert.ok(src.includes('get web()'), 'exposes the web flag');
+    assert.ok(src.includes('get webUrl()'), 'exposes the embedded URL');
+  });
+
+  it('web liveness is the dev port, with a miss threshold (not one blip)', () => {
+    assert.ok(src.includes('function refreshWeb'), 'web liveness tick');
+    assert.ok(src.includes('probePort(webPort)'), 'probes the dev port');
+    assert.ok(src.includes('listFailCount >= 3'), 'requires consecutive misses before teardown');
+  });
+
+  it('syncAuto never tears down a web session (the native-session gotcha, again)', () => {
+    // syncAuto tracks the active CDP port; native AND web sessions have none,
+    // so without the guard it would close them the instant they open.
+    assert.ok(
+      src.includes('!attached && !native && !web'),
+      'web sessions must be excluded from the CDP-port auto-sync teardown'
+    );
+  });
+
+  it('markRunning opens the web embed with the RETARGETED url/port', () => {
+    assert.ok(
+      dsmSrc.includes('sandboxPreviewStore.openWeb(server.url, server.port)'),
+      'web-ready servers open an App Preview web session'
+    );
+  });
+
+  it('component renders the embed and completes the progress bar on load', () => {
+    assert.ok(cmpSrc.includes('class="sandbox-web"'), 'renders the iframe embed');
+    assert.ok(cmpSrc.includes('src={webUrl}'), 'points at the dev-server URL');
+    assert.ok(/iframe[\s\S]{0,200}onload=\{\(\) => \{ hasFrame = true; \}\}/.test(cmpSrc), 'iframe onload marks the surface live');
+    assert.ok(cmpSrc.includes('surfaceUrl'), 'readiness/progress logic is surface-agnostic (stream OR embed)');
+  });
+});

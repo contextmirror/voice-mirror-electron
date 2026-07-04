@@ -20,6 +20,13 @@
   const windows = $derived(sandboxPreviewStore.windows);
   const currentHwnd = $derived(sandboxPreviewStore.currentHwnd);
   const noWindow = $derived(sandboxPreviewStore.noWindow);
+  // WEB session: a plain web app (no CDP, no OS window) rendered by embedding
+  // its dev-server URL in an iframe — the page itself is the live surface.
+  const isWeb = $derived(sandboxPreviewStore.web);
+  const webUrl = $derived(sandboxPreviewStore.webUrl);
+  // The "live surface" URL regardless of mode: MJPEG stream (mirrored window)
+  // or the embedded page (web). Drives the shared readiness/progress logic.
+  const surfaceUrl = $derived(isWeb ? webUrl : url);
   // Whether the body shows the "Start the dev server?" confirmation (user clicked
   // the App tab with no session and no remembered preference).
   const confirmStart = $derived(sandboxPreviewStore.confirmStart);
@@ -31,9 +38,9 @@
   // (a `tauri dev` app compiles Rust first, so its window can appear minutes
   // later). Track the first painted frame so we can show a clear waiting state.
   let hasFrame = $state(false);
-  // Reset the frame flag whenever the stream URL changes (new session).
+  // Reset the frame flag whenever the live-surface URL changes (new session).
   $effect(() => {
-    url;
+    surfaceUrl;
     hasFrame = false;
   });
 
@@ -44,9 +51,9 @@
   const FRAME_TIMEOUT_MS = 5000;
   let stalled = $state(false);
   $effect(() => {
-    // Re-arm whenever the stream URL changes or a frame arrives.
+    // Re-arm whenever the live-surface URL changes or a frame arrives.
     stalled = false;
-    if (!url || hasFrame) return;
+    if (!surfaceUrl || hasFrame) return;
     const t = setTimeout(() => {
       if (!hasFrame) stalled = true;
     }, FRAME_TIMEOUT_MS);
@@ -195,9 +202,9 @@
       if (startElapsed == null) return 5;
       return Math.max(5, Math.min(90, Math.round((startElapsed * 1000 / baselineMs) * 90)));
     }
-    // Build done (status flipped to running) — mirror is attaching. Hold near
-    // the end so the bar reads "almost there" rather than snapping to empty.
-    if (loading || !url || !hasFrame) return 95;
+    // Build done (status flipped to running) — mirror/embed is attaching. Hold
+    // near the end so the bar reads "almost there" rather than snapping empty.
+    if (loading || !surfaceUrl || !hasFrame) return 95;
     return 100;
   });
   const showProgress = $derived(!confirmStart && !error && !showEmpty && (!hasFrame || justCompleted));
@@ -210,6 +217,8 @@
       App Preview
       {#if sandboxPreviewStore.cdpPort}
         <span class="port">CDP :{sandboxPreviewStore.cdpPort}</span>
+      {:else if isWeb && webUrl}
+        <span class="port">{webUrl.replace(/^https?:\/\//, '')}</span>
       {/if}
     </span>
     {#if windows.length > 1}
@@ -348,7 +357,16 @@
           </select>
         {/if}
       </div>
-    {:else if loading || !url}
+    {:else if isWeb && webUrl}
+      <!-- WEB session: the app IS a page — embed it live (no window to mirror).
+           Fully interactive; onload completes the progress bar. -->
+      <iframe
+        class="sandbox-web"
+        src={webUrl}
+        title="App Preview — live view of the web app being built"
+        onload={() => { hasFrame = true; }}
+      ></iframe>
+    {:else if loading || !surfaceUrl}
       <div class="sandbox-msg starting">
         <span class="spinner" aria-hidden="true"></span>
         <span>
@@ -510,6 +528,15 @@
     object-fit: contain;
     /* Hidden until the first frame paints, so no broken-image icon shows. */
     display: none;
+  }
+
+  /* WEB session embed: the page fills the panel — it's a responsive web app,
+     not a fixed-size window capture, so stretch (not contain). */
+  .sandbox-web {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: #fff;
   }
 
   .sandbox-frame.visible {
