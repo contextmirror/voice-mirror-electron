@@ -464,11 +464,17 @@ mod sys {
         let element = stored.element.clone();
         let center = stored.center;
         let runtime_id = stored.runtime_id.clone();
+        let name = stored.name.clone();
 
         unsafe {
-            // If the stored element went stale, re-find it by runtime id.
+            // If the stored element went stale, re-find it — by runtime id, then
+            // by NAME (immediate-mode apps like egui rebuild the tree + ids every
+            // frame, so a name match is what keeps Invoke/Toggle working instead
+            // of a stale-coordinate SendInput that misses).
             let element = if element.CurrentControlType().is_err() {
-                refind_by_runtime_id(automation, hwnd, &runtime_id).unwrap_or(element)
+                refind_by_runtime_id(automation, hwnd, &runtime_id)
+                    .or_else(|| refind_by_name(automation, hwnd, &name, center))
+                    .unwrap_or(element)
             } else {
                 element
             };
@@ -524,10 +530,14 @@ mod sys {
         let stored = refs.get(&key).unwrap();
         let element = stored.element.clone();
         let runtime_id = stored.runtime_id.clone();
+        let name = stored.name.clone();
+        let center = stored.center;
 
         unsafe {
             let element = if element.CurrentControlType().is_err() {
-                refind_by_runtime_id(automation, hwnd, &runtime_id).unwrap_or(element)
+                refind_by_runtime_id(automation, hwnd, &runtime_id)
+                    .or_else(|| refind_by_name(automation, hwnd, &name, center))
+                    .unwrap_or(element)
             } else {
                 element
             };
@@ -613,6 +623,59 @@ mod sys {
             }
         }
         None
+    }
+
+    /// Re-find a stale element by its (stable) NAME — the robust path for
+    /// IMMEDIATE-MODE GUIs (egui/imgui) whose AccessKit tree, and its runtime
+    /// ids, REBUILD every frame. After the first interaction repaints the app,
+    /// `refind_by_runtime_id` fails (new ids) and the element handle is stale,
+    /// so a pattern-based Invoke/Toggle can't run and the click wrongly falls
+    /// back to a stale-coordinate SendInput that MISSES. Names persist across
+    /// frames ("Increment", "Checkbox"), so match on name; when several share a
+    /// name, pick the one whose center is NEAREST the stored center (the widget
+    /// hasn't moved far between frames). Returns a FRESH element for Invoke.
+    unsafe fn refind_by_name(
+        automation: &IUIAutomation,
+        hwnd: i64,
+        name: &str,
+        near: (i32, i32),
+    ) -> Option<IUIAutomationElement> {
+        if name.trim().is_empty() {
+            return None;
+        }
+        let root = automation
+            .ElementFromHandle(HWND(hwnd as *mut std::ffi::c_void))
+            .ok()?;
+        let cond = automation.RawViewCondition().ok()?;
+        let arr = root.FindAll(TreeScope_Descendants, &cond).ok()?;
+        let len = arr.Length().unwrap_or(0);
+        let mut best: Option<(IUIAutomationElement, i64)> = None;
+        for i in 0..len {
+            let Ok(el) = arr.GetElement(i) else { continue };
+            let el_name = el
+                .CurrentName()
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+            if el_name != name {
+                continue;
+            }
+            // Distance² to the stored center — disambiguates same-named widgets.
+            let dist = el
+                .CurrentBoundingRectangle()
+                .ok()
+                .map(|r| {
+                    let cx = (r.left + r.right) / 2;
+                    let cy = (r.top + r.bottom) / 2;
+                    let dx = (cx - near.0) as i64;
+                    let dy = (cy - near.1) as i64;
+                    dx * dx + dy * dy
+                })
+                .unwrap_or(i64::MAX);
+            if best.as_ref().map(|(_, d)| dist < *d).unwrap_or(true) {
+                best = Some((el, dist));
+            }
+        }
+        best.map(|(el, _)| el)
     }
 
     /// Synthetic left-click at a screen coordinate via SendInput (absolute, over the
