@@ -292,6 +292,7 @@ describe('api.js -- exported async functions', () => {
     'sandboxListWindows',
     'sandboxStartAck',
     'findFreeCdpPort',
+    'ensureCorepackShims',
     'findNativeWindow',
     'isWindowAlive',
     'logPreview',

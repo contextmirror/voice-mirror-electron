@@ -392,6 +392,7 @@ pub fn run() {
             sandbox_cmds::sandbox_active_hwnd,
             sandbox_cmds::sandbox_start_ack,
             sandbox_cmds::find_free_cdp_port,
+            sandbox_cmds::ensure_corepack_shims,
             screenshot_cmds::save_image_to_temp,
             screenshot_cmds::list_monitors,
             screenshot_cmds::list_windows,
