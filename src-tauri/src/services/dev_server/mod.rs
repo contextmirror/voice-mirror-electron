@@ -20,7 +20,9 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-pub use util::{detect_package_manager, is_port_listening, kill_port_process};
+pub use util::{
+    detect_package_manager, ensure_corepack_shims, is_port_listening, kill_port_process,
+};
 
 /// A detected dev server configuration from project files.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

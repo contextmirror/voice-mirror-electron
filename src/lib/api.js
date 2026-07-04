@@ -627,6 +627,19 @@ export async function findFreeCdpPort() {
 }
 
 /**
+ * Bridge a repo's pinned package manager (yarn/pnpm) via corepack when it isn't
+ * globally installed, so projects like excalidraw (`packageManager: yarn@…`,
+ * start = `yarn && vite`) launch with only npm on PATH. Returns the shim dir to
+ * prepend to the dev-server PTY's PATH (`pathPrepend`), or null when no bridge
+ * is needed.
+ * @param {string} projectPath
+ * @returns {Promise<{success: boolean, data?: {pathPrepend: string|null}}>}
+ */
+export async function ensureCorepackShims(projectPath) {
+  return invoke('ensure_corepack_shims', { projectPath });
+}
+
+/**
  * Log an App-Preview lifecycle event to the `preview` output channel
  * (ring buffer + preview.jsonl), so launch decisions survive for diagnosis.
  * @param {string} level - error | warn | info | debug

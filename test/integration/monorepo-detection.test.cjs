@@ -85,7 +85,7 @@ describe('static-frontend Tauri apps (port 0 — no dev server)', () => {
   });
 
   it('readiness falls back to the CDP port when there is no dev port', () => {
-    assert.ok(dsm.includes('const readinessPort = cdpPort || server.port'), 'watchStartup: CDP-first readiness');
+    assert.ok(dsm.includes('let targetPort = cdpPort || server.port'), 'watchStartup: CDP-first readiness');
     assert.ok(dsm.includes('const pulsePort = state.port || state.cdpPort'), 'health sweep fallback');
     assert.ok(dsm.includes('const verifyPort = state.port || state.cdpPort || server.port'), 'stale-running verify fallback');
   });
@@ -119,7 +119,7 @@ describe('custom-launcher Tauri apps (bespoke monorepos like yaak)', () => {
   });
 
   it('Tauri readiness tracks the CDP port (window), not the early frontend port', () => {
-    assert.ok(dsm.includes('const readinessPort = cdpPort || server.port'),
+    assert.ok(dsm.includes('let targetPort = cdpPort || server.port'),
       'CDP port is the readiness signal for a native app');
   });
 });

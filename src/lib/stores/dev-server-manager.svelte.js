@@ -6,7 +6,7 @@
  * to cap concurrent running servers.
  */
 
-import { terminalSpawn, terminalInput, terminalKill, probePort, lensNavigate, killPortProcess, sandboxSetActivePort, sandboxClearActivePort, findFreeCdpPort, logPreview, findNativeWindow } from '../api.js';
+import { terminalSpawn, terminalInput, terminalKill, probePort, lensNavigate, killPortProcess, sandboxSetActivePort, sandboxClearActivePort, findFreeCdpPort, ensureCorepackShims, logPreview, findNativeWindow } from '../api.js';
 import { terminalTabsStore } from './terminal-tabs.svelte.js';
 import { lensStore } from './lens.svelte.js';
 import { toastStore } from './toast.svelte.js';
@@ -153,11 +153,15 @@ function createDevServerManager() {
    * @returns {Promise<boolean>}
    */
   function pollPort(port, projectPath, timeout = POLL_TIMEOUT) {
+    // `port` may be a number OR a getter, so the target can move mid-poll: a
+    // web app's real port is learned from its stdout AFTER polling starts
+    // (see watchStartup's output sniffer), and we must probe the corrected one.
+    const currentPort = () => (typeof port === 'function' ? port() : port);
     return new Promise((resolve, reject) => {
       const startTime = Date.now();
       const interval = setInterval(async () => {
         try {
-          const result = await probePort(port);
+          const result = await probePort(currentPort());
           if (result?.success && result?.data?.listening) {
             clearInterval(interval);
             pollTimers.delete(projectPath);
@@ -177,6 +181,38 @@ function createDevServerManager() {
 
       pollTimers.set(projectPath, { interval, reject });
     });
+  }
+
+  // Match a localhost URL a dev server prints when it's ready
+  // ("➜  Local:   http://localhost:3000/"). Ports come wrapped in ANSI colour
+  // codes (vite bolds the number: `localhost:[1m3000`), so ANSI must be
+  // eslint-disable-next-line no-control-regex
+  const ANSI_RE = /\u001b\[[0-9;]*m/g;
+  const LOCALHOST_URL_RE =
+    /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):(\d{2,5})/;
+
+  /**
+   * The port a dev server actually bound, read from what it printed to its
+   * output channel — the runtime truth that beats our static config guess
+   * (env-driven or auto-incremented ports; excalidraw binds :3000 not :5173).
+   * Scans newest-first so the LAST announced URL wins (servers reprint on
+   * restart). Returns the port number, or null if nothing was announced yet.
+   * @param {string} channel
+   * @returns {number|null}
+   */
+  function scanOutputForPort(channel) {
+    if (!channel) return null;
+    const entries = outputStore.projectEntries?.[channel];
+    if (!entries || !entries.length) return null;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const msg = (entries[i]?.message || '').replace(ANSI_RE, '');
+      const m = msg.match(LOCALHOST_URL_RE);
+      if (m) {
+        const p = Number(m[1]);
+        if (p > 0 && p < 65536) return p;
+      }
+    }
+    return null;
   }
 
   /**
@@ -387,6 +423,24 @@ function createDevServerManager() {
     };
     if (cdpPort) updateState(projectPath, { cdpPort });
 
+    // Corepack bridge: if the repo pins yarn/pnpm (excalidraw:
+    // `packageManager: yarn@1.22.22`, start = `yarn && vite`) but it isn't
+    // globally installed, generate corepack shims and PREPEND them to the PTY's
+    // PATH so BOTH the outer command and any inner `yarn`/`pnpm` calls resolve.
+    // COREPACK_ENABLE_DOWNLOAD_PROMPT=0 stops corepack blocking on a Y/n prompt
+    // in the PTY the first time it has to fetch a pinned version.
+    try {
+      const shim = await ensureCorepackShims(projectPath);
+      const shimDir = shim?.data?.pathPrepend;
+      if (shimDir) {
+        spawnEnv.VM_PREPEND_PATH = shimDir;
+        spawnEnv.COREPACK_ENABLE_DOWNLOAD_PROMPT = '0';
+        plog('info', `[launch] ${label}: corepack bridge active (PATH += ${shimDir})`);
+      }
+    } catch (e) {
+      plog('warn', `[launch] ${label}: corepack bridge check failed (continuing): ${e?.message || e}`);
+    }
+
     // Free the target port(s) before launching — the fix for the recurring
     // "Port X already in use" restart failure. taskkill /T of the tracked shell only
     // cleans up processes VM still knows about; when VM crashed/hung last time,
@@ -509,7 +563,7 @@ function createDevServerManager() {
    * 'running'; giving up demotes to stopped(reason).
    */
   async function watchStartup(projectPath, server, cdpPort, hasSetup, shellId) {
-    const label = `${server.framework || 'server'} :${server.port}`;
+    let label = `${server.framework || 'server'} :${server.port}`;
     // Still the launch this watcher belongs to? ('idle' = backgrounded by a
     // project switch mid-build — keep watching, matching the old promotion.)
     const stillMine = () => {
@@ -523,47 +577,76 @@ function createDevServerManager() {
     // while the Rust app still compiles for minutes, so it would promote to
     // 'running' long before there's anything to mirror. Fall back to the dev
     // port for plain web projects (no CDP).
-    const readinessPort = cdpPort || server.port;
-    const initialTimeout = hasSetup ? SETUP_POLL_TIMEOUT : POLL_TIMEOUT;
-    let ready = false;
-    if (!readinessPort) {
-      // Nothing pollable at all — trust the spawn and let the health sweep own it.
-      markRunning(projectPath, server, cdpPort);
-      return;
-    }
-    try {
-      ready = await pollPort(readinessPort, projectPath, initialTimeout);
-    } catch (err) {
-      if (err?.message === 'cancelled') return; // stopped/crashed during poll
-      throw err;
+    //
+    // The dev port is a STATIC GUESS from config, and it can be wrong — an
+    // env-driven or auto-incremented port (excalidraw's vite.config is
+    // `Number(env || 3000)`, so it binds :3000, not the :5173 we parsed). So
+    // for non-CDP apps we sniff the server's OWN output for the URL it prints
+    // and retarget the readiness probe (and the port we mirror) to it. `port`
+    // is passed to pollPort as a GETTER so the correction takes effect mid-poll.
+    let targetPort = cdpPort || server.port;
+    let sniffTimer = null;
+    if (!cdpPort) {
+      sniffTimer = setInterval(() => {
+        const channel = servers.get(projectPath)?.outputChannel;
+        const announced = scanOutputForPort(channel);
+        if (announced && announced !== targetPort) {
+          plog('info', `[launch] ${label}: dev server announced :${announced} (guessed :${targetPort}) — retargeting readiness + mirror`);
+          targetPort = announced;
+          // Correct the URL too — markRunning navigates the Lens preview to it,
+          // so a stale port here would load a dead URL even after readiness.
+          const url = (server.url || `http://localhost:${announced}`).replace(/:\d+/, `:${announced}`);
+          server = { ...server, port: announced, url };
+          label = `${server.framework || 'server'} :${announced}`;
+          updateState(projectPath, { port: announced, url });
+        }
+      }, 400);
     }
 
-    if (!ready) {
-      if (!stillMine()) return;
-      plog('warn', `[launch] ${label}: port :${readinessPort} not listening after ${initialTimeout / 1000}s — still watching, status stays 'starting'`);
-      toastStore.addToast({
-        message: hasSetup
-          ? 'Setup may still be running — check terminal'
-          : `Still building/starting ${server.framework || 'app'}${server.port ? ` :${server.port}` : ''} — check the terminal if this persists`,
-        severity: 'warning',
-        key: `dev-server-${projectPath}`,
-      });
-      try {
-        ready = await pollPort(readinessPort, projectPath, EXTENDED_POLL_TIMEOUT);
-      } catch (err) {
-        if (err?.message === 'cancelled') return;
-        throw err;
-      }
-      if (!ready) {
-        if (!stillMine()) return;
-        plog('error', `[launch] ${label}: giving up — port :${readinessPort} never listened within ${(initialTimeout + EXTENDED_POLL_TIMEOUT) / 60000}min`);
-        demoteToStopped(projectPath, `nothing listened on :${readinessPort} — check the terminal for build errors`);
+    try {
+      const initialTimeout = hasSetup ? SETUP_POLL_TIMEOUT : POLL_TIMEOUT;
+      let ready = false;
+      if (!targetPort) {
+        // Nothing pollable at all — trust the spawn and let the health sweep own it.
+        markRunning(projectPath, server, cdpPort);
         return;
       }
-    }
+      try {
+        ready = await pollPort(() => targetPort, projectPath, initialTimeout);
+      } catch (err) {
+        if (err?.message === 'cancelled') return; // stopped/crashed during poll
+        throw err;
+      }
 
-    if (!stillMine()) return; // superseded by a stop/relaunch mid-poll
-    markRunning(projectPath, server, cdpPort);
+      if (!ready) {
+        if (!stillMine()) return;
+        plog('warn', `[launch] ${label}: port :${targetPort} not listening after ${initialTimeout / 1000}s — still watching, status stays 'starting'`);
+        toastStore.addToast({
+          message: hasSetup
+            ? 'Setup may still be running — check terminal'
+            : `Still building/starting ${server.framework || 'app'}${targetPort ? ` :${targetPort}` : ''} — check the terminal if this persists`,
+          severity: 'warning',
+          key: `dev-server-${projectPath}`,
+        });
+        try {
+          ready = await pollPort(() => targetPort, projectPath, EXTENDED_POLL_TIMEOUT);
+        } catch (err) {
+          if (err?.message === 'cancelled') return;
+          throw err;
+        }
+        if (!ready) {
+          if (!stillMine()) return;
+          plog('error', `[launch] ${label}: giving up — port :${targetPort} never listened within ${(initialTimeout + EXTENDED_POLL_TIMEOUT) / 60000}min`);
+          demoteToStopped(projectPath, `nothing listened on :${targetPort} — check the terminal for build errors`);
+          return;
+        }
+      }
+
+      if (!stillMine()) return; // superseded by a stop/relaunch mid-poll
+      markRunning(projectPath, server, cdpPort);
+    } finally {
+      if (sniffTimer) clearInterval(sniffTimer);
+    }
   }
 
   /**

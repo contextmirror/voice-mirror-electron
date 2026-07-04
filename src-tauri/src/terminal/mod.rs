@@ -495,6 +495,20 @@ impl TerminalManager {
         // (npm -> cargo -> the built app.exe).
         if let Some(env_vars) = &env {
             for (k, v) in env_vars {
+                // VM_PREPEND_PATH is a launcher DIRECTIVE, not a real env var:
+                // prepend its dir to the child's PATH instead of REPLACING PATH
+                // (setting env "PATH" wholesale would strip node/npm/system dirs).
+                // Used for corepack shims so a repo pinning yarn/pnpm launches
+                // without a global install. CommandBuilder inherits the parent
+                // env, so the live PATH read here is what the child would get.
+                if k == "VM_PREPEND_PATH" {
+                    if !v.is_empty() {
+                        let sep = if cfg!(windows) { ';' } else { ':' };
+                        let existing = std::env::var("PATH").unwrap_or_default();
+                        cmd.env("PATH", format!("{}{}{}", v, sep, existing));
+                    }
+                    continue;
+                }
                 cmd.env(k, v);
             }
         }

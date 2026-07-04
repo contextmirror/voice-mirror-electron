@@ -164,3 +164,15 @@ pub fn find_free_cdp_port() -> IpcResponse {
         None => IpcResponse::err("No free CDP port in the 9223-9499 scan range"),
     }
 }
+
+/// Bridge the project's pinned package manager (yarn/pnpm) via corepack when
+/// it isn't globally installed, so `sandbox_start` can launch repos like
+/// excalidraw (`packageManager: yarn@1.22.22`, start = `yarn && vite`) on a
+/// machine with only npm. Returns `{ pathPrepend }` — the shim dir the caller
+/// prepends to the dev-server PTY's PATH — or `{ pathPrepend: null }` when no
+/// bridge is needed (manager already on PATH, is npm/bun, or no corepack).
+#[tauri::command]
+pub fn ensure_corepack_shims(project_path: String) -> IpcResponse {
+    let dir = crate::services::dev_server::ensure_corepack_shims(&project_path);
+    IpcResponse::ok(serde_json::json!({ "pathPrepend": dir }))
+}

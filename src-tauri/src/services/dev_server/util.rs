@@ -87,6 +87,106 @@ pub(super) fn make_start_command(pkg_manager: &str, script: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Corepack bridge — run yarn/pnpm without a global install
+// ---------------------------------------------------------------------------
+
+/// The package manager a repo INTENDS to use, even when it isn't on PATH.
+///
+/// Priority: the `packageManager` field (corepack's own source of truth,
+/// e.g. `"yarn@1.22.22"`), then lockfiles. Returns the bare tool name
+/// ("yarn" | "pnpm" | "npm" | "bun") or None when nothing indicates one.
+pub fn intended_package_manager(project_root: &str) -> Option<String> {
+    let root = Path::new(project_root);
+    if let Ok(content) = std::fs::read_to_string(root.join("package.json")) {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+            if let Some(pm) = json.get("packageManager").and_then(|v| v.as_str()) {
+                let name = pm.split('@').next().unwrap_or("").trim();
+                if !name.is_empty() {
+                    return Some(name.to_string());
+                }
+            }
+        }
+    }
+    if root.join("bun.lockb").exists() || root.join("bun.lock").exists() {
+        Some("bun".to_string())
+    } else if root.join("yarn.lock").exists() {
+        Some("yarn".to_string())
+    } else if root.join("pnpm-lock.yaml").exists() {
+        Some("pnpm".to_string())
+    } else {
+        None
+    }
+}
+
+/// Ensure the project's intended package manager is runnable, bridging via
+/// corepack when it isn't globally installed. Returns the shim directory to
+/// PREPEND to the child PATH, or None when no bridge is needed.
+///
+/// The real-world gap (live repro: excalidraw): a repo pins
+/// `packageManager: yarn@1.22.22` and its start script is `yarn && vite`, but
+/// the user never `npm i -g yarn`'d. The npm-fallback can't save it — the
+/// SCRIPT ITSELF calls `yarn`. corepack (bundled with Node ≥16.9) is the
+/// standard bridge: it reads `packageManager` and runs the pinned version.
+///
+/// Rather than mutate the user's Node install (a bare `corepack enable` writes
+/// shims into the Node bin dir and can need admin), we generate shims into a
+/// VM-owned dir and hand it back for the launcher to prepend — so BOTH the
+/// outer command and any inner `yarn`/`pnpm` calls in the script resolve.
+pub fn ensure_corepack_shims(project_root: &str) -> Option<String> {
+    let manager = intended_package_manager(project_root)?;
+    // npm always ships with Node; bun is not a corepack-managed tool.
+    if manager == "npm" || manager == "bun" {
+        return None;
+    }
+    if is_command_available(&manager) {
+        return None; // already runnable — no bridge needed
+    }
+    if !is_command_available("corepack") {
+        tracing::warn!(
+            "[dev-server] project needs `{}` but neither it nor corepack is installed",
+            manager
+        );
+        return None;
+    }
+
+    let shim_dir = dirs::data_dir()?.join("voice-mirror").join("corepack-shims");
+    if let Err(e) = std::fs::create_dir_all(&shim_dir) {
+        tracing::warn!("[dev-server] could not create corepack shim dir: {}", e);
+        return None;
+    }
+
+    // `corepack enable --install-directory <dir> <mgr>` writes the shims
+    // (cmd + ps1 + POSIX) without touching the Node install. Idempotent —
+    // safe to re-run every launch, cheap enough not to cache.
+    let mut cmd = std::process::Command::new("corepack");
+    cmd.arg("enable")
+        .arg("--install-directory")
+        .arg(&shim_dir)
+        .arg(&manager)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    crate::util::hidden(&mut cmd);
+    match cmd.status() {
+        Ok(s) if s.success() => {
+            tracing::info!(
+                "[dev-server] corepack shims for `{}` → {}",
+                manager,
+                shim_dir.display()
+            );
+            Some(shim_dir.to_string_lossy().to_string())
+        }
+        other => {
+            tracing::warn!(
+                "[dev-server] `corepack enable {}` failed: {:?}",
+                manager,
+                other
+            );
+            None
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Parsing helpers
 // ---------------------------------------------------------------------------
 
