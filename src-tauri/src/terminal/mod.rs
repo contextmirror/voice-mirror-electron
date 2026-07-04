@@ -505,7 +505,16 @@ impl TerminalManager {
                     if !v.is_empty() {
                         let sep = if cfg!(windows) { ';' } else { ':' };
                         let existing = std::env::var("PATH").unwrap_or_default();
-                        cmd.env("PATH", format!("{}{}{}", v, sep, existing));
+                        let new_path = format!("{}{}{}", v, sep, existing);
+                        // Diagnostic: prove the shim dir actually lands on the
+                        // child PATH (the corepack bridge kept silently failing
+                        // downstream of a "bridge active" log). Truncated so the
+                        // line stays readable.
+                        let head: String = new_path.chars().take(160).collect();
+                        tracing::info!(target: "preview", "[corepack] PTY PATH prepend `{}` (existing {} chars) → {}…", v, existing.len(), head);
+                        cmd.env("PATH", new_path);
+                    } else {
+                        tracing::warn!(target: "preview", "[corepack] VM_PREPEND_PATH was empty — shim not applied");
                     }
                     continue;
                 }
