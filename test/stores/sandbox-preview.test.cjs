@@ -390,3 +390,18 @@ describe('sandbox-preview.svelte.js -- restart recovery', () => {
     assert.ok(/if \(noWindow\) \{[\s\S]*startStream\(/.test(block), 'recovery re-targets a live window');
   });
 });
+
+// -- "Hanging or failing?" — surface build errors during the starting state --
+
+describe('SandboxPreview.svelte -- failing-launch hint', () => {
+  const cmpSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'components', 'lens', 'preview', 'SandboxPreview.svelte'),
+    'utf-8'
+  );
+  it('flags a launch that logs ERRORs after a grace period', () => {
+    assert.ok(cmpSrc.includes('buildHasErrors'), 'derives whether the build is erroring');
+    assert.ok(cmpSrc.includes("e.level === 'ERROR'"), 'keys off ERROR-classified output');
+    assert.ok(/\(startElapsed \?\? 0\) > 20/.test(cmpSrc), 'only after a grace period (transient early errors)');
+    assert.ok(cmpSrc.includes('build-warn'), 'renders the honest warning');
+  });
+});

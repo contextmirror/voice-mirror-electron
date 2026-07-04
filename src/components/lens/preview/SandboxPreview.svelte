@@ -86,6 +86,16 @@
     const entries = outputStore.projectEntries[ch] || [];
     return entries.slice(-TAIL_LINES);
   });
+  // "Hanging or building?" — if the launch has been logging ERROR-level lines
+  // for a while, it's likely failing (not just slow), so say so instead of an
+  // indefinite "still starting". Only after a grace period, since a cold build
+  // can emit a transient error early. (Found via yaak: its frontend takes
+  // >180s to start and races tauri's own beforeDevCommand timeout, looping
+  // "Could not connect after 180s" while the panel just said "still starting".)
+  const buildHasErrors = $derived(
+    (startElapsed ?? 0) > 20 &&
+    (outputStore.projectEntries[startingServer?.outputChannel] || []).some((e) => e.level === 'ERROR')
+  );
 
   // The project-channel stream only flows once the output store listens —
   // normally the Output panel's mount does that, but the preview must not
@@ -326,6 +336,14 @@
         </span>
         {#if startElapsed != null}
           <small>{startElapsed}s elapsed{startElapsed > 20 ? ' — a native build can take minutes on first run' : ''}</small>
+        {/if}
+        {#if buildHasErrors}
+          <!-- Answers "is it hanging, or building?" — the launch is logging
+               errors, so it's likely failing rather than just slow. -->
+          <div class="build-warn">
+            ⚠ The dev server is logging errors — it may be failing to start rather than just building.
+            Check the <strong>Terminal</strong> tab for details, or Stop and try again.
+          </div>
         {/if}
         {#if buildTail.length > 0}
           <!-- Live tail of the launch's terminal output (its project channel) -->
@@ -589,6 +607,19 @@
 
   @media (prefers-reduced-motion: reduce) {
     .progress-fill { transition: none; }
+  }
+
+  .build-warn {
+    margin-top: 8px;
+    max-width: 100%;
+    padding: 8px 12px;
+    border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1.5;
+    text-align: center;
   }
 
   .build-tail {
