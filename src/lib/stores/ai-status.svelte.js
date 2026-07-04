@@ -19,6 +19,7 @@ import { buildLocalLlmInstructions } from '../local-llm-instructions.js';
 import { unwrapResult } from '../utils.js';
 import { PROVIDER_NAMES, CLI_PROVIDERS } from '../providers.js';
 import { toastStore } from './toast.svelte.js';
+import { audit } from '../audit-log.js';
 
 /** Module-level streaming message tracker for API providers. */
 let _apiStreamingMsgId = null;
@@ -29,6 +30,9 @@ function createAiStatusStore() {
   let displayName = $state('');
   let error = $state(null);
   let starting = $state(false);
+  // Usage snapshot from Claude Code's status line (the `ai-usage` event).
+  // null until the first snapshot arrives. See services/claude_usage.rs.
+  let usage = $state(null);
 
   return {
     get running() { return running; },
@@ -36,6 +40,8 @@ function createAiStatusStore() {
     get displayName() { return displayName; },
     get error() { return error; },
     get starting() { return starting; },
+    /** Latest Claude usage snapshot (model, context, cost, rate limits) or null. */
+    get usage() { return usage; },
 
     /** Whether the current provider is a CLI/PTY provider. */
     get isCliProvider() { return CLI_PROVIDERS.includes(providerType); },
@@ -60,6 +66,11 @@ function createAiStatusStore() {
     _setError(msg) {
       error = msg;
       starting = false;
+    },
+
+    /** Update the Claude usage snapshot (from the `ai-usage` event). */
+    _setUsage(next) {
+      usage = next || null;
     },
 
     _setStarting() {
@@ -207,6 +218,23 @@ export async function initAiStatusListeners() {
       aiStatusStore._setStatus(true, aiStatusStore.providerType, aiStatusStore.displayName);
     } else {
       aiStatusStore._setStatus(false, aiStatusStore.providerType, aiStatusStore.displayName);
+    }
+  });
+
+  // Claude Code usage snapshot (session/weekly/context/cost/model), captured
+  // from the status-line shim and re-emitted by the backend usage watcher.
+  let _usageSeen = false;
+  await listen('ai-usage', (event) => {
+    const payload = event.payload || null;
+    aiStatusStore._setUsage(payload);
+    // Audit the first snapshot so a broken pipe (never firing) is visible in
+    // the frontend timeline. Only once — this can fire on every refresh.
+    if (payload && !_usageSeen) {
+      _usageSeen = true;
+      audit('usage', 'first-snapshot', {
+        model: payload.model,
+        hasRateLimits: payload.hasRateLimits,
+      });
     }
   });
 

@@ -11,6 +11,7 @@
 
 import { diagnosticsStore } from './stores/diagnostics.svelte.js';
 import { updaterStore } from './stores/updater.svelte.js';
+import { aiStatusStore } from './stores/ai-status.svelte.js';
 import { devServerManager, POLL_TIMEOUT, EXTENDED_POLL_TIMEOUT } from './stores/dev-server-manager.svelte.js';
 import { detectEspeak, detectGpu, detectProviders, listSttModels, readFileBase64 } from './api.js';
 import { resolveViewerType } from './viewer-type.js';
@@ -277,6 +278,39 @@ export function registerAllContracts(deps) {
       } catch (e) {
         return { healthy: true, message: `Provider check unavailable: ${e?.message || e}` };
       }
+    },
+  });
+
+  // ── Usage Pulse ──
+  // Claude Code's status-line JSON → `ai-usage` event → aiStatusStore.usage →
+  // the status-bar strip. A broken wiring here means usage silently never shows;
+  // this contract catches the store field going missing, and reports live state.
+  diagnosticsStore.registerHealthContract({
+    name: 'usage-pulse',
+    description: 'Claude usage pulse (status-line JSON → ai-usage → status bar)',
+    check() {
+      // Wiring guard: the store must expose the field the listener writes and
+      // the status bar reads.
+      if (!('usage' in aiStatusStore)) {
+        return { healthy: false, message: 'usage-pulse wiring broken: aiStatusStore.usage missing' };
+      }
+      if (!aiStatusStore.isCliProvider) {
+        return { healthy: true, message: 'No CLI provider running — usage pulse idle' };
+      }
+      const u = aiStatusStore.usage;
+      if (!u) {
+        // Legitimately empty until Claude Code's first status-line refresh.
+        return { healthy: true, message: 'Awaiting first status-line snapshot from Claude Code' };
+      }
+      const bits = [];
+      if (u.model) bits.push(u.model);
+      if (u.fiveHour) bits.push(`session ${Math.round(u.fiveHour.usedPct)}%`);
+      if (u.contextPct != null) bits.push(`ctx ${Math.round(u.contextPct)}%`);
+      return {
+        healthy: true,
+        message: `Usage live: ${bits.join(', ') || 'snapshot received'}`,
+        details: { hasRateLimits: u.hasRateLimits },
+      };
     },
   });
 

@@ -8,6 +8,8 @@
    */
   import { listen } from '@tauri-apps/api/event';
   import { statusBarStore } from '../../lib/stores/status-bar.svelte.js';
+  import { aiStatusStore } from '../../lib/stores/ai-status.svelte.js';
+  import { PROVIDER_ICONS } from '../../lib/providers.js';
   import { navigationStore } from '../../lib/stores/navigation.svelte.js';
   import { projectStore } from '../../lib/stores/project.svelte.js';
   import { lspDiagnosticsStore } from '../../lib/stores/lsp-diagnostics.svelte.js';
@@ -18,11 +20,15 @@
   import { formatRelativeTime, unwrapResult } from '../../lib/utils.js';
   import { detectDevServers } from '../../lib/api.js';
   import ServersTab from '../lens/status/ServersTab.svelte';
+  import UsagePulse from './UsagePulse.svelte';
 
   // -- Derived state --
   let hasProject = $derived(!!projectStore.root);
   let activeView = $derived(navigationStore.activeView);
   let showEditorInfo = $derived(statusBarStore.editorFocused && activeView === 'lens');
+
+  // -- AI provider pill (moved here from the top titlebar) --
+  let providerIcon = $derived(PROVIDER_ICONS[aiStatusStore.providerType || 'claude'] || null);
 
   // -- LSP install progress --
   /** @type {{ server: string, status: string, message: string } | null} */
@@ -341,6 +347,31 @@
     {/if}
   </div>
 
+  <!-- ════════ CENTER: AI provider pill (+ usage strip) ════════ -->
+  <div class="status-bar-center">
+    {#if aiStatusStore.providerType}
+      <div class="sb-provider" aria-live="polite" title="AI provider status">
+        <span class="sb-provider-icon-wrapper">
+          {#if providerIcon?.type === 'cover'}
+            <span class="sb-provider-icon" style="background: url({providerIcon.src}) center/cover no-repeat; border-radius: 3px;"></span>
+          {:else if providerIcon}
+            <span class="sb-provider-icon" style="background: {providerIcon.bg};">
+              <img class="sb-provider-icon-img" src={providerIcon.src} alt="" />
+            </span>
+          {:else}
+            <span class="sb-provider-icon placeholder"></span>
+          {/if}
+          <span class="sb-provider-dot" class:running={aiStatusStore.running} class:starting={aiStatusStore.starting}></span>
+        </span>
+        <span class="sb-provider-name">{aiStatusStore.displayName || 'AI Provider'}</span>
+        <span class="sb-provider-state" class:running={aiStatusStore.running} class:starting={aiStatusStore.starting}>
+          {aiStatusStore.running ? 'Running' : aiStatusStore.starting ? 'Starting…' : 'Stopped'}
+        </span>
+      </div>
+    {/if}
+    <UsagePulse />
+  </div>
+
   <!-- ════════ RIGHT SIDE ════════ -->
   <div class="status-bar-right">
     <!-- R0: Update status (hidden when idle/disabled/error) -->
@@ -538,13 +569,127 @@
     position: relative;
   }
 
-  /* ========== Left / Right Sections ========== */
+  /* ========== Left / Center / Right Sections ========== */
+  /* Left & right flex:1 so the center section stays visually centred in the bar
+     regardless of how wide the side content gets. */
   .status-bar-left,
   .status-bar-right {
     display: flex;
     align-items: center;
     gap: 0;
     height: 100%;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .status-bar-left {
+    justify-content: flex-start;
+  }
+
+  .status-bar-right {
+    justify-content: flex-end;
+  }
+
+  .status-bar-center {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    flex: 0 1 auto;
+    min-width: 0;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  /* ========== Center: AI provider pill ========== */
+  .sb-provider {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 100%;
+    padding: 0 6px;
+    white-space: nowrap;
+  }
+
+  .sb-provider-icon-wrapper {
+    position: relative;
+    flex-shrink: 0;
+    width: 15px;
+    height: 15px;
+  }
+
+  .sb-provider-icon {
+    width: 15px;
+    height: 15px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .sb-provider-icon.placeholder {
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+  }
+
+  .sb-provider-icon-img {
+    width: 65%;
+    height: 65%;
+    object-fit: contain;
+  }
+
+  .sb-provider-dot {
+    position: absolute;
+    bottom: -1px;
+    right: -1px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--danger, #ef4444);
+    border: 1.5px solid var(--bg-elevated);
+    transition: background var(--duration-fast, 100ms) var(--ease-out, ease);
+  }
+
+  .sb-provider-dot.running {
+    background: var(--ok, #22c55e);
+    box-shadow: 0 0 5px rgba(34, 197, 94, 0.5);
+  }
+
+  .sb-provider-dot.starting {
+    background: var(--warn, #f59e0b);
+    box-shadow: 0 0 5px rgba(245, 158, 11, 0.4);
+    animation: sb-provider-pulse 1s ease-in-out infinite;
+  }
+
+  @keyframes sb-provider-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .sb-provider-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-strong, var(--text));
+  }
+
+  .sb-provider-state {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .sb-provider-state.running {
+    color: var(--ok, #22c55e);
+  }
+
+  .sb-provider-state.starting {
+    color: var(--warn, #f59e0b);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sb-provider-dot {
+      animation: none;
+      transition: none;
+    }
   }
 
   /* ========== Status Bar Items ========== */

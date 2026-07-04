@@ -29,6 +29,7 @@ const EXPECTED_SUBSYSTEMS = [
   'updater',
   'tts',
   'provider',
+  'usage-pulse',
   'stt',
   'gpu',
 ];

@@ -282,9 +282,9 @@ impl Provider for CliProvider {
                 if let Err(e) = mcp_config::write_mcp_config(root, &enabled_groups, cwd_override, &self.config.mcp_preferences) {
                     warn!("Failed to write MCP config: {}", e);
                 }
-                // Claude-only: configure status line (claude-pulse)
+                // Claude-only: configure the workspace-local status-line shim.
                 if is_claude {
-                    status_line::configure_status_line(root);
+                    status_line::configure_status_line(root, cwd_override);
                 }
             } else {
                 warn!(

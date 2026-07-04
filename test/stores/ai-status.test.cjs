@@ -215,3 +215,38 @@ describe('ai-status: API streaming integration', () => {
     assert.ok(src.includes('speakText'), 'Should call speakText for TTS on API responses');
   });
 });
+
+// ============ Claude usage pulse ============
+
+describe('ai-status: usage pulse wiring', () => {
+  it('has a usage $state field', () => {
+    assert.ok(/let\s+usage\s*=\s*\$state\(/.test(src), 'Should declare usage with $state()');
+  });
+
+  it('exposes a usage getter', () => {
+    assert.ok(src.includes('get usage()'), 'Should have usage getter');
+  });
+
+  it('has a _setUsage setter', () => {
+    assert.ok(src.includes('_setUsage('), 'Should have _setUsage method');
+  });
+
+  it('listens to the ai-usage event', () => {
+    assert.ok(
+      src.includes("'ai-usage'") || src.includes('"ai-usage"'),
+      'Should listen to ai-usage event'
+    );
+  });
+
+  it('routes the ai-usage payload into the store', () => {
+    assert.ok(
+      src.includes('_setUsage(payload') || src.includes('_setUsage(event.payload'),
+      'ai-usage handler should call _setUsage with the payload'
+    );
+  });
+
+  it('audits the first usage snapshot only once', () => {
+    assert.ok(src.includes("audit('usage'"), 'Should audit the usage subsystem');
+    assert.ok(src.includes('_usageSeen'), 'Should guard the audit with a once flag');
+  });
+});

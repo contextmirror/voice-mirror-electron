@@ -956,6 +956,24 @@ pub fn run() {
                 }
             }
 
+            // Clear any stale usage snapshot from a previous session so the
+            // status bar doesn't flash old data before Claude's first refresh.
+            services::claude_usage::clear_status_file();
+
+            // Start the Claude usage watcher — surfaces session/weekly/context/
+            // cost/model from Claude Code's status-line JSON as the `ai-usage`
+            // event, rendered natively in the status bar. Lives for the app's
+            // lifetime; leak the handle like the inbox watcher above.
+            match services::claude_usage::start_usage_watcher(app.handle().clone()) {
+                Ok(handle) => {
+                    info!("Claude usage watcher started successfully");
+                    std::mem::forget(handle);
+                }
+                Err(e) => {
+                    warn!("Failed to start Claude usage watcher: {}", e);
+                }
+            }
+
             // Restore saved window size, position, and mode from config.
             // The window starts hidden (visible: false in tauri.conf.json)
             // so the user never sees the wrong size/mode flash.

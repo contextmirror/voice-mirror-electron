@@ -1,7 +1,9 @@
 /**
  * app.test.cjs -- Source-inspection tests for App.svelte
  *
- * Validates the titlebar provider status indicator (moved from sidebar).
+ * The AI provider status pill moved OUT of the titlebar down to the bottom
+ * status bar (see status-bar.test.cjs → "AI provider pill"). The titlebar
+ * centerContent now holds only the command-palette search trigger.
  */
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
@@ -13,57 +15,14 @@ const src = fs.readFileSync(
   'utf-8'
 );
 
-describe('App.svelte -- titlebar provider status', () => {
-  it('imports PROVIDER_ICONS from providers.js', () => {
-    assert.ok(src.includes('PROVIDER_ICONS'), 'Should import PROVIDER_ICONS');
+describe('App.svelte -- titlebar no longer hosts the provider pill', () => {
+  it('does not render the provider status pill in the titlebar', () => {
+    assert.ok(!src.includes('titlebar-provider-status'), 'Provider pill should have moved to the status bar');
+    assert.ok(!src.includes('titlebar-status-dot'), 'Status dot should have moved to the status bar');
   });
 
-  it('derives providerIcon from aiStatusStore', () => {
-    assert.ok(src.includes('PROVIDER_ICONS[aiProviderType]'), 'Should derive providerIcon');
-  });
-
-  it('has titlebar-provider-status class', () => {
-    assert.ok(src.includes('titlebar-provider-status'), 'Should have provider status container');
-  });
-
-  it('has titlebar-provider-icon-wrapper class', () => {
-    assert.ok(src.includes('titlebar-provider-icon-wrapper'), 'Should have icon wrapper');
-  });
-
-  it('has titlebar-status-dot class', () => {
-    assert.ok(src.includes('titlebar-status-dot'), 'Should have status dot');
-  });
-
-  it('has titlebar-provider-name class', () => {
-    assert.ok(src.includes('titlebar-provider-name'), 'Should have provider name');
-  });
-
-  it('has titlebar-provider-state class', () => {
-    assert.ok(src.includes('titlebar-provider-state'), 'Should have provider state');
-  });
-
-  it('shows running state with class binding', () => {
-    assert.ok(src.includes('class:running={aiStatusStore.running}'), 'Should bind running class');
-  });
-
-  it('shows starting state with class binding', () => {
-    assert.ok(src.includes('class:starting={aiStatusStore.starting}'), 'Should bind starting class');
-  });
-
-  it('displays provider name from aiStatusStore', () => {
-    assert.ok(src.includes('aiStatusStore.displayName'), 'Should display provider name');
-  });
-
-  it('supports cover-type provider icons', () => {
-    assert.ok(src.includes("providerIcon?.type === 'cover'"), 'Should handle cover icons');
-  });
-
-  it('has placeholder for missing provider icon', () => {
-    assert.ok(src.includes('titlebar-provider-icon placeholder'), 'Should have placeholder class');
-  });
-
-  it('has status dot animation for starting state', () => {
-    assert.ok(src.includes('titlebar-status-pulse'), 'Should have pulse animation');
+  it('keeps the command-palette search trigger in the titlebar center', () => {
+    assert.ok(src.includes('titlebar-search-trigger'), 'Search trigger should remain in the titlebar');
   });
 });
 

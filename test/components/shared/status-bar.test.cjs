@@ -48,6 +48,53 @@ describe('StatusBar.svelte: layout', () => {
   it('has right section', () => {
     assert.ok(src.includes('status-bar-right'), 'Should have right section class');
   });
+
+  it('has center section', () => {
+    assert.ok(src.includes('status-bar-center'), 'Should have center section class');
+  });
+});
+
+describe('StatusBar.svelte: AI provider pill (relocated from titlebar)', () => {
+  it('imports aiStatusStore', () => {
+    assert.ok(src.includes("from '../../lib/stores/ai-status.svelte.js'"), 'Should import aiStatusStore');
+  });
+
+  it('imports PROVIDER_ICONS from providers.js', () => {
+    assert.ok(src.includes("from '../../lib/providers.js'"), 'Should import PROVIDER_ICONS');
+  });
+
+  it('derives providerIcon from the provider type', () => {
+    assert.ok(src.includes('PROVIDER_ICONS[aiStatusStore.providerType'), 'Should derive providerIcon');
+  });
+
+  it('has sb-provider container', () => {
+    assert.ok(src.includes('sb-provider'), 'Should have provider pill container');
+  });
+
+  it('has sb-provider-dot status dot', () => {
+    assert.ok(src.includes('sb-provider-dot'), 'Should have status dot');
+  });
+
+  it('binds running/starting classes to the dot and state', () => {
+    assert.ok(src.includes('class:running={aiStatusStore.running}'), 'Should bind running class');
+    assert.ok(src.includes('class:starting={aiStatusStore.starting}'), 'Should bind starting class');
+  });
+
+  it('displays provider name from aiStatusStore', () => {
+    assert.ok(src.includes('aiStatusStore.displayName'), 'Should display provider name');
+  });
+
+  it('supports cover-type provider icons', () => {
+    assert.ok(src.includes("providerIcon?.type === 'cover'"), 'Should handle cover icons');
+  });
+
+  it('has placeholder for missing provider icon', () => {
+    assert.ok(src.includes('sb-provider-icon placeholder'), 'Should have placeholder class');
+  });
+
+  it('has pulse animation for starting state', () => {
+    assert.ok(src.includes('sb-provider-pulse'), 'Should have pulse animation');
+  });
 });
 
 describe('StatusBar.svelte: CSS properties', () => {
