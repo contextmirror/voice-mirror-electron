@@ -171,7 +171,20 @@ pub fn ensure_corepack_shims(project_root: &str) -> Option<String> {
     // `corepack enable --install-directory <dir> <mgr>` writes the shims
     // (cmd + ps1 + POSIX) without touching the Node install. Idempotent —
     // safe to re-run every launch, cheap enough not to cache.
-    let mut cmd = std::process::Command::new("corepack");
+    //
+    // On Windows corepack ships ONLY as `corepack.cmd` (a batch shim) — there is
+    // no `corepack.exe`. Rust's `Command::new("corepack")` uses CreateProcess,
+    // which CANNOT execute a `.cmd` directly (only real executables), so it
+    // fails even though `where corepack` finds the .cmd. Route through
+    // `cmd /c` so the batch shim actually runs. (This is why the bridge silently
+    // no-op'd: is_command_available→true via where.exe, but the spawn failed.)
+    let mut cmd = if cfg!(windows) {
+        let mut c = std::process::Command::new("cmd");
+        c.arg("/d").arg("/s").arg("/c").arg("corepack");
+        c
+    } else {
+        std::process::Command::new("corepack")
+    };
     cmd.arg("enable")
         .arg("--install-directory")
         .arg(&shim_dir)
