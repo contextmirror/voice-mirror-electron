@@ -110,6 +110,25 @@ pub fn detect_dev_servers(project_root: &str) -> Vec<DetectedDevServer> {
         servers.push(server);
     }
 
+    // 7. Custom-launcher Tauri apps (bespoke monorepos): a tauri.conf.json lives
+    // somewhere non-standard and the app is launched by the project's OWN root
+    // dev/start script (yaak: `npm start` → node run-dev.mjs → tauri dev). Only
+    // when nothing standard already found a Tauri app, so conventional apps are
+    // untouched.
+    if !servers.iter().any(|s| s.framework.eq_ignore_ascii_case("tauri")) {
+        if let Some(server) = node::detect_tauri_via_custom_launcher(root, &pkg_manager) {
+            // This is the app's OWN launcher — the authoritative, preferred way
+            // to run it. Drop any workspace-member frontend entry that already
+            // claimed the same dev port (it's the SAME app's frontend; running
+            // the Tauri launcher runs that frontend natively), so the launch
+            // target isn't the bare frontend on a dedup race.
+            if server.port != 0 {
+                servers.retain(|s| s.port != server.port);
+            }
+            servers.push(server);
+        }
+    }
+
     // Probe all ports
     for server in &mut servers {
         server.running = is_port_listening(server.port);

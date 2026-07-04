@@ -502,10 +502,13 @@ function createDevServerManager() {
       return !!s && s.shellId === shellId && (s.status === 'starting' || s.status === 'idle');
     };
 
-    // Readiness signal: the dev port when the app has one; otherwise (a
-    // static-frontend Tauri app, port 0) the CDP debug port the launcher
-    // injected — it binds when the app window actually exists.
-    const readinessPort = server.port || cdpPort;
+    // Readiness signal: for a Tauri app, the CDP debug port — it binds only
+    // when the actual app WINDOW exists, which is the meaningful "ready" for a
+    // live preview. A frontend dev port (e.g. yaak's Vite on :1420) binds early
+    // while the Rust app still compiles for minutes, so it would promote to
+    // 'running' long before there's anything to mirror. Fall back to the dev
+    // port for plain web projects (no CDP).
+    const readinessPort = cdpPort || server.port;
     const initialTimeout = hasSetup ? SETUP_POLL_TIMEOUT : POLL_TIMEOUT;
     let ready = false;
     if (!readinessPort) {

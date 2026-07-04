@@ -3,10 +3,91 @@
 //! Scans package.json scripts, vite.config.*, tauri.conf.json, and .env files
 //! for known framework patterns and port configurations.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::DetectedDevServer;
 use super::util::{make_start_command, extract_port_from_url, extract_vite_port, extract_port_from_env, extract_port_flag};
+
+/// Find a `tauri.conf.json` anywhere in the usual (mono)repo spots — not just
+/// the standard `<root>/src-tauri`. Real complex Tauri apps put it elsewhere
+/// (yaak: `crates-tauri/yaak-app-client/tauri.conf.json`). Scans the root, its
+/// `src-tauri/`, and one level into `apps/*`, `crates-tauri/*`, `src-tauri/*`,
+/// `packages/*`. Returns `(conf_path, devUrl_port)` for the first real Tauri
+/// config found (`port` is `None` for a static-frontend app).
+fn find_tauri_conf_anywhere(root: &Path) -> Option<(PathBuf, Option<u16>)> {
+    let mut candidates: Vec<PathBuf> = vec![
+        root.join("tauri.conf.json"),
+        root.join("src-tauri").join("tauri.conf.json"),
+    ];
+    for parent in ["apps", "crates-tauri", "src-tauri", "packages"] {
+        if let Ok(entries) = std::fs::read_dir(root.join(parent)) {
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    candidates.push(p.join("tauri.conf.json"));
+                    candidates.push(p.join("src-tauri").join("tauri.conf.json"));
+                }
+            }
+        }
+    }
+    for conf in candidates {
+        if let Ok(content) = std::fs::read_to_string(&conf) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                // Confirm it's really a Tauri config, not some other tauri.conf.
+                let looks_tauri = json.get("identifier").is_some()
+                    || json.get("build").is_some()
+                    || json.get("app").is_some();
+                if looks_tauri {
+                    let port = json
+                        .get("build")
+                        .and_then(|b| b.get("devUrl"))
+                        .and_then(|v| v.as_str())
+                        .and_then(extract_port_from_url);
+                    return Some((conf, port));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Detect a Tauri app that is launched by the project's OWN root `dev`/`start`
+/// script rather than a standard `tauri dev` — bespoke monorepos where a custom
+/// node launcher orchestrates the build (yaak: `npm start` →
+/// `node scripts/run-dev.mjs client` → `tauri dev` in `crates-tauri/...`). The
+/// author's script is the source of truth; we run it from the repo root (env,
+/// incl. our injected CDP debug port, inherits down the process tree), using the
+/// devUrl port from the discovered config. A FALLBACK — only used when standard
+/// Tauri detection found nothing.
+pub(super) fn detect_tauri_via_custom_launcher(
+    root: &Path,
+    pkg_manager: &str,
+) -> Option<DetectedDevServer> {
+    let (conf_path, port) = find_tauri_conf_anywhere(root)?;
+    let pkg = std::fs::read_to_string(root.join("package.json")).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&pkg).ok()?;
+    let scripts = json.get("scripts").and_then(|s| s.as_object())?;
+    // The project's canonical run entrypoint, in preference order.
+    let script_key = ["dev", "start", "tauri:dev", "app:dev"]
+        .into_iter()
+        .find(|k| scripts.contains_key(*k))?;
+    let rel_conf = conf_path
+        .strip_prefix(root)
+        .unwrap_or(&conf_path)
+        .to_string_lossy()
+        .replace('\\', "/");
+    Some(DetectedDevServer {
+        framework: "Tauri".to_string(),
+        port: port.unwrap_or(0),
+        url: port
+            .map(|p| format!("http://localhost:{}", p))
+            .unwrap_or_default(),
+        start_command: make_start_command(pkg_manager, script_key),
+        source: format!("package.json `{}` script → {}", script_key, rel_conf),
+        running: false,
+        ..Default::default()
+    })
+}
 
 /// Try to read a Bun entry file (e.g. `index.ts`) and extract the `port` value.
 fn extract_bun_port_from_script(cmd: &str, root: &Path) -> Option<u16> {
@@ -522,6 +603,58 @@ mod tests {
     #[test]
     fn test_match_script_unknown() {
         assert!(match_script_pattern("node server.js", "start", "npm").is_none());
+    }
+
+    #[test]
+    fn test_custom_launcher_tauri_yaak_shape() {
+        // A yaak-style bespoke monorepo: tauri.conf.json under crates-tauri/<app>
+        // (NOT <root>/src-tauri), and the app is launched by the root `start`
+        // script (a custom node launcher we don't statically recognize). Standard
+        // detection finds nothing; the custom-launcher fallback must still run it.
+        let dir = std::env::temp_dir().join(format!("vm_test_custom_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let app = dir.join("crates-tauri").join("app-client");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(
+            app.join("tauri.conf.json"),
+            r#"{ "identifier": "com.x.app", "build": { "devUrl": "http://localhost:1420" } }"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("package.json"),
+            r#"{ "scripts": { "start": "node scripts/run-dev.mjs client" } }"#,
+        )
+        .unwrap();
+
+        // Standard root Tauri detection must MISS it (no <root>/src-tauri).
+        assert!(detect_from_tauri_conf(&dir, "npm").is_none());
+
+        // The custom-launcher fallback finds it and runs the ROOT `start` script.
+        let s = detect_tauri_via_custom_launcher(&dir, "npm").unwrap();
+        assert_eq!(s.framework, "Tauri");
+        assert_eq!(s.port, 1420);
+        assert_eq!(s.start_command, "npm run start");
+        assert!(s.source.contains("crates-tauri/app-client/tauri.conf.json"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_custom_launcher_ignored_without_launch_script() {
+        // A Tauri conf but no runnable root dev/start script → can't launch → None.
+        let dir = std::env::temp_dir().join(format!("vm_test_custom_none_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let app = dir.join("apps").join("desktop");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(
+            app.join("tauri.conf.json"),
+            r#"{ "build": { "devUrl": "http://localhost:1420" } }"#,
+        )
+        .unwrap();
+        std::fs::write(dir.join("package.json"), r#"{ "scripts": { "build": "x" } }"#).unwrap();
+
+        assert!(detect_tauri_via_custom_launcher(&dir, "npm").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

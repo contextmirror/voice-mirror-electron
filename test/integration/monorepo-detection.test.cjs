@@ -85,7 +85,7 @@ describe('static-frontend Tauri apps (port 0 — no dev server)', () => {
   });
 
   it('readiness falls back to the CDP port when there is no dev port', () => {
-    assert.ok(dsm.includes('const readinessPort = server.port || cdpPort'), 'watchStartup fallback');
+    assert.ok(dsm.includes('const readinessPort = cdpPort || server.port'), 'watchStartup: CDP-first readiness');
     assert.ok(dsm.includes('const pulsePort = state.port || state.cdpPort'), 'health sweep fallback');
     assert.ok(dsm.includes('const verifyPort = state.port || state.cdpPort || server.port'), 'stale-running verify fallback');
   });
@@ -93,5 +93,33 @@ describe('static-frontend Tauri apps (port 0 — no dev server)', () => {
   it('port 0 never participates in port dedupe or busy checks', () => {
     assert.ok(pipeRs.includes('dev_port != 0 &&'), 'pre-flight busy check must skip port 0');
     assert.ok(pipeRs.includes('.filter(|p| *p != 0)'), 'post-ack polling must drop port 0');
+  });
+});
+
+describe('custom-launcher Tauri apps (bespoke monorepos like yaak)', () => {
+  const nodeRs = read('src-tauri', 'src', 'services', 'dev_server', 'node.rs');
+  const modRs = read('src-tauri', 'src', 'services', 'dev_server', 'mod.rs');
+  const dsm = read('src', 'lib', 'stores', 'dev-server-manager.svelte.js');
+
+  it('finds tauri.conf.json outside <root>/src-tauri', () => {
+    assert.ok(nodeRs.includes('fn find_tauri_conf_anywhere'), 'has the broad conf finder');
+    assert.ok(nodeRs.includes('crates-tauri'), 'scans crates-tauri/* (the yaak layout)');
+  });
+
+  it('runs the project OWN root dev/start script as the launcher', () => {
+    assert.ok(nodeRs.includes('fn detect_tauri_via_custom_launcher'), 'has the custom-launcher detector');
+    assert.ok(nodeRs.includes('["dev", "start"'), 'prefers the canonical run script');
+  });
+
+  it('the custom-launcher Tauri target takes precedence over a frontend dupe', () => {
+    const block = modRs.split('detect_tauri_via_custom_launcher')[1] || '';
+    assert.ok(block.includes('servers.retain('), 'drops a same-port frontend entry');
+    assert.ok(modRs.includes('!servers.iter().any(|s| s.framework.eq_ignore_ascii_case("tauri"))'),
+      'only a FALLBACK — never overrides standard Tauri detection');
+  });
+
+  it('Tauri readiness tracks the CDP port (window), not the early frontend port', () => {
+    assert.ok(dsm.includes('const readinessPort = cdpPort || server.port'),
+      'CDP port is the readiness signal for a native app');
   });
 });
