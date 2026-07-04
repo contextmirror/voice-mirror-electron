@@ -365,16 +365,26 @@ function createDevServerManager() {
     // throttles (or stops) its rendering — which froze the WGC live preview on a
     // STALE frame (it only repainted when the window regained focus). Turning the
     // throttling off keeps the app painting while occluded, so WGC stays live.
-    const spawnEnv = cdpPort
-      ? {
-          WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:
-            `--remote-debugging-port=${cdpPort}` +
-            ' --disable-features=CalculateNativeWinOcclusion' +
-            ' --disable-backgrounding-occluded-windows' +
-            ' --disable-renderer-backgrounding' +
-            ' --disable-background-timer-throttling',
-        }
-      : null;
+    // Suppress the dev server's OWN browser auto-open so the app renders INSIDE
+    // App Preview instead of escaping to the system browser (Brave/Chrome). Many
+    // dev servers open a browser tab on boot — vite `server.open: true`
+    // (excalidraw does exactly this), create-react-app, webpack-dev-server. Vite
+    // and react-scripts both honor `BROWSER=none` (vite: openBrowser() no-ops when
+    // `process.env.BROWSER === 'none'`). Set for EVERY launch, not just Tauri —
+    // a web app that pops Brave defeats the see-and-drive loop just as badly.
+    const spawnEnv = {
+      BROWSER: 'none',
+      ...(cdpPort
+        ? {
+            WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:
+              `--remote-debugging-port=${cdpPort}` +
+              ' --disable-features=CalculateNativeWinOcclusion' +
+              ' --disable-backgrounding-occluded-windows' +
+              ' --disable-renderer-backgrounding' +
+              ' --disable-background-timer-throttling',
+          }
+        : {}),
+    };
     if (cdpPort) updateState(projectPath, { cdpPort });
 
     // Free the target port(s) before launching — the fix for the recurring
