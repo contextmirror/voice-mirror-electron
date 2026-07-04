@@ -348,8 +348,11 @@ function createSandboxPreviewStore() {
         this.open(port);
       } else {
         lastAutoPort = null;
-        // Only close an auto (dev-server) session; an attached external app stays.
-        if (active && !attached) this.close();
+        // Only close an auto (dev-server) session. NEVER close an attached
+        // external app — NOR a NATIVE session: a native app has no CDP port, so
+        // this sync (which tracks the active CDP port) would immediately tear it
+        // down the instant it opened. Native liveness is its own window check.
+        if (active && !attached && !native) this.close();
       }
     },
 
