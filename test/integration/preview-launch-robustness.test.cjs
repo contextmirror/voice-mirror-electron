@@ -47,6 +47,9 @@ describe('launch fix 2 -- corepack bridge for pinned yarn/pnpm', () => {
     assert.ok(util.includes('pub fn intended_package_manager'), 'reads the pinned manager');
     assert.ok(util.includes('packageManager'), 'honors the corepack packageManager field');
     assert.ok(util.includes('--install-directory'), 'generates shims into a VM dir, not the Node install');
+    // The dev server spawns in a MEMBER dir (excalidraw-app); the manager is
+    // pinned at the monorepo ROOT — so resolution must walk up parent dirs.
+    assert.ok(util.includes('dir = d.parent()'), 'intended_package_manager walks up to the workspace root');
   });
   it('is registered as a Tauri command', () => {
     assert.ok(sandboxCmds.includes('pub fn ensure_corepack_shims'), 'command wrapper');

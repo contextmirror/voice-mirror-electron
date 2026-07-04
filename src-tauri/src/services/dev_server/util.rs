@@ -95,27 +95,40 @@ pub(super) fn make_start_command(pkg_manager: &str, script: &str) -> String {
 /// Priority: the `packageManager` field (corepack's own source of truth,
 /// e.g. `"yarn@1.22.22"`), then lockfiles. Returns the bare tool name
 /// ("yarn" | "pnpm" | "npm" | "bun") or None when nothing indicates one.
+///
+/// Walks UP from the given dir: in a monorepo the manager is declared at the
+/// ROOT (the `packageManager` field + lockfile), but the dev server spawns in
+/// a MEMBER dir (live repro: excalidraw launches in `excalidraw-app`, which has
+/// neither) — so a root-only check found nothing and skipped the bridge. This
+/// mirrors how corepack itself resolves: nearest `packageManager` walking up.
 pub fn intended_package_manager(project_root: &str) -> Option<String> {
-    let root = Path::new(project_root);
-    if let Ok(content) = std::fs::read_to_string(root.join("package.json")) {
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-            if let Some(pm) = json.get("packageManager").and_then(|v| v.as_str()) {
-                let name = pm.split('@').next().unwrap_or("").trim();
-                if !name.is_empty() {
-                    return Some(name.to_string());
+    let mut dir = Some(Path::new(project_root));
+    // Bounded so a deeply-nested member can't crawl to the filesystem root and
+    // pick up an unrelated repo's lockfile; member→workspace-root is 1–2 hops.
+    for _ in 0..6 {
+        let Some(d) = dir else { break };
+        if let Ok(content) = std::fs::read_to_string(d.join("package.json")) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(pm) = json.get("packageManager").and_then(|v| v.as_str()) {
+                    let name = pm.split('@').next().unwrap_or("").trim();
+                    if !name.is_empty() {
+                        return Some(name.to_string());
+                    }
                 }
             }
         }
+        if d.join("bun.lockb").exists() || d.join("bun.lock").exists() {
+            return Some("bun".to_string());
+        }
+        if d.join("yarn.lock").exists() {
+            return Some("yarn".to_string());
+        }
+        if d.join("pnpm-lock.yaml").exists() {
+            return Some("pnpm".to_string());
+        }
+        dir = d.parent();
     }
-    if root.join("bun.lockb").exists() || root.join("bun.lock").exists() {
-        Some("bun".to_string())
-    } else if root.join("yarn.lock").exists() {
-        Some("yarn".to_string())
-    } else if root.join("pnpm-lock.yaml").exists() {
-        Some("pnpm".to_string())
-    } else {
-        None
-    }
+    None
 }
 
 /// Ensure the project's intended package manager is runnable, bridging via
@@ -371,6 +384,38 @@ pub(super) fn own_tauri_dev_port(project_root: &Path) -> Option<u16> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn intended_pm_walks_up_to_the_workspace_root() {
+        // Live repro: excalidraw declares `packageManager` + yarn.lock at the
+        // ROOT, but the dev server spawns in the `excalidraw-app` MEMBER dir
+        // (no field, no lockfile). The bridge must still resolve `yarn`.
+        let base = std::env::temp_dir().join(format!("vm_pm_{}", std::process::id()));
+        let member = base.join("excalidraw-app");
+        std::fs::create_dir_all(&member).unwrap();
+        std::fs::write(
+            base.join("package.json"),
+            r#"{ "packageManager": "yarn@1.22.22" }"#,
+        )
+        .unwrap();
+        std::fs::write(base.join("yarn.lock"), "").unwrap();
+        // The member has its own package.json WITHOUT a packageManager field.
+        std::fs::write(member.join("package.json"), r#"{ "name": "app" }"#).unwrap();
+
+        assert_eq!(
+            intended_package_manager(member.to_str().unwrap()).as_deref(),
+            Some("yarn"),
+            "must walk up from the member to find the root's pinned manager"
+        );
+        // A plain npm repo (no field, no lockfile anywhere) needs no bridge.
+        let plain = base.join("plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        std::fs::write(plain.join("package.json"), r#"{ "name": "x" }"#).unwrap();
+        // (plain is under base, which has yarn.lock — so walk-up finds yarn; that
+        // is correct: a file inside a yarn workspace IS a yarn context.)
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn test_extract_port_from_url_http() {
