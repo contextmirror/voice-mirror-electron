@@ -398,6 +398,16 @@ describe('SandboxPreview.svelte -- failing-launch hint', () => {
     path.join(__dirname, '..', '..', 'src', 'components', 'lens', 'preview', 'SandboxPreview.svelte'),
     'utf-8'
   );
+  it('flags a launch stuck repeating one line (WARN-loop, no ERROR)', () => {
+    // yaak's frontend never starts and just repeats "Waiting for..." at WARN;
+    // ERROR-only detection stays silent, so a repeated-line heuristic must
+    // also flag it as stuck.
+    assert.ok(cmpSrc.includes('buildLooksStuck'), 'derives a stuck-loop signal');
+    assert.ok(cmpSrc.includes('top >= 6'), 'a dominant repeated line = stuck');
+    assert.ok(cmpSrc.includes('buildTrouble'), 'combined trouble flag drives the banner');
+    assert.ok(cmpSrc.includes('looks stuck'), 'stuck copy differs from the error copy');
+  });
+
   it('flags a launch that logs ERRORs after a grace period', () => {
     assert.ok(cmpSrc.includes('buildHasErrors'), 'derives whether the build is erroring');
     assert.ok(cmpSrc.includes("e.level === 'ERROR'"), 'keys off ERROR-classified output');

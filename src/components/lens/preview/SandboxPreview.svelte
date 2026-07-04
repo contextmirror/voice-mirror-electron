@@ -96,6 +96,26 @@
     (startElapsed ?? 0) > 20 &&
     (outputStore.projectEntries[startingServer?.outputChannel] || []).some((e) => e.level === 'ERROR')
   );
+  // Stuck-in-a-loop: not every failure logs an ERROR. yaak's frontend never
+  // starts (its `vp dev --force` re-optimization races tauri's 180s
+  // beforeDevCommand timeout), so it just repeats "Waiting for your frontend
+  // dev server..." forever at WARN. If the recent output is dominated by ONE
+  // repeated line after a grace period, it's looping, not progressing.
+  const buildLooksStuck = $derived.by(() => {
+    if ((startElapsed ?? 0) < 45) return false;
+    const entries = outputStore.projectEntries[startingServer?.outputChannel] || [];
+    if (entries.length < 8) return false;
+    const last = entries.slice(-10);
+    const counts = {};
+    let top = 0;
+    for (const e of last) {
+      const m = (e.message || '').trim();
+      counts[m] = (counts[m] || 0) + 1;
+      if (counts[m] > top) top = counts[m];
+    }
+    return top >= 6; // one line repeated ≥6 of the last 10 → stuck loop
+  });
+  const buildTrouble = $derived(buildHasErrors || buildLooksStuck);
 
   // The project-channel stream only flows once the output store listens —
   // normally the Output panel's mount does that, but the preview must not
@@ -337,11 +357,17 @@
         {#if startElapsed != null}
           <small>{startElapsed}s elapsed{startElapsed > 20 ? ' — a native build can take minutes on first run' : ''}</small>
         {/if}
-        {#if buildHasErrors}
-          <!-- Answers "is it hanging, or building?" — the launch is logging
-               errors, so it's likely failing rather than just slow. -->
+        {#if buildTrouble}
+          <!-- Answers "is it hanging, or building?" — the launch is either
+               logging errors or repeating one line in a loop, so it's likely
+               failing/stuck rather than just slow. -->
           <div class="build-warn">
-            ⚠ The dev server is logging errors — it may be failing to start rather than just building.
+            {#if buildLooksStuck && !buildHasErrors}
+              ⚠ The dev server keeps repeating the same message — it looks stuck rather than progressing.
+              Its own dev server may be failing to start.
+            {:else}
+              ⚠ The dev server is logging errors — it may be failing to start rather than just building.
+            {/if}
             Check the <strong>Terminal</strong> tab for details, or Stop and try again.
           </div>
         {/if}
