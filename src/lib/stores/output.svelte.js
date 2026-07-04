@@ -53,6 +53,22 @@ let filterText = $state('');
 let wordWrap = $state(true);
 let listening = false;
 
+/**
+ * Append one or more entries to a project channel, capping at MAX_ENTRIES and
+ * reassigning once (a single reactive update for the whole batch).
+ * @param {string} channel
+ * @param {Array} newEntries
+ */
+function appendProjectEntries(channel, newEntries) {
+  if (!projectChannelEntries[channel]) {
+    projectChannelEntries[channel] = [];
+  }
+  const arr = projectChannelEntries[channel];
+  arr.push(...newEntries);
+  projectChannelEntries[channel] =
+    arr.length > MAX_ENTRIES ? arr.slice(arr.length - MAX_ENTRIES) : [...arr];
+}
+
 /** Level priority for filtering */
 function levelPriority(level) {
   const map = { ERROR: 5, WARN: 4, INFO: 3, DEBUG: 2, TRACE: 1 };
@@ -193,21 +209,22 @@ async function startListening() {
     }
   });
 
-  // Listen for project-output-log events (terminal mirroring from Rust)
+  // Listen for project-output-log events (terminal mirroring from Rust).
+  // Single-entry path (browser console capture, one-off pushes).
   await listen('project-output-log', (event) => {
     const { channel, entry } = event.payload;
     if (!channel || !entry) return;
+    appendProjectEntries(channel, [entry]);
+  });
 
-    if (!projectChannelEntries[channel]) {
-      projectChannelEntries[channel] = [];
-    }
-    const arr = projectChannelEntries[channel];
-    arr.push(entry);
-    if (arr.length > MAX_ENTRIES) {
-      projectChannelEntries[channel] = arr.slice(arr.length - MAX_ENTRIES);
-    } else {
-      projectChannelEntries[channel] = [...arr];
-    }
+  // Batched path (dev-server terminal output): one event carries a whole drain
+  // of lines, so a noisy server is a single reactive update, not hundreds — and
+  // a single main-thread Tauri event, which is the point (see the Rust side:
+  // hundreds of emits/sec fed the "Not Responding" WndProc stall, tauri#14750).
+  await listen('project-output-log-batch', (event) => {
+    const { channel, entries } = event.payload;
+    if (!channel || !Array.isArray(entries) || entries.length === 0) return;
+    appendProjectEntries(channel, entries);
   });
 }
 

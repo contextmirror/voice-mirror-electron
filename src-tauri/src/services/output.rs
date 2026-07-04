@@ -534,6 +534,58 @@ impl OutputStore {
         }
     }
 
+    /// Push MANY entries into a project channel in one shot, emitting a SINGLE
+    /// batched Tauri event instead of one per line.
+    ///
+    /// A noisy dev server (yaak's retry loop spews hundreds of identical lines a
+    /// second) otherwise fires hundreds of `project-output-log` events/sec at
+    /// the MAIN-THREAD event loop — each an iteration of tauri's
+    /// `handle_event_loop` that grabs its window-map mutex, widening the window
+    /// for the tao/tauri WndProc re-entrancy stall behind the "Not Responding"
+    /// hang (root-caused from the hang dumps; upstream tauri#14750). The ring
+    /// buffer + JSONL stay per-entry; only the emit is coalesced.
+    pub fn push_project_batch(&self, label: &str, lines: &[(String, String)]) {
+        if lines.is_empty() {
+            return;
+        }
+        let mut emitted: Vec<LogEntry> = Vec::with_capacity(lines.len());
+        {
+            let mut pcs = self
+                .project_channels
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            let Some(pc) = pcs.get_mut(label) else {
+                return; // unknown channel — drop (matches push_project)
+            };
+            for (level, message) in lines {
+                let timestamp = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                let entry = LogEntry {
+                    id: NEXT_ENTRY_ID.fetch_add(1, Ordering::Relaxed),
+                    timestamp,
+                    level: level.to_ascii_uppercase(),
+                    channel: Channel::App, // placeholder — project entries keyed by label
+                    message: message.clone(),
+                };
+                pc.buffer.push(entry.clone());
+                emitted.push(entry);
+            }
+        } // release the write lock before file IO + emit
+
+        if let Ok(fw) = self.file_writer.read() {
+            if let Some(ref writer) = *fw {
+                for e in &emitted {
+                    writer.append_project(label, e);
+                }
+                writer.maybe_truncate_project(label);
+            }
+        }
+
+        self.emit_project_entries(label, &emitted);
+    }
+
     /// Query a project channel's buffer.
     ///
     /// Returns `(matching_entries, total_count)`. If the channel does not exist,
@@ -599,6 +651,23 @@ impl OutputStore {
                 let _ = handle.emit(
                     "project-output-log",
                     serde_json::json!({ "channel": label, "entry": entry }),
+                );
+            }
+        }
+    }
+
+    /// Emit ONE Tauri event carrying a batch of project channel entries — the
+    /// coalesced counterpart to `emit_project_entry`, so a burst of dev-server
+    /// output is a single main-thread event-loop iteration, not hundreds.
+    fn emit_project_entries(&self, label: &str, entries: &[LogEntry]) {
+        if entries.is_empty() {
+            return;
+        }
+        if let Ok(ah) = self.app_handle.read() {
+            if let Some(handle) = ah.as_ref() {
+                let _ = handle.emit(
+                    "project-output-log-batch",
+                    serde_json::json!({ "channel": label, "entries": entries }),
                 );
             }
         }
@@ -1584,6 +1653,36 @@ mod tests {
         assert_eq!(entries[0].level, "INFO");
         assert_eq!(entries[1].message, "Deprecation warning");
         assert_eq!(entries[1].level, "WARN");
+    }
+
+    #[test]
+    fn test_push_project_batch_stores_all_entries() {
+        let store = OutputStore::new();
+        store.register_project_channel(
+            "batched".to_string(),
+            "/p/batched".to_string(),
+            Some("tauri".to_string()),
+            Some(1420),
+        );
+
+        let lines = vec![
+            ("INFO".to_string(), "Compiling foo".to_string()),
+            ("WARN".to_string(), "deprecated bar".to_string()),
+            ("ERROR".to_string(), "Could not connect after 180s".to_string()),
+        ];
+        store.push_project_batch("batched", &lines);
+
+        let (entries, total) = store.query_project("batched", None, None, None);
+        assert_eq!(total, 3);
+        assert_eq!(entries[0].message, "Compiling foo");
+        assert_eq!(entries[0].level, "INFO");
+        assert_eq!(entries[2].level, "ERROR");
+
+        // Empty batch and unknown channel are no-ops (never panic).
+        store.push_project_batch("batched", &[]);
+        store.push_project_batch("does-not-exist", &lines);
+        let (_, total_after) = store.query_project("batched", None, None, None);
+        assert_eq!(total_after, 3);
     }
 
     #[test]

@@ -23,6 +23,15 @@ describe('output.svelte.js -- project channels', () => {
     assert.ok(src.includes("'project-output-log'"), 'Should listen for project-output-log');
   });
 
+  it('listens for the BATCHED project-output-log-batch event (flood coalescing)', () => {
+    // A noisy dev server fires hundreds of lines/sec; the Rust side coalesces
+    // them into one event so the main-thread tauri event loop isn't flooded
+    // (feeds the "Not Responding" WndProc stall, tauri#14750). The store must
+    // handle the batch shape { channel, entries[] }.
+    assert.ok(src.includes("'project-output-log-batch'"), 'Should listen for the batch event');
+    assert.ok(src.includes('appendProjectEntries'), 'Should append via the shared batched helper');
+  });
+
   it('listens for lens-console-message event', () => {
     assert.ok(src.includes("'lens-console-message'"), 'Should listen for lens-console-message');
   });

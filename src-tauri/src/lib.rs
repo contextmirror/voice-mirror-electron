@@ -784,8 +784,15 @@ pub fn run() {
                             // Emit batched stdout events (one per session)
                             let mut should_break = false;
                             for (session_id, (text, output_channel, output_store)) in &grouped {
-                                // Project channel logging (moved here from reader thread)
+                                // Project channel logging (moved here from reader thread).
+                                // Collect the whole batch's lines and push them in ONE
+                                // call → a SINGLE `project-output-log-batch` event, not
+                                // one emit per line. A noisy dev server firing hundreds
+                                // of lines/sec otherwise floods the main-thread event
+                                // loop and feeds the tao/tauri WndProc re-entrancy stall
+                                // behind the "Not Responding" hang (tauri#14750).
                                 if let (Some(channel), Some(store)) = (output_channel, output_store) {
+                                    let mut batch: Vec<(String, String)> = Vec::new();
                                     for line in text.lines() {
                                         let trimmed = line.trim();
                                         if !trimmed.is_empty() {
@@ -793,10 +800,11 @@ pub fn run() {
                                             let clean = clean.trim();
                                             if !clean.is_empty() {
                                                 let level = terminal::classify_terminal_line(clean);
-                                                store.push_project(channel, level, clean);
+                                                batch.push((level.to_string(), clean.to_string()));
                                             }
                                         }
                                     }
+                                    store.push_project_batch(channel, &batch);
                                 }
 
                                 let event_name = format!("terminal-output-{}", session_id);
