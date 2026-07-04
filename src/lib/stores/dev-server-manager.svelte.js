@@ -433,11 +433,13 @@ function createDevServerManager() {
       const shim = await ensureCorepackShims(projectPath);
       corepackShimDir = shim?.data?.pathPrepend || null;
       if (corepackShimDir) {
-        // Belt: pass it as an env PATH prepend too (harmless, helps non-bash
-        // shells). Braces (the reliable path) is the in-shell export below —
-        // the env prepend does NOT survive git-bash's MSYS PATH rebuild for a
-        // huge inherited PATH (proven live), so the command itself must set it.
-        spawnEnv.VM_PREPEND_PATH = corepackShimDir;
+        // Do NOT set VM_PREPEND_PATH: the backend would satisfy it by overriding
+        // the child PATH with std::env::var("PATH") — VM's OWN process PATH,
+        // which under `tauri dev` is bloated to ~19k chars with cargo
+        // build-script dirs. That oversized PATH breaks git-bash's MSYS PATH
+        // conversion (entries get silently dropped → tool resolution fails).
+        // Instead we leave PATH alone so the child inherits portable_pty's clean
+        // registry-derived PATH, and prepend the shim IN-SHELL (export below).
         spawnEnv.COREPACK_ENABLE_DOWNLOAD_PROMPT = '0';
         plog('info', `[launch] ${label}: corepack bridge active (shim ${corepackShimDir})`);
       } else {
