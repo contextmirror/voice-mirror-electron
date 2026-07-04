@@ -67,8 +67,15 @@ describe('launch fix 2 -- corepack bridge for pinned yarn/pnpm', () => {
   it('is bound in api.js and called before spawn', () => {
     assert.ok(api.includes('export async function ensureCorepackShims('), 'api binding');
     assert.ok(dsm.includes('ensureCorepackShims('), 'launch calls it');
-    assert.ok(dsm.includes('VM_PREPEND_PATH'), 'passes the shim dir as a PATH-prepend directive');
     assert.ok(dsm.includes('COREPACK_ENABLE_DOWNLOAD_PROMPT'), 'disables the interactive download prompt (PTY hang guard)');
+  });
+  it('prepends the shim to PATH IN THE SHELL COMMAND (env prepend is dropped by git-bash MSYS)', () => {
+    // The env-var PATH prepend does not survive git-bash's MSYS PATH rebuild
+    // when VM's inherited PATH is huge — the shim was silently dropped and yarn
+    // stayed unresolved. The reliable fix prepends inside the command via
+    // cygpath so it lands after the shell's own PATH setup.
+    assert.ok(dsm.includes('cygpath -u'), 'converts the Windows shim dir to the shell POSIX form');
+    assert.ok(dsm.includes('export PATH='), 'prepends the shim to PATH in the shell command itself');
   });
   it('the PTY prepends (not replaces) PATH for VM_PREPEND_PATH', () => {
     assert.ok(terminalRs.includes('VM_PREPEND_PATH'), 'spawn honors the directive');

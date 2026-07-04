@@ -425,20 +425,23 @@ function createDevServerManager() {
 
     // Corepack bridge: if the repo pins yarn/pnpm (excalidraw:
     // `packageManager: yarn@1.22.22`, start = `yarn && vite`) but it isn't
-    // globally installed, generate corepack shims and PREPEND them to the PTY's
-    // PATH so BOTH the outer command and any inner `yarn`/`pnpm` calls resolve.
-    // COREPACK_ENABLE_DOWNLOAD_PROMPT=0 stops corepack blocking on a Y/n prompt
-    // in the PTY the first time it has to fetch a pinned version.
+    // globally installed, generate corepack shims and prepend them to PATH so
+    // BOTH the outer command and any inner `yarn`/`pnpm` calls resolve.
+    // COREPACK_ENABLE_DOWNLOAD_PROMPT=0 stops corepack blocking on a Y/n prompt.
+    let corepackShimDir = null;
     try {
       const shim = await ensureCorepackShims(projectPath);
-      const shimDir = shim?.data?.pathPrepend;
-      if (shimDir) {
-        spawnEnv.VM_PREPEND_PATH = shimDir;
+      corepackShimDir = shim?.data?.pathPrepend || null;
+      if (corepackShimDir) {
+        // Belt: pass it as an env PATH prepend too (harmless, helps non-bash
+        // shells). Braces (the reliable path) is the in-shell export below —
+        // the env prepend does NOT survive git-bash's MSYS PATH rebuild for a
+        // huge inherited PATH (proven live), so the command itself must set it.
+        spawnEnv.VM_PREPEND_PATH = corepackShimDir;
         spawnEnv.COREPACK_ENABLE_DOWNLOAD_PROMPT = '0';
-        plog('info', `[launch] ${label}: corepack bridge active (PATH += ${shimDir})`);
+        plog('info', `[launch] ${label}: corepack bridge active (shim ${corepackShimDir})`);
       } else {
-        // Not silent: the backend logs the WHY to the preview channel (manager
-        // on PATH, not pinned, or node/corepack missing). Record that we asked.
+        // Not silent: the backend logs WHY to the preview channel.
         plog('debug', `[launch] ${label}: no corepack bridge (see [corepack] preview logs for why)`);
       }
     } catch (e) {
@@ -511,6 +514,19 @@ function createDevServerManager() {
       if (packageManager && packageManager !== 'npm' && startCommand.startsWith('npm run ')) {
         const script = startCommand.replace('npm run ', '');
         startCommand = `${packageManager} run ${script}`;
+      }
+
+      // Corepack shim on PATH — IN THE SHELL, not via the process env. The env
+      // PATH-prepend does not survive git-bash's MSYS PATH rebuild when the
+      // inherited PATH is huge (VM's is ~19k chars of cargo build dirs), so the
+      // shim was silently dropped and `yarn` stayed unresolved. Prepending here
+      // runs AFTER the shell's own PATH setup, right before the command, so the
+      // shim is guaranteed present for the inner `cmd /c yarn`. `cygpath -u`
+      // converts the Windows shim dir to the shell's POSIX form (git-bash is
+      // VM's default Windows shell); it's a no-op passthrough for POSIX paths,
+      // so this is safe on macOS/Linux too.
+      if (corepackShimDir) {
+        startCommand = `export PATH="$(cygpath -u '${corepackShimDir}' 2>/dev/null || echo '${corepackShimDir}'):$PATH"; ${startCommand}`;
       }
 
       // Chain setup commands with && (fail-fast among setup steps),
