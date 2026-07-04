@@ -442,6 +442,16 @@ describe('sandbox-preview: WEB sessions (plain web apps, no window to mirror)', 
     assert.ok(src.includes('listFailCount >= 3'), 'requires consecutive misses before teardown');
   });
 
+  it('a dead web session FULLY tears down so "Try again" can relaunch', () => {
+    // requestStart() no-ops while a session is active; leaving a dead web
+    // session active-with-an-error made the Try-again button do nothing
+    // (live repro: stop the server, switch project, click Try again).
+    const dead = src.slice(src.indexOf('function refreshWeb'), src.indexOf('function startPolling'));
+    assert.ok(dead.includes('active = false'), 'dead web session must clear active');
+    assert.ok(dead.includes('web = false'), 'and the web flag');
+    assert.ok(dead.includes('visible = true'), 'while keeping the panel up to show the reason');
+  });
+
   it('syncAuto never tears down a web session (the native-session gotcha, again)', () => {
     // syncAuto tracks the active CDP port; native AND web sessions have none,
     // so without the guard it would close them the instant they open.

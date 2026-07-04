@@ -258,8 +258,19 @@ function createSandboxPreviewStore() {
     if (!listening) {
       listFailCount += 1;
       if (listFailCount >= 3) {
+        // Fully tear the session down (not just an error flag): "Try again"
+        // goes through requestStart(), which no-ops while a session is active —
+        // a zombie active-but-dead web session made that button do nothing
+        // (live repro: stop excalidraw, switch project, click Try again).
+        // Keep the panel visible with the reason; a retry then relaunches the
+        // CURRENT project's app.
         stopPolling();
-        webUrl = ''; // drop the dead iframe
+        active = false;
+        web = false;
+        webUrl = '';
+        webPort = null;
+        listFailCount = 0;
+        visible = true;
         error = 'The dev server stopped.';
       }
     } else {
