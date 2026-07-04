@@ -211,6 +211,19 @@ pub fn run() {
     }));
 
     builder
+        // Origin-scoped IPC crash guard, injected into EVERY webview — and,
+        // because Windows/WebView2 applies init scripts to all subframes, into
+        // every IFRAME too. A cross-origin frame in the App Preview web embed
+        // otherwise receives Tauri's IPC bootstrap and can abort the whole
+        // process from inside a COM callback (no panic hook, no SEH, no dump —
+        // live repro: embedding VS Code's `code serve-web`). VM's own origins
+        // early-return so the app's invoke()/listen() is untouched. See
+        // MAIN_IFRAME_IPC_GUARD_SCRIPT in commands/lens/webview_setup.rs.
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry>::new("iframe-ipc-guard")
+                .js_init_script(commands::lens::MAIN_IFRAME_IPC_GUARD_SCRIPT.to_string())
+                .build(),
+        )
         .plugin(tauri_plugin_decorum::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())

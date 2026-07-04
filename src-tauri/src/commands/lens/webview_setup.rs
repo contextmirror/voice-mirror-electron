@@ -226,6 +226,60 @@ pub(super) const IPC_CRASH_GUARD_SCRIPT: &str = r#"
 })();
 "#;
 
+/// ORIGIN-SCOPED variant of the guard above, for the MAIN webview and every
+/// frame inside it. Registered as a plugin `js_init_script` in lib.rs, which
+/// reaches every webview — and, because Windows/WebView2 injects init scripts
+/// into ALL subframes regardless of `for_main_frame_only` (wry 0.55.1
+/// webview2/mod.rs ignores the flag), it also reaches every IFRAME.
+///
+/// Why: the App Preview embeds a web app's dev-server URL in an iframe
+/// (SandboxPreview.svelte). That cross-origin frame ALSO receives Tauri's IPC
+/// bootstrap (same all-subframes behavior), wiring a live bridge from the
+/// embedded app into the host's wry handler. When a frame with a non-http(s)
+/// origin posts to it — VS Code web's nested about:srcdoc/blob:/opaque frames
+/// do — wry's `Request::builder().uri(url).unwrap()` (webview2/mod.rs:910)
+/// panics inside an `extern "system"` COM callback: on Windows that's a
+/// `__fastfail` abort — no unwind, no panic hook, no SEH handler, no dump
+/// (live repro 2026-07-04: embedding `code serve-web` killed VM with zero
+/// crash-log traces).
+///
+/// Unlike the child-webview guard (which neutralises IPC on EVERY origin —
+/// Lens tabs never use it), this one must LEAVE Voice Mirror's own frontend
+/// alone or the whole app's invoke()/listen() dies. So it early-returns on
+/// VM's own origins (the vite dev origin + the packaged-app origins) and
+/// neutralises the transport everywhere else. Both entry points are stubbed:
+/// `chrome.webview.postMessage` (the transport) and the `window.ipc` façade
+/// wry's bootstrap may already have defined, so injection order doesn't
+/// matter. The embedded app degrades gracefully (its IPC calls no-op).
+pub(crate) const MAIN_IFRAME_IPC_GUARD_SCRIPT: &str = r#"
+(function() {
+    try {
+        var o = '';
+        try { o = String(location.origin || ''); } catch (e) { o = ''; }
+        if (o === 'http://localhost:31420'
+            || o === 'tauri://localhost'
+            || o === 'https://tauri.localhost'
+            || o === 'http://tauri.localhost') return;
+        var noop = function() {};
+        try {
+            var wv = window.chrome && window.chrome.webview;
+            if (wv && typeof wv.postMessage === 'function') {
+                try {
+                    Object.defineProperty(wv, 'postMessage', { value: noop, writable: true, configurable: true });
+                } catch (e) {
+                    try { wv.postMessage = noop; } catch (e2) {}
+                }
+            }
+        } catch (e) {}
+        try {
+            if (window.ipc && typeof window.ipc.postMessage === 'function') {
+                window.ipc.postMessage = noop;
+            }
+        } catch (e) {}
+    } catch (e) {}
+})();
+"#;
+
 /// Console hook initialization script for child WebView2 instances.
 ///
 /// Intercepts `console.log/warn/error/info/debug` and sends each call to the

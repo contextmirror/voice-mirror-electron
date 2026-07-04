@@ -13,6 +13,9 @@
 //! - `downloads` — download manager queries
 
 mod webview_setup;
+// The origin-scoped IPC guard for the MAIN webview + its iframes — registered
+// as a plugin init script in lib.rs (see MAIN_IFRAME_IPC_GUARD_SCRIPT docs).
+pub(crate) use webview_setup::MAIN_IFRAME_IPC_GUARD_SCRIPT;
 pub mod devtools;
 pub mod device_preview;
 pub mod find;

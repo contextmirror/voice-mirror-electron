@@ -83,6 +83,29 @@ describe('launch fix 2 -- corepack bridge for pinned yarn/pnpm', () => {
   });
 });
 
+describe('web-embed crash guard -- cross-origin iframes must not reach wry IPC', () => {
+  // Windows/WebView2 injects init scripts (including Tauri's IPC bootstrap)
+  // into ALL subframes. A cross-origin App Preview iframe whose nested frames
+  // have non-http origins (VS Code web: about:srcdoc/blob:) posting to that
+  // bridge aborts the process inside a COM callback — bypassing the panic
+  // hook, SEH handler, and dumps (live repro 2026-07-04). The guard stubs the
+  // transport in every frame EXCEPT Voice Mirror's own origins.
+  const setupRs = read('src-tauri', 'src', 'commands', 'lens', 'webview_setup.rs');
+
+  it('defines the origin-scoped guard beside the child-webview guard', () => {
+    assert.ok(setupRs.includes('MAIN_IFRAME_IPC_GUARD_SCRIPT'), 'guard constant exists');
+    assert.ok(setupRs.includes("o === 'http://localhost:31420'"), 'VM dev origin keeps its IPC');
+    assert.ok(setupRs.includes("o === 'https://tauri.localhost'"), 'packaged-app origin keeps its IPC');
+    assert.ok(setupRs.includes('window.ipc') && setupRs.includes('webview.postMessage'),
+      'stubs BOTH the transport and the window.ipc facade (injection-order independent)');
+  });
+
+  it('is registered as a plugin init script (reaches every webview + iframe)', () => {
+    assert.ok(libRs.includes('js_init_script(commands::lens::MAIN_IFRAME_IPC_GUARD_SCRIPT'),
+      'lib.rs registers the guard via a plugin js_init_script');
+  });
+});
+
 describe('launch fix 3 -- learn the real port from the dev server stdout', () => {
   it('scans the output channel for the announced localhost URL', () => {
     assert.ok(dsm.includes('function scanOutputForPort'), 'sniffer helper');
