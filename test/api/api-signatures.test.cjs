@@ -222,6 +222,7 @@ describe('api.js -- exported async functions', () => {
     'setAlwaysOnTop',
     'setResizable',
     'showWindow',
+    'takeStartupOpenPaths',
     // Voice
     'startVoice',
     'stopVoice',

@@ -28,6 +28,7 @@ use commands::project as project_cmds;
 use commands::workspace_state as ws_state_cmds;
 use commands::mcp as mcp_cmds;
 use commands::onboarding as onboarding_cmds;
+use commands::open_with as open_with_cmds;
 use commands::sandbox as sandbox_cmds;
 
 use providers::manager::AiManager;
@@ -200,13 +201,20 @@ pub fn run() {
     // nayballs/Yap@e0012a9). On a duplicate release launch, surface the app
     // instead of doing nothing.
     #[cfg(not(debug_assertions))]
-    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
         use tauri::Manager;
         info!("Second instance detected, focusing existing window");
         if let Some(main) = app.get_webview_window("main") {
             let _ = main.show();
             let _ = main.unminimize();
             let _ = main.set_focus();
+        }
+        // "Open with Voice Mirror": the second launch carries a file path
+        // (Explorer runs `voice-mirror.exe "<path>"`). Forward it to the
+        // frontend so the file opens in the editor instead of being dropped.
+        for path in open_with_cmds::extract_open_paths(&argv, std::path::Path::new(&cwd)) {
+            info!("Second-instance open request: {}", path);
+            let _ = app.emit("open-file-request", serde_json::json!({ "path": path }));
         }
     }));
 
@@ -378,12 +386,22 @@ pub fn run() {
             crate::terminal::TerminalManager::new(),
         )))
         .manage(output_store)
+        // "Open with Voice Mirror": file paths from the launching command
+        // line, drained by the frontend once the workspace has restored.
+        .manage(open_with_cmds::StartupOpenPaths(std::sync::Mutex::new(
+            open_with_cmds::extract_open_paths(
+                &std::env::args().collect::<Vec<_>>(),
+                &std::env::current_dir().unwrap_or_default(),
+            ),
+        )))
         .invoke_handler(tauri::generate_handler![
             // Config
             config_cmds::get_config,
             config_cmds::set_config,
             config_cmds::reset_config,
             config_cmds::get_api_key,
+            // Open-with (shell file associations)
+            open_with_cmds::take_startup_open_paths,
             // Window
             window_cmds::get_window_position,
             window_cmds::set_window_position,

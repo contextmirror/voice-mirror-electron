@@ -9,6 +9,7 @@
   import { voiceStore, initVoiceListeners, startVoiceEngine } from './lib/stores/voice.svelte.js';
   import { shortcutsStore, setActionHandler, setReleaseHandler, setupInAppShortcuts } from './lib/stores/shortcuts.svelte.js';
   import { initStartupGreeting } from './lib/voice-greeting.js';
+  import { initOpenFileRequestListener, drainStartupOpenPaths } from './lib/open-file-request.js';
   import { listen } from '@tauri-apps/api/event';
   import { writeUserMessage, aiPtyInput, pttPress, pttRelease, cancelRecording, configurePttKey, configureDictationKey, injectText, showWindow, minimizeWindow, restartVoice } from './lib/api.js';
   import { chatStore } from './lib/stores/chat.svelte.js';
@@ -50,7 +51,12 @@
     initVoiceListeners();
     initStartupGreeting();
     overlayStore.initEventListeners();
-    return () => overlayStore.destroyEventListeners();
+    // "Open with Voice Mirror" while already running (single-instance forward)
+    const unlistenOpenFile = initOpenFileRequestListener();
+    return () => {
+      overlayStore.destroyEventListeners();
+      unlistenOpenFile.then((un) => un()).catch(() => {});
+    };
   });
 
   // Initialize sidebar state and restore overlay mode from config once loaded.
@@ -160,7 +166,12 @@
       if (activeProject) {
         restoreState(activeProject.path).then(() => {
           startAutoSave(activeProject.path);
+          // "Open with Voice Mirror" on a fresh launch: open the argv files
+          // AFTER restore so they land focused on top of the restored tabs.
+          drainStartupOpenPaths();
         });
+      } else {
+        drainStartupOpenPaths();
       }
     }
   });

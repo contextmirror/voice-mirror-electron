@@ -59,6 +59,14 @@ export async function showWindow() {
   return invoke('show_window');
 }
 
+/**
+ * Drain the file paths this launch was started with ("Open with Voice
+ * Mirror" from the shell). One-shot: returns them once, empty after.
+ */
+export async function takeStartupOpenPaths() {
+  return invoke('take_startup_open_paths');
+}
+
 // ============ Voice ============
 
 export async function startVoice() {
