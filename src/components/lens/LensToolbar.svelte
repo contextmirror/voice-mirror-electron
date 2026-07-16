@@ -5,6 +5,7 @@
   import { browserTabsStore } from '../../lib/stores/browser-tabs.svelte.js';
   import { browserBookmarksStore } from '../../lib/stores/browser-bookmarks.svelte.js';
   import { browserHistoryStore } from '../../lib/stores/browser-history.svelte.js';
+  import { browserExtensionsStore } from '../../lib/stores/browser-extensions.svelte.js';
   import { lensHardRefresh } from '../../lib/api.js';
   import BrowserMenu from './browser/BrowserMenu.svelte';
 
@@ -126,8 +127,23 @@
     const unlisten = listen('lens-hard-refresh', () => {
       lensHardRefresh();
     });
-    return () => { unlisten.then(fn => fn()); };
+    // Populate the toolbar's extension buttons, and refresh when the settings
+    // panel mutates the set (install / remove / enable-disable).
+    browserExtensionsStore.refresh();
+    const onExtChange = () => browserExtensionsStore.refresh();
+    window.addEventListener('lens-extensions-changed', onExtChange);
+    return () => {
+      unlisten.then(fn => fn());
+      window.removeEventListener('lens-extensions-changed', onExtChange);
+    };
   });
+
+  // Open an extension's popup in a new browser tab (WebView2 renders no
+  // extension UI, so we surface the popup page ourselves).
+  function openExtensionPopup(ext) {
+    const popup = String(ext.popup || '').replace(/^\/+/, '');
+    browserTabsStore.openTab(`chrome-extension://${ext.id}/${popup}`);
+  }
 
   function handleSubmit(e) {
     e.preventDefault();
@@ -286,6 +302,17 @@
     </button>
   </form>
 
+  {#each browserExtensionsStore.withPopup as ext (ext.id)}
+    <button
+      class="nav-btn ext-btn"
+      onclick={() => openExtensionPopup(ext)}
+      title={ext.name}
+      aria-label={`Open ${ext.name}`}
+    >
+      {ext.name.slice(0, 1).toUpperCase()}
+    </button>
+  {/each}
+
   <button
     class="nav-btn"
     class:active={lensStore.designMode}
@@ -366,6 +393,19 @@
   .nav-btn:disabled {
     opacity: 0.3;
     cursor: default;
+  }
+
+  /* Extension popup buttons: a small letter badge in place of the (unavailable)
+     extension icon. */
+  .ext-btn {
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+
+  .ext-btn:hover:not(:disabled) {
+    color: var(--text);
   }
 
   .url-bar {
