@@ -102,3 +102,19 @@ describe('browser tier2: per-nav progress bar', () => {
     assert.ok(WORKSPACE.includes('browserTabsStore.activeTab?.loading'), 'Bar gated on active-tab loading');
   });
 });
+
+describe('browser tier2: find match counts', () => {
+  it('find commands return {found, total} via a JS-side count', () => {
+    assert.ok(FIND_RS.includes('fn find_js'), 'Should build a combined find+count script');
+    assert.ok(FIND_RS.includes('total'), 'Should count total matches');
+    assert.ok(/"found": found, "total": total/.test(FIND_RS), 'Should return found + total');
+    assert.ok(FIND_RS.includes('innerText'), 'Count scans rendered text');
+  });
+
+  it('FindBar shows current/total and tracks the active match', () => {
+    assert.ok(FINDBAR.includes('find-count'), 'Should render the count');
+    assert.ok(FINDBAR.includes('countLabel'), 'Should compute a current/total label');
+    assert.ok(/res\?\.data\?\.total/.test(FINDBAR), 'Should read total from the response');
+    assert.ok(FINDBAR.includes('No results'), 'Should show a no-results state');
+  });
+});

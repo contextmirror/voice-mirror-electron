@@ -58,8 +58,11 @@ carry what extensions need (`browser_extensions_enabled` env flag,
       and restores the pane bounds on exit. (`webview_setup.rs`,
       `LensPreview.svelte`)
 - [ ] **Print** — `ShowPrintUI` on Ctrl+P.
-- [ ] **Find match counts** — upgrade `window.find()` loop or adopt the
-      ICoreWebView2Find API.
+- [x] **Find match counts** — `find.rs` now returns `{found, total}`; total is a
+      JS-side case-insensitive scan of the page's rendered `innerText` (the
+      accepted approach). `FindBar` shows `current/total` (or "No results"),
+      tracking the active match forward/back with wraparound. (`find.rs`,
+      `FindBar.svelte`)
 - [ ] **Tab audio** — playing indicator + mute toggle
       (`IsDocumentPlayingAudio`/`IsMuted`, ICoreWebView2_8).
 - [ ] **Tab reorder (drag)** in `BrowserTabBar`.

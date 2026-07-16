@@ -11,6 +11,9 @@
   let inputEl = $state(null);
   let query = $state('');
   let debounceTimer = $state(null);
+  // Match counts: total on the page + which match we're currently on (1-based).
+  let total = $state(0);
+  let current = $state(0);
 
   // Auto-focus input when FindBar becomes visible
   $effect(() => {
@@ -20,9 +23,11 @@
     }
   });
 
-  // Clear selection when FindBar closes
+  // Clear selection + counts when FindBar closes
   $effect(() => {
     if (!visible) {
+      total = 0;
+      current = 0;
       const tabId = browserTabsStore.activeTabId;
       if (tabId) {
         lensCloseFind(tabId).catch(() => {});
@@ -30,34 +35,58 @@
     }
   });
 
-  function doFind() {
+  async function doFind() {
     const tabId = browserTabsStore.activeTabId;
-    if (!tabId || !query.trim()) return;
-    lensFindOnPage(tabId, query).catch((err) => {
+    if (!tabId || !query.trim()) { total = 0; current = 0; return; }
+    try {
+      const res = await lensFindOnPage(tabId, query);
+      total = res?.data?.total ?? 0;
+      current = res?.data?.found ? 1 : 0;
+    } catch (err) {
       console.warn('[FindBar] find failed:', err);
-    });
+    }
   }
 
-  function doNext() {
+  async function doNext() {
     const tabId = browserTabsStore.activeTabId;
     if (!tabId || !query.trim()) return;
-    lensFindNext(tabId, query).catch((err) => {
+    try {
+      const res = await lensFindNext(tabId, query);
+      total = res?.data?.total ?? total;
+      if (res?.data?.found) {
+        current = total > 0 ? (current >= total ? 1 : current + 1) : 1;
+      } else {
+        current = 0;
+      }
+    } catch (err) {
       console.warn('[FindBar] find next failed:', err);
-    });
+    }
   }
 
-  function doPrevious() {
+  async function doPrevious() {
     const tabId = browserTabsStore.activeTabId;
     if (!tabId || !query.trim()) return;
-    lensFindPrevious(tabId, query).catch((err) => {
+    try {
+      const res = await lensFindPrevious(tabId, query);
+      total = res?.data?.total ?? total;
+      if (res?.data?.found) {
+        current = total > 0 ? (current <= 1 ? total : current - 1) : 1;
+      } else {
+        current = 0;
+      }
+    } catch (err) {
       console.warn('[FindBar] find previous failed:', err);
-    });
+    }
   }
 
   function handleInput() {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(doFind, 200);
   }
+
+  const countLabel = $derived(
+    total > 0 ? `${current}/${total}` : (query.trim() ? 'No results' : '')
+  );
 
   function handleKeydown(e) {
     if (e.key === 'Enter') {
@@ -93,6 +122,9 @@
       autocomplete="off"
       aria-label="Search query"
     />
+    {#if countLabel}
+      <span class="find-count" class:no-results={total === 0} role="status" aria-live="polite">{countLabel}</span>
+    {/if}
     <div class="find-actions">
       <button
         class="find-btn"
@@ -162,6 +194,19 @@
 
   .find-input::placeholder {
     color: var(--muted);
+  }
+
+  .find-count {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    padding: 0 4px;
+    white-space: nowrap;
+  }
+
+  .find-count.no-results {
+    color: var(--danger);
   }
 
   .find-actions {
