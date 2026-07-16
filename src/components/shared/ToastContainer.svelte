@@ -12,7 +12,9 @@
   import Toast from './Toast.svelte';
 
   function handleDismiss(id) {
-    toastStore.dismissToast(id);
+    // byUser: closing a prompt is an answer — the same key won't re-float
+    // this session (re-raises update the notification center quietly).
+    toastStore.dismissToast(id, { byUser: true });
   }
 
   function handleResolve(id) {

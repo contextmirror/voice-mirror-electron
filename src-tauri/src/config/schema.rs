@@ -507,6 +507,13 @@ pub struct ProjectsConfig {
 }
 
 /// A single project entry (path + display name + color tag).
+///
+/// GOTCHA: this config is strongly typed — serde silently DROPS any field
+/// the frontend persists that isn't declared here. That once ate
+/// `autoStartServer`/`preferredServerUrl`/`lastBrowserUrl` on every save,
+/// so "Always start" never survived a restart and the dev-server consent
+/// prompt re-appeared on every launch. When the frontend adds a per-project
+/// field, it MUST be added here too.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectEntry {
@@ -517,6 +524,23 @@ pub struct ProjectEntry {
     pub icon: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp_servers: Option<HashMap<String, McpServerPref>>,
+    /// Dev server URL the user prefers the browser to open for this project.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_server_url: Option<String>,
+    /// Last URL the in-app browser showed for this project.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_browser_url: Option<String>,
+    /// Dev-server consent: true = always start, false = never/don't ask,
+    /// absent = ask.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_start_server: Option<bool>,
+    /// Auto-open the App Preview when this project's app launches.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_start_preview: Option<bool>,
+    /// Epoch ms until which the dev-server consent prompt is snoozed
+    /// ("Not now" persists a 24h snooze).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub consent_snoozed_until: Option<f64>,
 }
 
 /// Per-server enable/disable preference for a project workspace.

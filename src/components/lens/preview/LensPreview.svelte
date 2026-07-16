@@ -160,12 +160,27 @@
     }
   });
 
-  // Session memory for "Not now" on the dev-server consent prompt: don't
-  // re-offer for this project until something actually changes (a server
-  // start clears it; "Always start" sets autoStartServer which skips the
-  // prompt entirely). Without this, every re-detection re-floated the
-  // prompt the user had just declined.
-  const consentDismissed = new Set();
+  // "Not now" on the dev-server consent prompt persists a 24h snooze on the
+  // project entry (consentSnoozedUntil) — it survives app restarts, so the
+  // prompt doesn't greet the user on every dev-cycle relaunch, but expires
+  // on its own (no permanent opt-out trap; there is no re-enable UI yet).
+  // Any start action clears it. ✕ on the toast is handled separately by the
+  // toast store (session-scoped: user-dismissed keys never re-float).
+  const CONSENT_SNOOZE_MS = 24 * 60 * 60 * 1000;
+
+  function snoozeConsent(projectPath) {
+    const idx = projectStore.entries.findIndex((e) => e.path === projectPath);
+    if (idx !== -1) {
+      projectStore.updateProjectField(idx, 'consentSnoozedUntil', Date.now() + CONSENT_SNOOZE_MS);
+    }
+  }
+
+  function clearConsentSnooze(projectPath) {
+    const idx = projectStore.entries.findIndex((e) => e.path === projectPath);
+    if (idx !== -1 && projectStore.entries[idx].consentSnoozedUntil) {
+      projectStore.updateProjectField(idx, 'consentSnoozedUntil', null);
+    }
+  }
 
   // Guards against parked async runs: detectAndNavigate awaits webview
   // readiness (up to 10s), so a project switch mid-wait left the OLD call
@@ -241,9 +256,9 @@
         } else {
           const autoStart = project.autoStartServer;
           console.log('[lens] Auto-start check:', { autoStart, framework: stoppedServer.framework, port: stoppedServer.port });
-          if (consentDismissed.has(project.path)) {
-            // "Not now" already answered this session — don't re-offer.
-            console.log('[lens] Consent declined this session, skipping offer');
+          if (project.consentSnoozedUntil && project.consentSnoozedUntil > Date.now()) {
+            // "Not now" answered recently (persisted snooze) — don't re-offer.
+            console.log('[lens] Consent snoozed, skipping offer');
           } else if (autoStart === null || autoStart === undefined) {
             if (stoppedServer.needsSetup) {
               // Missing venv or deps — offer to set up environment
@@ -256,13 +271,13 @@
                   {
                     label: 'Set up & start',
                     callback: () => {
-                      consentDismissed.delete(project.path);
+                      clearConsentSnooze(project.path);
                       devServerManager.startServer(stoppedServer, launchPath, packageManager);
                     },
                   },
                   {
                     label: 'Not now',
-                    callback: () => consentDismissed.add(project.path),
+                    callback: () => snoozeConsent(project.path),
                   },
                 ],
               });
@@ -277,7 +292,7 @@
                   {
                     label: 'Always start',
                     callback: () => {
-                      consentDismissed.delete(project.path);
+                      clearConsentSnooze(project.path);
                       projectStore.updateActiveField('autoStartServer', true);
                       devServerManager.startServer(stoppedServer, launchPath, packageManager);
                     },
@@ -285,13 +300,13 @@
                   {
                     label: 'Start once',
                     callback: () => {
-                      consentDismissed.delete(project.path);
+                      clearConsentSnooze(project.path);
                       devServerManager.startServer(stoppedServer, launchPath, packageManager);
                     },
                   },
                   {
                     label: 'Not now',
-                    callback: () => consentDismissed.add(project.path),
+                    callback: () => snoozeConsent(project.path),
                   },
                 ],
               });

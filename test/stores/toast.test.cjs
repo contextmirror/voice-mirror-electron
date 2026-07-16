@@ -237,6 +237,13 @@ describe('toast.svelte.js -- key-based deduplication', () => {
     );
   });
 
+  it('respects user dismissal: a ✕-closed key never re-floats this session', () => {
+    assert.ok(src.includes('const dismissedKeys = new Set()'), 'Should track user-dismissed keys');
+    assert.ok(src.includes('byUser = false'), 'dismissToast should distinguish user vs programmatic hides');
+    assert.ok(src.includes('dismissedKeys.has(key)'), 'Re-raises of dismissed keys should stay quiet');
+    assert.ok(src.includes('dismissedKeys.delete(item.key)'), 'Acting on the item should lift the suppression');
+  });
+
   it('key dedup only runs when key is provided', () => {
     assert.ok(
       src.includes('if (key)'),

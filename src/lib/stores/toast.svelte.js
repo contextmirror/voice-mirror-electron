@@ -54,6 +54,15 @@ function createToastStore() {
   /** @type {Map<string, number>} Active toast-hide timers */
   const timers = new Map();
 
+  /**
+   * Keys whose toast the USER dismissed (✕) this session. Re-raises of a
+   * user-dismissed key update the center quietly instead of re-floating —
+   * closing a prompt is an answer, and re-detection loops must respect it.
+   * Cleared when the user acts on the item (fresh consent cycle).
+   * @type {Set<string>}
+   */
+  const dismissedKeys = new Set();
+
   function clearTimer(id) {
     const timer = timers.get(id);
     if (timer) {
@@ -123,8 +132,16 @@ function createToastStore() {
         scheduleHide(existing.id, effectiveDuration);
         return existing.id;
       }
-      // Gone from screen → the new item replaces the old one entirely
-      // (center row included), so re-prompts never pile up in history.
+      if (existing && dismissedKeys.has(key)) {
+        // The user closed this prompt (✕) — that's an answer. Update the
+        // center row quietly; do NOT re-float this session.
+        items = items.map(t => t.id === existing.id
+          ? { ...t, message, severity, duration: effectiveDuration, action, actions, progress, source, createdAt: Date.now() }
+          : t);
+        return existing.id;
+      }
+      // Gone from screen (timed out or row cleared) → the new item replaces
+      // the old one entirely, so re-prompts never pile up in history.
       if (existing) removeItem(existing.id);
     }
 
@@ -142,7 +159,8 @@ function createToastStore() {
       createdAt: Date.now(),
       // Arriving while the panel is open counts as seen.
       read: panelOpen,
-      toastVisible: !panelOpen && !toastsDisabled,
+      // Never re-float a key the user already closed this session.
+      toastVisible: !panelOpen && !toastsDisabled && !(key && dismissedKeys.has(key)),
     };
 
     // Cap the floating stack: hide the oldest visible peek, keep its item.
@@ -171,10 +189,17 @@ function createToastStore() {
    * Hide a toast peek. The item STAYS in the notification center, unread,
    * with its actions intact. Untracked — safe to call from effects.
    * @param {string} id
+   * @param {{ byUser?: boolean }} [opts] - byUser: the human clicked ✕ (as
+   *   opposed to an auto-hide timer or programmatic hide). A user dismissal
+   *   of a keyed prompt suppresses re-floats of that key for the session.
    */
-  function dismissToast(id) {
+  function dismissToast(id, { byUser = false } = {}) {
     untrack(() => {
       clearTimer(id);
+      if (byUser) {
+        const item = items.find(t => t.id === id);
+        if (item?.key) dismissedKeys.add(item.key);
+      }
       items = items.map(t => t.id === id ? { ...t, toastVisible: false } : t);
     });
   }
@@ -182,9 +207,15 @@ function createToastStore() {
   /**
    * Resolve an item: an action was clicked (from the toast or the panel),
    * so the notification is dealt with and leaves the center entirely.
+   * Acting also lifts any dismissal suppression on the key — a fresh
+   * occurrence later starts a fresh consent cycle.
    * @param {string} id
    */
   function resolveItem(id) {
+    untrack(() => {
+      const item = items.find(t => t.id === id);
+      if (item?.key) dismissedKeys.delete(item.key);
+    });
     removeItem(id);
   }
 
