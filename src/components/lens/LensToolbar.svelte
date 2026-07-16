@@ -50,9 +50,24 @@
   const isBookmarkable = $derived(!!currentUrl && currentUrl !== 'about:blank');
   const isBookmarked = $derived(browserBookmarksStore.has(currentUrl));
 
-  function handleBookmarkToggle() {
+  // Feedback chip: the native child webview sits ABOVE the DOM below the
+  // toolbar (airspace), so a Chrome-style popover would be hidden. Instead a
+  // small confirmation chip appears INSIDE the address bar for a few seconds.
+  let bookmarkFeedback = $state(null); // 'added' | 'removed' | null
+  let feedbackTimer = null;
+
+  async function handleBookmarkToggle() {
     if (!isBookmarkable) return;
-    browserBookmarksStore.toggle(currentUrl, browserTabsStore.activeTab?.title || '');
+    const added = await browserBookmarksStore.toggle(currentUrl, browserTabsStore.activeTab?.title || '');
+    bookmarkFeedback = added ? 'added' : 'removed';
+    clearTimeout(feedbackTimer);
+    feedbackTimer = setTimeout(() => { bookmarkFeedback = null; }, 3500);
+  }
+
+  function handleViewBookmarks() {
+    bookmarkFeedback = null;
+    clearTimeout(feedbackTimer);
+    onBookmarks?.();
   }
 
   function handleBack() { lensStore.goBack(); }
@@ -88,6 +103,14 @@
       spellcheck="false"
       autocomplete="off"
     />
+    {#if bookmarkFeedback}
+      <span class="bookmark-chip" role="status">
+        {bookmarkFeedback === 'added' ? 'Bookmarked' : 'Bookmark removed'}
+        {#if bookmarkFeedback === 'added'}
+          <button type="button" class="bookmark-chip-link" onclick={handleViewBookmarks}>View all</button>
+        {/if}
+      </span>
+    {/if}
     <button
       type="button"
       class="star-btn"
@@ -220,6 +243,48 @@
   .star-btn:disabled {
     opacity: 0.3;
     cursor: default;
+  }
+
+  /* Confirmation chip inside the address bar (airspace-safe feedback) */
+  .bookmark-chip {
+    position: absolute;
+    right: 30px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 22px;
+    padding: 0 10px;
+    border-radius: var(--radius-full);
+    background: var(--accent-subtle);
+    color: var(--text);
+    font-size: 11px;
+    white-space: nowrap;
+    animation: bookmark-chip-in 0.2s var(--ease-out);
+  }
+
+  @keyframes bookmark-chip-in {
+    from { opacity: 0; transform: translateX(6px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .bookmark-chip-link {
+    border: none;
+    background: none;
+    padding: 0;
+    color: var(--accent);
+    font-size: 11px;
+    font-family: var(--font-family);
+    cursor: pointer;
+  }
+
+  .bookmark-chip-link:hover {
+    text-decoration: underline;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bookmark-chip {
+      animation: none;
+    }
   }
 
   .url-input {

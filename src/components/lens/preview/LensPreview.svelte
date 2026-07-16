@@ -237,7 +237,12 @@
         }
       }
 
-      if (targetUrl) {
+      // Only auto-navigate a BLANK active tab. A restored browser session
+      // (or any page the user already has up) must not be clobbered by
+      // preferred/last-URL navigation on startup or project switch.
+      const activeTabUrl = browserTabsStore.activeTab?.url;
+      const activeIsBlank = !activeTabUrl || activeTabUrl === 'about:blank';
+      if (targetUrl && activeIsBlank) {
         // Clear WebView2 disk cache before navigating to prevent stale content
         // from a previously-cached localhost port (e.g. switching from solitaire
         // on :3000 to Next.js on :3000 would show solitaire without this).
