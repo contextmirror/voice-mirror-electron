@@ -8,6 +8,13 @@
 <head>
   <meta charset="UTF-8" />
   <title>Toast demo</title>
+  <!-- Load the SAME global stylesheets as index.html: a legacy global
+       .toast-container rule once broke the component's positioning, and a
+       harness without the app's globals can't catch that class of bug. -->
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/base.css" />
+  <link rel="stylesheet" href="/src/styles/animations.css" />
+  <link rel="stylesheet" href="/src/styles/notifications.css" />
   <style>
     body { margin: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
     .mock-app {
@@ -37,6 +44,8 @@
     const themeKey = new URLSearchParams(location.search).get('theme') || 'midnight';
     const preset = PRESETS[themeKey] || PRESETS.midnight;
     applyTheme(preset.colors, preset.fonts);
+    // base.css hides <body> until the app marks itself ready
+    document.body.classList.add('app-ready');
 
     mount(ToastContainer, { target: document.body });
 

@@ -137,6 +137,13 @@
         }
       }
 
+      // Retire the outgoing project's consent prompt — it's contextual to
+      // the visible workspace, and leaving it up means every Tauri project
+      // the user visits accumulates its own sticky "Start it?" toast.
+      if (oldPath && oldPath !== project.path) {
+        toastStore.dismissByKey('dev-server-consent-' + oldPath);
+      }
+
       devServerManager.handleProjectSwitch(oldPath, project.path);
       detectAndNavigate(project);
     }, 300);

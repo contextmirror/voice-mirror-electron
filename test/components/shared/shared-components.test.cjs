@@ -490,6 +490,15 @@ describe('ToastContainer.svelte', () => {
     assert.ok(src.includes('animate:flip'), 'Each toast slot should animate position changes');
   });
 
+  it('owns its styling exclusively — no global .toast rules may exist', () => {
+    // A legacy global .toast/.toast-container block in notifications.css once
+    // leaked left/transform/padding into the scoped component and dragged the
+    // stack away from its right anchor. Guard against reintroduction.
+    const cssPath = path.join(__dirname, '..', '..', '..', 'src', 'styles', 'notifications.css');
+    const css = fs.readFileSync(cssPath, 'utf8');
+    assert.ok(!/^\s*\.toast[\s.{,:-]/m.test(css), 'notifications.css must not style .toast* classes');
+  });
+
   it('floats above the status bar', () => {
     assert.ok(src.includes('bottom: 40px'), 'Should clear the 22px status bar with breathing room');
   });

@@ -135,6 +135,19 @@ function createToastStore() {
   }
 
   /**
+   * Dismiss a toast by its dedup key (no-op if none). Untracked — safe to
+   * call from effects. For retiring context-bound toasts (e.g. a project's
+   * consent prompt when the user switches away from that project).
+   * @param {string} key
+   */
+  function dismissByKey(key) {
+    untrack(() => {
+      const existing = toasts.find((t) => t.key === key);
+      if (existing) dismissToast(existing.id);
+    });
+  }
+
+  /**
    * Update an existing toast's properties (e.g., message, progress).
    * Untracked — safe to call from effects.
    * @param {string} id - Toast ID to update
@@ -164,6 +177,7 @@ function createToastStore() {
     addToast,
     updateToast,
     dismissToast,
+    dismissByKey,
     dismissAll,
   };
 }
