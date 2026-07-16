@@ -381,8 +381,17 @@ describe('Toast.svelte', () => {
     assert.ok(src.includes('.toast.error'), 'Should have error style');
   });
 
-  it('has severity-based border colors', () => {
-    assert.ok(src.includes('border-left:'), 'Should have severity border');
+  it('carries severity on a tinted icon chip using theme tokens', () => {
+    assert.ok(src.includes('var(--warn-subtle)'), 'Warning chip should use --warn-subtle');
+    assert.ok(src.includes('var(--ok-subtle)'), 'Success chip should use --ok-subtle');
+    assert.ok(src.includes('var(--danger-subtle)'), 'Error chip should use --danger-subtle');
+    assert.ok(src.includes('var(--accent-subtle)'), 'Info chip should use --accent-subtle');
+    assert.ok(!src.includes('border-left:'), 'Severity border replaced by the icon chip');
+  });
+
+  it('uses a frosted theme-derived surface', () => {
+    assert.ok(src.includes('color-mix'), 'Background should blend --bg-elevated with transparency');
+    assert.ok(src.includes('backdrop-filter'), 'Should blur what is behind the capsule');
   });
 
   it('has severity-based SVG icons', () => {
@@ -398,9 +407,21 @@ describe('Toast.svelte', () => {
     assert.ok(src.includes('toast-action'), 'Should have action button CSS');
   });
 
-  it('uses fly transition', () => {
-    assert.ok(src.includes("import { fly } from 'svelte/transition'"), 'Should import fly');
-    assert.ok(src.includes('transition:fly'), 'Should use fly transition');
+  it('rises from the status bar on enter and sinks on exit', () => {
+    assert.ok(src.includes('in:capsuleIn'), 'Should use the rise-in transition');
+    assert.ok(src.includes('out:capsuleOut'), 'Should use the sink-out transition');
+    assert.ok(src.includes('backOut'), 'Entrance should pop with a slight overshoot');
+  });
+
+  it('respects prefers-reduced-motion in both transitions', () => {
+    assert.ok(src.includes('prefersReducedMotion'), 'Transitions should check reduced-motion');
+    assert.ok(src.includes('prefers-reduced-motion: reduce'), 'Should query the media feature');
+  });
+
+  it('renders single action and actions array through one inline pill row', () => {
+    assert.ok(src.includes('actionList'), 'Should merge action/actions into one list');
+    assert.ok(src.includes('toast.actions'), 'Should support the actions array');
+    assert.ok(src.includes("class:primary={i === 0}"), 'First action should be the filled primary pill');
   });
 
   it('renders progress bar when toast.progress is present', () => {
@@ -458,9 +479,18 @@ describe('ToastContainer.svelte', () => {
     assert.ok(src.includes('aria-label="Notifications"'), 'Should have aria-label');
   });
 
-  it('reverses toasts so newest appears on top', () => {
-    assert.ok(src.includes('reversedToasts'), 'Should reverse toast order');
-    assert.ok(src.includes('.reverse()'), 'Should call reverse');
+  it('renders store order so the newest toast lands nearest the status bar', () => {
+    assert.ok(src.includes('toastStore.toasts as toast'), 'Should iterate store order directly');
+    assert.ok(!src.includes('.reverse()'), 'No reversal — newest belongs at the bottom of the stack');
+  });
+
+  it('reflows the stack smoothly when a toast leaves', () => {
+    assert.ok(src.includes("import { flip } from 'svelte/animate'"), 'Should import flip');
+    assert.ok(src.includes('animate:flip'), 'Each toast slot should animate position changes');
+  });
+
+  it('floats above the status bar', () => {
+    assert.ok(src.includes('bottom: 40px'), 'Should clear the 22px status bar with breathing room');
   });
 
   it('renders Toast for each toast', () => {

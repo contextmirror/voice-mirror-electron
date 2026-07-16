@@ -1,0 +1,64 @@
+<!doctype html>
+<!--
+  toast-demo.html - -  Manual visual harness for the toast capsule redesign.
+  Serve with `npx vite dev`, open /test/manual/toast-demo.html.
+  Query params: ?theme=light | midnight | ... (PRESETS key, default midnight)
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Toast demo</title>
+  <style>
+    body { margin: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+    .mock-app {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .mock-editor { flex: 1; background: var(--bg); border-bottom: 1px solid var(--border); }
+    .mock-panel { height: 180px; background: var(--bg-accent); padding: 12px; font-size: 12px; color: var(--muted); }
+    .mock-status { height: 22px; background: var(--chrome); border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); display: flex; align-items: center; padding: 0 10px; }
+  </style>
+</head>
+<body>
+  <div class="mock-app">
+    <div class="mock-editor"></div>
+    <div class="mock-panel">Voice Agent panel (content behind the toasts)</div>
+    <div class="mock-status">main · 0 errors</div>
+  </div>
+  <script type="module">
+    import { mount } from 'svelte';
+    import ToastContainer from '/src/components/shared/ToastContainer.svelte';
+    import { toastStore } from '/src/lib/stores/toast.svelte.js';
+    import { applyTheme, PRESETS } from '/src/lib/stores/theme.svelte.js';
+
+    const themeKey = new URLSearchParams(location.search).get('theme') || 'midnight';
+    const preset = PRESETS[themeKey] || PRESETS.midnight;
+    applyTheme(preset.colors, preset.fonts);
+
+    mount(ToastContainer, { target: document.body });
+
+    toastStore.addToast({
+      message: 'Tauri on :51437 is not running. Start it?',
+      severity: 'warning',
+      duration: 0,
+      actions: [
+        { label: 'Always start', callback: () => {} },
+        { label: 'Start once', callback: () => {} },
+        { label: 'Not now', callback: () => {} },
+      ],
+    });
+    setTimeout(() => {
+      toastStore.addToast({ message: 'Voice Mirror 0.13.0-nightly.5 is ready — restart to apply.', severity: 'info', duration: 0, action: { label: 'Restart now', callback: () => {} } });
+    }, 400);
+    setTimeout(() => {
+      toastStore.addToast({ message: 'Saved CHANGELOG.md', severity: 'success', duration: 0 });
+    }, 800);
+    setTimeout(() => {
+      const t = toastStore.addToast({ message: 'Downloading update…', severity: 'info', duration: 0, progress: 62 });
+    }, 1200);
+  </script>
+</body>
+</html>
