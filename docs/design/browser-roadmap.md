@@ -84,31 +84,63 @@ carry what extensions need (`browser_extensions_enabled` env flag,
       flag was never set true, so the tab spinner was dead too — this fixes
       both). (`webview_setup.rs`, `LensPreview.svelte`, `LensWorkspace.svelte`)
 
-## Tier 3 — differentiators
+## Tier 3 — differentiators (SHIPPED 2026-07-17, branch worktree-browser-tier3)
 
-- [ ] **Extensions manager** — the marquee. Steps:
-      1. `browserExtensionsEnabled: true` on the main window config (env-wide
-         flag; one-time decision, needs app restart).
-      2. Rust commands over `ICoreWebView2Profile7`: add (unpacked folder),
-         list, enable/disable, remove.
-      3. Extensions page in Settings; extension buttons in the browser toolbar
-         (WebView2 renders NO extension UI — we open
-         `chrome-extension://<id>/<popup>.html` ourselves, path from each
-         manifest's `action.default_popup`).
-      4. "Install from Chrome Web Store URL": download CRX, strip header
-         (CRX3 = zip + header), unpack to a managed extensions dir. Updates =
-         re-download. NOTE: source folder must stay untouched or WebView2
-         drops the extension.
-      5. Blessed one-click installs: uBlock Origin (works headless),
-         React DevTools / Vue DevTools (framework debugging inside App
-         Preview — direct boost to the voice→build→see→fix loop).
-- [ ] **Per-project browser profiles** — named WebView2 profiles give each
-      project isolated cookies/sessions (client A's logins never bleed into
-      client B's). Very VM-native.
-- [ ] **Private tabs** — tauri `incognito` webview option (InPrivate profile).
-- [ ] **Privacy toggles** — tracking-prevention level, password autosave,
-      general autofill (profile settings, currently defaults).
-- [ ] **Basic-auth dialog** — `BasicAuthenticationRequested`.
+- [x] **Extensions manager** — the marquee. Shipped:
+      1. `browserExtensionsEnabled: true` on the main window
+         (`tauri.conf.json`; env-wide, needs an app restart the first time —
+         `tauri.nightly.conf.json` only overrides updater endpoints, so no
+         mirror needed there).
+      2. Rust commands over `ICoreWebView2Profile7` (reached via
+         `ICoreWebView2_13::Profile()`) in `commands/lens/extensions.rs`:
+         `lens_extensions_list` / `_add` / `_install_crx` / `_set_enabled` /
+         `_remove`. Async completion handlers use the mpsc + `recv_timeout`
+         pattern (see `report_page_title`).
+      3. `ExtensionsSettings.svelte` (new Settings tab) lists installed
+         extensions with enable/disable + remove; the toolbar renders a
+         letter-badge button per enabled extension that declares a popup and
+         opens `chrome-extension://<id>/<popup>` in a new tab (WebView2 renders
+         no extension UI). A shared `browser-extensions.svelte.js` store keeps
+         the two in sync (`lens-extensions-changed` window event).
+      4. CRX install: locate the first `PK\x03\x04` zip signature and unzip
+         from there (works for CRX2/CRX3 without parsing headers), into a
+         managed dir `get_data_dir()/extensions/<slug>/` that is NEVER mutated
+         after install. `index.json` maps the WebView2 id → parsed popup path.
+         URLs downloaded with reqwest. `zip` was made a non-optional dep (was
+         gated behind the `onnx` feature).
+      5. Blessed one-click installs: uBlock Origin + React DevTools via the
+         Chrome Web Store CRX endpoint.
+      NOTE: every command needs an open browser tab (the profile is reached
+      through a tab's webview); the UI shows a "restart / open a tab" notice
+      instead of a hard error when it isn't reachable yet. Manifest names are
+      i18n-resolved (`__MSG_…__` → `_locales/<default_locale>/messages.json`).
+- [x] **Private tabs** — `WebviewBuilder::incognito(true)` (tauri 2.11.1
+      exposes it; wry 0.55 `with_incognito`). Threaded through
+      `lens_create_tab` (`incognito: Option<bool>`) → `create_tab_webview`;
+      "New Private Tab" in the tab-bar context menu, tinted tab + mask icon,
+      title "Private Tab". Extensions don't load in InPrivate (expected).
+- [x] **Privacy toggles** — tracking-prevention level
+      (`ICoreWebView2Profile3::SetPreferredTrackingPreventionLevel`), password
+      autosave + general autofill (`ICoreWebView2Profile6`). `lens_apply_privacy`
+      + a Privacy section in `ExtensionsSettings`; persisted in
+      `BrowserConfig` (`trackingPrevention` / `passwordAutosave` /
+      `generalAutofill`, schema + frontend defaults) and re-applied at
+      tab-creation time. Defaults match WebView2's (balanced / off / on).
+- [ ] **Per-project browser profiles** — NOT blocked as originally guessed:
+      `WebviewBuilder::data_directory(PathBuf)` IS public in tauri 2.11.1, so a
+      distinct user-data folder per project would give isolated cookies/
+      sessions (a separate WebView2 environment per data dir). DEFERRED, not
+      shipped: it's a larger tab-lifecycle change (project switch must recreate
+      tabs under the project's data dir; session-restore + the shared
+      extensions env interact with it) and belongs with the tab-lifecycle
+      owner, not a best-effort pass. The mechanism is confirmed feasible.
+- [ ] **Basic-auth dialog** — SKIPPED (best-effort, low marginal value).
+      `ICoreWebView2_10::add_BasicAuthenticationRequested` +
+      `BasicAuthenticationRequestedEventHandler` exist in webview2-com 0.38.2,
+      so a custom VM-styled prompt bar (mirroring the Tier 2 permission bar with
+      a deferral) is feasible. But WebView2 already shows a native basic-auth
+      dialog by default, so a custom one is cosmetic parity — deferred to keep
+      scope on the marquee and avoid extra prompt-bar surface.
 
 ## Out of scope (platform limits)
 
