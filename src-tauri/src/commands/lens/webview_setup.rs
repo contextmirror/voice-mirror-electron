@@ -1381,6 +1381,14 @@ pub(super) async fn create_tab_webview(
         let tab_id_for_handler = tab_id_clone.clone();
         let builder =
             WebviewBuilder::new(&label_clone, tauri::WebviewUrl::External(parsed_url))
+                // Must match the main window's `browserExtensionsEnabled` (true).
+                // wry creates one WebView2 environment per webview but they all
+                // share the default user-data folder, and WebView2 rejects a
+                // second environment on that folder with different options
+                // (ERROR_INVALID_STATE / 0x8007139F). Leaving this at the builder
+                // default (false) made EVERY child webview fail to create. The
+                // whole environment (main window + all children) must agree.
+                .browser_extensions_enabled(true)
                 // Private tab → InPrivate/non-persistent WebView2 DataStore
                 // (isolated cookies/storage, cleared when the webview closes).
                 .incognito(incognito)

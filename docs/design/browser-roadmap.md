@@ -152,8 +152,19 @@ carry what extensions need (`browser_extensions_enabled` env flag,
 
 - `AreBrowserExtensionsEnabled` is an ENVIRONMENT flag: every webview shares
   it; mismatched values against a running env fail with ERROR_INVALID_STATE.
-  Set it once via the main window's `browserExtensionsEnabled` in
-  tauri.conf.json.
+  Setting it ONLY on the main window (`browserExtensionsEnabled` in
+  tauri.conf.json) is NOT enough — that was a live regression (2026-07-17,
+  `0x8007139F` on `add_child`). wry creates one WebView2 environment per
+  webview, but they all share the default user-data folder, and WebView2
+  rejects a second environment on that folder with different options. So EVERY
+  programmatically-built child webview must ALSO call
+  `.browser_extensions_enabled(true)`: the lens-tab / device-preview builder
+  (`webview_setup.rs::create_tab_webview`) and the DevTools-panel builder
+  (`devtools.rs`). The App Preview sandbox is an iframe in the main window, so
+  it's already covered. Isolating lens to its own `data_directory` instead is
+  NOT an option — a separate user-data folder = a separate browser process that
+  can't bind the shared `--remote-debugging-port=9222`, which would break
+  embedded DevTools.
 - Config schema drops undeclared fields (see `ProjectEntry` in
   `config/schema.rs`) — every new persisted pref needs its schema field IN THE
   SAME CHANGE.

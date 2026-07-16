@@ -230,6 +230,10 @@ pub async fn lens_open_devtools(
             &label_clone,
             tauri::WebviewUrl::External(parsed_url),
         )
+        // Match the main window's `browserExtensionsEnabled` — every webview in
+        // the shared WebView2 environment must agree or creation fails with
+        // ERROR_INVALID_STATE (see the note in webview_setup.rs).
+        .browser_extensions_enabled(true)
         .initialization_script(DEVTOOLS_INIT_SCRIPT);
 
         match window.add_child(

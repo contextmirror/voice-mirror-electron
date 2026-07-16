@@ -36,6 +36,21 @@ describe('browser tier3: extensions env flag', () => {
     assert.ok(TAURI_CONF.includes('"browserExtensionsEnabled": true'), 'main window opts in');
   });
 
+  it('every child webview matches the env flag (no ERROR_INVALID_STATE)', () => {
+    // wry shares one user-data folder across webviews; a child webview left at
+    // the builder default (extensions off) mismatches the main window's env
+    // and fails to create with ERROR_INVALID_STATE (0x8007139F).
+    const DEVTOOLS_RS = read('src-tauri', 'src', 'commands', 'lens', 'devtools.rs');
+    assert.ok(
+      WEBVIEW_SETUP.includes('.browser_extensions_enabled(true)'),
+      'lens tab + device-preview builder opts in'
+    );
+    assert.ok(
+      DEVTOOLS_RS.includes('.browser_extensions_enabled(true)'),
+      'devtools panel builder opts in'
+    );
+  });
+
   it('zip is a non-optional dependency (CRX unpacking always available)', () => {
     // The extensions CRX path unzips regardless of the native-ml/onnx feature.
     assert.ok(/zip = \{ version = "2"[^}]*\}/.test(CARGO), 'declares zip 2');
