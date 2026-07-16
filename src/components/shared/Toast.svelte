@@ -27,8 +27,12 @@
       && matchMedia('(prefers-reduced-motion: reduce)').matches;
   }
 
-  /** Rise from the status bar with a gentle overshoot pop. */
-  function capsuleIn(node, { duration = 340 } = {}) {
+  /**
+   * Pop out of the notification bell in the status-bar corner: the capsule
+   * grows from the bell's direction (down-right) with a gentle overshoot,
+   * so new toasts visibly come FROM the notification center.
+   */
+  function capsuleIn(node, { duration = 360 } = {}) {
     if (prefersReducedMotion()) {
       return { duration: 150, easing: cubicOut, css: (t) => `opacity: ${t}` };
     }
@@ -36,14 +40,18 @@
       duration,
       easing: backOut,
       css: (t) => `
-        transform: translateY(${(1 - t) * 14}px) scale(${0.95 + t * 0.05});
+        transform-origin: bottom right;
+        transform: translate(${(1 - t) * 28}px, ${(1 - t) * 12}px) scale(${0.88 + t * 0.12});
         opacity: ${Math.min(1, t * 1.6)};
       `,
     };
   }
 
-  /** Sink back toward the status bar and fade, quicker than the entrance. */
-  function capsuleOut(node, { duration = 170 } = {}) {
+  /**
+   * Tuck back into the bell, quicker than the entrance — dismissal reads
+   * as the toast being filed into the notification center's history.
+   */
+  function capsuleOut(node, { duration = 180 } = {}) {
     if (prefersReducedMotion()) {
       return { duration: 120, easing: cubicIn, css: (t) => `opacity: ${t}` };
     }
@@ -51,7 +59,8 @@
       duration,
       easing: cubicIn,
       css: (t) => `
-        transform: translateY(${(1 - t) * 10}px) scale(${0.97 + t * 0.03});
+        transform-origin: bottom right;
+        transform: translate(${(1 - t) * 18}px, ${(1 - t) * 8}px) scale(${0.92 + t * 0.08});
         opacity: ${t};
       `,
     };

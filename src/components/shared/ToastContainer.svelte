@@ -2,8 +2,9 @@
   /**
    * ToastContainer.svelte -- Floating overlay that stacks toast notifications.
    *
-   * Bottom-center, floating just above the status bar. Newest toast appears
-   * closest to the status bar; older ones are pushed up and reflow smoothly.
+   * Bottom-right, floating just above the status bar's notification bell —
+   * toasts pop out of the corner the bell lives in. Newest toast appears
+   * closest to the bell; older ones are pushed up and reflow smoothly.
    * Always mounted in App.svelte.
    */
   import { flip } from 'svelte/animate';
@@ -28,15 +29,14 @@
 <style>
   .toast-container {
     position: fixed;
-    /* Clear the 22px status bar so the capsule floats above app chrome
-       instead of sitting on the bottom panel's content. */
+    /* Clear the 22px status bar so the stack floats above the notification
+       bell in the corner instead of sitting on the bottom panel's content. */
     bottom: 40px;
-    left: 50%;
-    transform: translateX(-50%);
+    right: 12px;
     z-index: 10002;
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-end;
     gap: 8px;
     pointer-events: none;
     max-height: calc(100vh - 64px);
@@ -45,6 +45,6 @@
 
   .toast-slot {
     display: flex;
-    justify-content: center;
+    justify-content: flex-end;
   }
 </style>

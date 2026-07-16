@@ -407,10 +407,11 @@ describe('Toast.svelte', () => {
     assert.ok(src.includes('toast-action'), 'Should have action button CSS');
   });
 
-  it('rises from the status bar on enter and sinks on exit', () => {
-    assert.ok(src.includes('in:capsuleIn'), 'Should use the rise-in transition');
-    assert.ok(src.includes('out:capsuleOut'), 'Should use the sink-out transition');
+  it('pops out of the bottom-right corner on enter and tucks back on exit', () => {
+    assert.ok(src.includes('in:capsuleIn'), 'Should use the pop-out transition');
+    assert.ok(src.includes('out:capsuleOut'), 'Should use the tuck-away transition');
     assert.ok(src.includes('backOut'), 'Entrance should pop with a slight overshoot');
+    assert.ok(src.includes('transform-origin: bottom right'), 'Motion should originate from the bell corner');
   });
 
   it('respects prefers-reduced-motion in both transitions', () => {
@@ -460,11 +461,11 @@ describe('ToastContainer.svelte', () => {
     assert.ok(src.includes('.toast-container'), 'Should have toast-container CSS');
   });
 
-  it('is fixed positioned at bottom-center', () => {
+  it('is fixed positioned at bottom-right, by the status-bar bell', () => {
     assert.ok(src.includes('position: fixed'), 'Should be fixed positioned');
     assert.ok(src.includes('bottom:'), 'Should be at bottom');
-    assert.ok(src.includes('left: 50%'), 'Should be centered horizontally');
-    assert.ok(src.includes('translateX(-50%)'), 'Should use transform to center');
+    assert.ok(src.includes('right: 12px'), 'Should be anchored to the right edge');
+    assert.ok(src.includes('align-items: flex-end'), 'Stack should right-align above the bell');
   });
 
   it('has z-index: 10002 (above orb)', () => {
