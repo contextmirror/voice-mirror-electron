@@ -4,6 +4,7 @@
   import { lensStore } from '../../lib/stores/lens.svelte.js';
   import { browserTabsStore } from '../../lib/stores/browser-tabs.svelte.js';
   import { browserBookmarksStore } from '../../lib/stores/browser-bookmarks.svelte.js';
+  import { browserHistoryStore } from '../../lib/stores/browser-history.svelte.js';
   import { lensHardRefresh } from '../../lib/api.js';
   import BrowserMenu from './browser/BrowserMenu.svelte';
 
@@ -18,6 +19,11 @@
     onDownloadSettings,
     onDevtools,
     devtoolsActive = false,
+    // Bindable: true while the omnibox suggestion dropdown is showing. The parent
+    // (LensWorkspace) folds this into its freeze() effect — the native child
+    // WebView2 sits ABOVE the DOM below the toolbar, so a dropdown over the page
+    // area is invisible unless the webview is frozen (hidden) while it's open.
+    suggestionsOpen = $bindable(false),
   } = $props();
 
   let urlInput = $state('');
@@ -25,6 +31,96 @@
   $effect(() => {
     urlInput = browserTabsStore.activeTab?.inputUrl || lensStore.inputUrl;
   });
+
+  // ── Omnibox suggestions (history + bookmarks) ──
+  let inputFocused = $state(false);
+  let dismissed = $state(false);   // Escape closes the dropdown without blurring
+  let selectedIndex = $state(-1);
+  let inputEl = $state(null);
+
+  const MAX_SUGGESTIONS = 8;
+
+  // Bookmarks first (higher intent), then history; de-duplicated by URL and
+  // excluding an exact match on what's already typed.
+  const suggestions = $derived.by(() => {
+    const q = urlInput.trim();
+    if (!q) return [];
+    const ql = q.toLowerCase();
+    const bm = browserBookmarksStore.filter(q).map(e => ({ url: e.url, title: e.title, kind: 'bookmark' }));
+    const hist = browserHistoryStore.filter(q).map(e => ({ url: e.url, title: e.title, kind: 'history' }));
+    const seen = new Set();
+    const out = [];
+    for (const item of [...bm, ...hist]) {
+      if (!item.url) continue;
+      const key = item.url.toLowerCase();
+      if (seen.has(key)) continue;
+      if (key === ql) continue; // don't suggest exactly what's typed
+      seen.add(key);
+      out.push(item);
+      if (out.length >= MAX_SUGGESTIONS) break;
+    }
+    return out;
+  });
+
+  const showDropdown = $derived(inputFocused && !dismissed && suggestions.length > 0);
+
+  // Publish open-state to the parent so the webview freezes while the dropdown
+  // is up (airspace) and unfreezes the moment it closes.
+  $effect(() => {
+    suggestionsOpen = showDropdown;
+  });
+
+  // Keep the highlighted row valid as the list shrinks/grows.
+  $effect(() => {
+    if (selectedIndex >= suggestions.length) selectedIndex = suggestions.length - 1;
+  });
+
+  function navigateTo(target) {
+    const trimmed = (target || '').trim();
+    if (!trimmed) return;
+    closeSuggestions();
+    inputEl?.blur();
+    lensStore.navigate(trimmed);
+  }
+
+  function closeSuggestions() {
+    inputFocused = false;
+    dismissed = false;
+    selectedIndex = -1;
+  }
+
+  function handleInput() {
+    dismissed = false;
+    selectedIndex = -1;
+  }
+
+  function handleUrlKeydown(e) {
+    if (!showDropdown) {
+      // No dropdown — Escape restores the input to the current tab URL.
+      if (e.key === 'Escape') {
+        urlInput = browserTabsStore.activeTab?.inputUrl || lensStore.inputUrl;
+        inputEl?.blur();
+      }
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      selectedIndex = Math.min(selectedIndex + 1, suggestions.length - 1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      selectedIndex = Math.max(selectedIndex - 1, -1);
+    } else if (e.key === 'Enter') {
+      if (selectedIndex >= 0 && selectedIndex < suggestions.length) {
+        e.preventDefault();
+        navigateTo(suggestions[selectedIndex].url);
+      }
+      // else: fall through to the form submit (navigate to typed text)
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      dismissed = true;
+      selectedIndex = -1;
+    }
+  }
 
   onMount(() => {
     const unlisten = listen('lens-hard-refresh', () => {
@@ -37,6 +133,8 @@
     e.preventDefault();
     const trimmed = urlInput.trim();
     if (trimmed) {
+      closeSuggestions();
+      inputEl?.blur();
       lensStore.navigate(trimmed);
     }
   }
@@ -98,11 +196,45 @@
     <input
       class="url-input"
       type="text"
+      bind:this={inputEl}
       bind:value={urlInput}
+      oninput={handleInput}
+      onkeydown={handleUrlKeydown}
+      onfocus={() => { inputFocused = true; dismissed = false; }}
+      onblur={() => { inputFocused = false; }}
       placeholder="Enter URL or search..."
       spellcheck="false"
       autocomplete="off"
+      role="combobox"
+      aria-expanded={showDropdown}
+      aria-controls="omnibox-suggestions"
+      aria-autocomplete="list"
     />
+    {#if showDropdown}
+      <ul class="omnibox-suggestions" id="omnibox-suggestions" role="listbox">
+        {#each suggestions as sug, i (sug.url)}
+          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+          <li
+            class="omnibox-item"
+            class:selected={i === selectedIndex}
+            role="option"
+            aria-selected={i === selectedIndex}
+            onmousedown={(e) => { e.preventDefault(); navigateTo(sug.url); }}
+            onmouseenter={() => { selectedIndex = i; }}
+          >
+            <span class="omnibox-item-icon" aria-hidden="true">
+              {#if sug.kind === 'bookmark'}
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              {:else}
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              {/if}
+            </span>
+            <span class="omnibox-item-title">{sug.title || sug.url}</span>
+            <span class="omnibox-item-url">{sug.url}</span>
+          </li>
+        {/each}
+      </ul>
+    {/if}
     {#if bookmarkFeedback}
       <span class="bookmark-chip" role="status">
         {bookmarkFeedback === 'added' ? 'Bookmarked' : 'Bookmark removed'}
@@ -309,5 +441,84 @@
     color: var(--muted);
   }
 
+  /* ── Omnibox suggestion dropdown ──
+     Rendered over the page area (which the native webview covers), so it is
+     only visible because the parent freezes the webview via `suggestionsOpen`. */
+  .omnibox-suggestions {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 100;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    max-height: 320px;
+    overflow-y: auto;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md, 8px);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--shadow, #000) 30%, transparent);
+    animation: omnibox-in 0.12s var(--ease-out);
+  }
+
+  @keyframes omnibox-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .omnibox-suggestions {
+      animation: none;
+    }
+  }
+
+  .omnibox-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm, 4px);
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  .omnibox-item.selected {
+    background: var(--accent-subtle, color-mix(in srgb, var(--accent) 15%, transparent));
+  }
+
+  .omnibox-item-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: var(--muted);
+  }
+
+  .omnibox-item.selected .omnibox-item-icon {
+    color: var(--accent);
+  }
+
+  .omnibox-item-title {
+    flex-shrink: 0;
+    max-width: 45%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .omnibox-item-url {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
 
 </style>

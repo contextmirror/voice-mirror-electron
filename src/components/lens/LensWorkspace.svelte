@@ -216,9 +216,14 @@
     }
   });
 
-  // Freeze WebView2 when History/Bookmarks/Downloads panels are open (airspace problem)
+  // ── Omnibox dropdown open-state (bound from LensToolbar) ──
+  let omniboxOpen = $state(false);
+
+  // Freeze WebView2 when History/Bookmarks/Downloads panels OR the omnibox
+  // suggestion dropdown are open (airspace problem — the native child WebView2
+  // paints above any DOM below the toolbar).
   $effect(() => {
-    if (showHistory || showBookmarks || showDownloads) {
+    if (showHistory || showBookmarks || showDownloads || omniboxOpen) {
       lensStore.freeze();
     } else {
       lensStore.unfreeze();
@@ -800,6 +805,7 @@
                           <BrowserTabBar onNewTab={() => lensPreviewRef?.createNewTab()} />
                           <LensToolbar
                             {zoomLevel}
+                            bind:suggestionsOpen={omniboxOpen}
                             onZoomIn={handleZoomIn}
                             onZoomOut={handleZoomOut}
                             onZoomReset={handleZoomReset}
