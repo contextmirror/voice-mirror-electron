@@ -52,15 +52,22 @@ carry what extensions need (`browser_extensions_enabled` env flag,
       (`LensToolbar.svelte`, `webview_setup.rs`)
 - [ ] **Permission prompts** — `PermissionRequested` (currently untouched →
       WebView2 defaults); VM-styled prompt + per-site remembered decisions.
-- [ ] **HTML5 fullscreen** — `ContainsFullScreenElementChanged` (videos can't
-      properly fullscreen today).
+- [x] **HTML5 fullscreen** — `ContainsFullScreenElementChanged` (base
+      ICoreWebView2) → `lens-fullscreen-changed {tabId, fullscreen}`; the active
+      webview fills the whole window while fullscreen (`syncBounds` honors it)
+      and restores the pane bounds on exit. (`webview_setup.rs`,
+      `LensPreview.svelte`)
 - [ ] **Print** — `ShowPrintUI` on Ctrl+P.
 - [ ] **Find match counts** — upgrade `window.find()` loop or adopt the
       ICoreWebView2Find API.
 - [ ] **Tab audio** — playing indicator + mute toggle
       (`IsDocumentPlayingAudio`/`IsMuted`, ICoreWebView2_8).
 - [ ] **Tab reorder (drag)** in `BrowserTabBar`.
-- [ ] **Per-nav progress bar** (`ContentLoading`/`NavigationCompleted`).
+- [x] **Per-nav progress bar** — thin indeterminate accent bar under the toolbar
+      while the active tab loads. Per-tab `loading` is now driven by Tauri
+      `on_page_load` Started/Finished → `lens-loading-changed` (previously the
+      flag was never set true, so the tab spinner was dead too — this fixes
+      both). (`webview_setup.rs`, `LensPreview.svelte`, `LensWorkspace.svelte`)
 
 ## Tier 3 — differentiators
 

@@ -72,3 +72,33 @@ describe('browser tier2: security indicator', () => {
     assert.ok(PREVIEW.includes("listen('lens-cert-error'"), 'LensPreview routes the event');
   });
 });
+
+describe('browser tier2: HTML5 fullscreen', () => {
+  it('Rust registers ContainsFullScreenElementChanged and emits an event', () => {
+    assert.ok(WEBVIEW_SETUP.includes('add_ContainsFullScreenElementChanged'), 'Should register the handler');
+    assert.ok(WEBVIEW_SETUP.includes('lens-fullscreen-changed'), 'Should emit lens-fullscreen-changed');
+    assert.ok(WEBVIEW_SETUP.includes('register_fullscreen_handler(&app_for_download'), 'Handler attached per tab');
+  });
+
+  it('LensPreview fills the window while fullscreen and restores on exit', () => {
+    assert.ok(PREVIEW.includes("listen('lens-fullscreen-changed'"), 'Should route the event');
+    assert.ok(PREVIEW.includes('isFullscreen'), 'Should track fullscreen state');
+    assert.ok(PREVIEW.includes('window.innerWidth, window.innerHeight'), 'Should fill the window');
+    assert.ok(/isFullscreen && lensStore.webviewReady/.test(PREVIEW), 'syncBounds honors fullscreen');
+  });
+});
+
+describe('browser tier2: per-nav progress bar', () => {
+  it('Rust drives per-tab loading from page-load Started/Finished', () => {
+    assert.ok(WEBVIEW_SETUP.includes('lens-loading-changed'), 'Should emit lens-loading-changed');
+    assert.ok(WEBVIEW_SETUP.includes('PageLoadEvent::Started'), 'Should emit on load start');
+    assert.ok(/"loading": true/.test(WEBVIEW_SETUP), 'Started → loading true');
+    assert.ok(/"loading": false/.test(WEBVIEW_SETUP), 'Finished → loading false');
+  });
+
+  it('LensPreview routes loading into the store and the bar renders on loading', () => {
+    assert.ok(PREVIEW.includes("listen('lens-loading-changed'"), 'Should route the event');
+    assert.ok(WORKSPACE.includes('nav-progress'), 'Should render the progress bar');
+    assert.ok(WORKSPACE.includes('browserTabsStore.activeTab?.loading'), 'Bar gated on active-tab loading');
+  });
+});

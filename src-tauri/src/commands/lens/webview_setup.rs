@@ -736,6 +736,61 @@ pub(super) fn register_cert_error_handler(
     });
 }
 
+/// Register a `ContainsFullScreenElementChanged` handler (base ICoreWebView2) so
+/// a page entering/exiting HTML5 fullscreen (e.g. a `<video>` fullscreen button)
+/// emits `lens-fullscreen-changed {tabId, fullscreen}`. The frontend then
+/// resizes the child webview to fill the whole window while fullscreen and
+/// restores the pane bounds on exit.
+pub(super) fn register_fullscreen_handler(
+    app: &AppHandle,
+    webview: &tauri::Webview,
+    tab_id: &str,
+) {
+    let app_handle = app.clone();
+    let tab_id = tab_id.to_string();
+    let _ = webview.with_webview(move |platform_webview| {
+        #[cfg(windows)]
+        {
+            use webview2_com::ContainsFullScreenElementChangedEventHandler;
+
+            unsafe {
+                let controller = platform_webview.controller();
+                let core_webview = match controller.CoreWebView2() {
+                    Ok(wv) => wv,
+                    Err(e) => {
+                        warn!("[lens] Failed to get CoreWebView2 for fullscreen handler: {:?}", e);
+                        return;
+                    }
+                };
+
+                let app_for_fs = app_handle.clone();
+                let tab_for_fs = tab_id.clone();
+                let handler = ContainsFullScreenElementChangedEventHandler::create(Box::new(
+                    move |sender, _args| {
+                        if let Some(wv) = sender {
+                            let mut is_fs = windows_core::BOOL::from(false);
+                            let _ = wv.ContainsFullScreenElement(&mut is_fs);
+                            let _ = app_for_fs.emit(
+                                "lens-fullscreen-changed",
+                                serde_json::json!({
+                                    "tabId": tab_for_fs,
+                                    "fullscreen": is_fs.as_bool(),
+                                }),
+                            );
+                        }
+                        Ok(())
+                    },
+                ));
+
+                let mut token: i64 = 0;
+                if let Err(e) = core_webview.add_ContainsFullScreenElementChanged(&handler, &mut token) {
+                    warn!("[lens] Failed to register ContainsFullScreenElementChanged: {:?}", e);
+                }
+            }
+        }
+    });
+}
+
 /// Override the child WebView2's user-agent with a current desktop-Chrome UA so
 /// identity providers (notably Google, which 403s embedded webviews) don't
 /// reject OAuth flows.
@@ -1135,9 +1190,21 @@ pub(super) async fn create_tab_webview(
                 .initialization_script(CACHE_SCRIPT)
                 .initialization_script(CONSOLE_HOOK_SCRIPT)
                 .on_page_load(move |webview, payload| {
+                    // Started → per-tab loading on (drives the tab spinner + the
+                    // per-nav progress bar). Finished → loading off + url/title.
+                    if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+                        let _ = app_for_handler.emit(
+                            "lens-loading-changed",
+                            serde_json::json!({ "tabId": tab_id_for_handler, "loading": true }),
+                        );
+                    }
                     if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
                         let url_str = payload.url().to_string();
                         info!("[lens] Page load finished (tab {}): {}", tab_id_for_handler, url_str);
+                        let _ = app_for_handler.emit(
+                            "lens-loading-changed",
+                            serde_json::json!({ "tabId": tab_id_for_handler, "loading": false }),
+                        );
                         let _ = app_for_handler.emit(
                             "lens-url-changed",
                             serde_json::json!({ "url": url_str, "tabId": tab_id_for_handler }),
@@ -1165,6 +1232,7 @@ pub(super) async fn create_tab_webview(
                 register_new_window_handler(&app_for_download, &webview_ref);
                 register_navigation_state_handlers(&app_for_download, &webview_ref, &tab_id_clone);
                 register_cert_error_handler(&app_for_download, &webview_ref, &tab_id_clone);
+                register_fullscreen_handler(&app_for_download, &webview_ref, &tab_id_clone);
                 set_desktop_user_agent(&webview_ref);
                 Ok(label_clone)
             }

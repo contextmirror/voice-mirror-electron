@@ -816,6 +816,11 @@
                             onDevtools={toggleDevtools}
                             devtoolsActive={showDevtools}
                           />
+                          {#if browserTabsStore.activeTab?.loading}
+                            <div class="nav-progress" role="progressbar" aria-label="Page loading">
+                              <div class="nav-progress-bar"></div>
+                            </div>
+                          {/if}
                           {#if lensStore.designMode}
                             <DesignToolbar
                               onSend={handleDesignSend}
@@ -1077,6 +1082,41 @@
     min-width: 300px;
     height: 100%;
     /* Native WebView2 renders here — this div is just a positioning placeholder */
+  }
+
+  /* ── Per-nav progress bar (thin accent bar under the toolbar) ── */
+  .nav-progress {
+    position: relative;
+    height: 2px;
+    flex-shrink: 0;
+    overflow: hidden;
+    background: transparent;
+  }
+
+  .nav-progress-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 40%;
+    background: var(--accent);
+    border-radius: 0 2px 2px 0;
+    animation: nav-progress-indeterminate 1.1s var(--ease-out, ease) infinite;
+  }
+
+  @keyframes nav-progress-indeterminate {
+    0%   { left: -40%; width: 40%; }
+    50%  { left: 30%; width: 55%; }
+    100% { left: 100%; width: 40%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nav-progress-bar {
+      animation: none;
+      width: 100%;
+      left: 0;
+      opacity: 0.6;
+    }
   }
 
 </style>

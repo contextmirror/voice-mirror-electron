@@ -22,11 +22,15 @@
   let unlistenCertError = null;
   let unlistenAudioState = null;
   let unlistenFullscreen = null;
+  let unlistenLoading = null;
   let setupDone = false;
   const LOADING_TIMEOUT_MS = 15000;
   let loadingTimer = null;
   let detectionTimer = null;
   let creatingFirstTab = false;
+  // True while a page is in HTML5 fullscreen — the active webview then fills the
+  // whole window (bounds sync must not clamp it back to the browser pane).
+  let isFullscreen = false;
 
   function getAbsoluteBounds() {
     if (!containerEl) return null;
@@ -49,6 +53,13 @@
   }
 
   function syncBounds() {
+    // While a page is fullscreen the webview fills the whole window regardless
+    // of the pane rect. A resize event mid-fullscreen (e.g. window resized)
+    // re-applies the full-window bounds rather than clamping to the pane.
+    if (isFullscreen && lensStore.webviewReady) {
+      lensResizeWebview(0, 0, window.innerWidth, window.innerHeight).catch(() => {});
+      return;
+    }
     const bounds = getAbsoluteBounds();
     if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
       // Container is CSS-hidden (display:none — e.g. a file tab is active, not
@@ -460,6 +471,18 @@
       }
     });
 
+    // Per-tab loading state from Tauri page-load Started/Finished → tab spinner
+    // + the per-nav progress bar under the toolbar.
+    unlistenLoading = await listen('lens-loading-changed', (event) => {
+      const tabId = event.payload?.tabId;
+      if (!tabId) return;
+      const loading = event.payload?.loading === true;
+      browserTabsStore.setTabLoading(tabId, loading);
+      if (tabId === browserTabsStore.activeTabId) {
+        lensStore.setLoading(loading);
+      }
+    });
+
     // Listen for page title changes from child WebView2 instances
     unlistenTitle = await listen('lens-title-changed', (event) => {
       const tabId = event.payload?.tabId;
@@ -496,6 +519,21 @@
       const tabId = event.payload?.tabId;
       if (tabId) {
         browserTabsStore.setTabCertError(tabId, true);
+      }
+    });
+
+    // HTML5 fullscreen (ICoreWebView2 ContainsFullScreenElementChanged) → the
+    // active webview fills the whole window while fullscreen; pane bounds restore
+    // on exit. Only the active tab can be fullscreen (others are parked off-screen).
+    unlistenFullscreen = await listen('lens-fullscreen-changed', (event) => {
+      const tabId = event.payload?.tabId;
+      const fullscreen = event.payload?.fullscreen === true;
+      if (tabId && tabId !== browserTabsStore.activeTabId) return;
+      isFullscreen = fullscreen;
+      if (fullscreen) {
+        lensResizeWebview(0, 0, window.innerWidth, window.innerHeight).catch(() => {});
+      } else {
+        syncBounds();
       }
     });
 
@@ -601,6 +639,10 @@
     if (unlistenFullscreen) {
       unlistenFullscreen();
       unlistenFullscreen = null;
+    }
+    if (unlistenLoading) {
+      unlistenLoading();
+      unlistenLoading = null;
     }
     lensCloseAllTabs().catch(() => {});
     browserTabsStore.clearAll();
