@@ -21,6 +21,7 @@ const PREVIEW = read('src', 'components', 'lens', 'preview', 'LensPreview.svelte
 const FINDBAR = read('src', 'components', 'lens', 'browser', 'FindBar.svelte');
 const WEBVIEW_SETUP = read('src-tauri', 'src', 'commands', 'lens', 'webview_setup.rs');
 const FIND_RS = read('src-tauri', 'src', 'commands', 'lens', 'find.rs');
+const NAVIGATION_RS = read('src-tauri', 'src', 'commands', 'lens', 'navigation.rs');
 const AUDIO_RS = read('src-tauri', 'src', 'commands', 'lens', 'audio.rs');
 const PERMISSIONS_RS = read('src-tauri', 'src', 'commands', 'lens', 'permissions.rs');
 const MOD_RS = read('src-tauri', 'src', 'commands', 'lens', 'mod.rs');
@@ -180,5 +181,21 @@ describe('browser tier2: permission prompts', () => {
     assert.ok(WORKSPACE.includes('answerPermission(true)'), 'Allow answers the prompt');
     assert.ok(WORKSPACE.includes('answerPermission(false)'), 'Block answers the prompt');
     assert.ok(WORKSPACE.includes('lensPermissionResponse'), 'Answer calls the response command');
+  });
+});
+
+describe('browser tier2: print', () => {
+  it('Ctrl+P is intercepted in the child webview and routed to print', () => {
+    assert.ok(WEBVIEW_SETUP.includes("lower === 'p'"), 'Ctrl+P intercepted in the shortcut script');
+    assert.ok(/'print'/.test(WEBVIEW_SETUP), 'Fires the print shortcut');
+    assert.ok(APP_SVELTE.includes("key === 'print'"), 'App routes the print shortcut');
+    assert.ok(APP_SVELTE.includes('lensPrint()'), 'App calls lensPrint');
+  });
+
+  it('lens_print calls ShowPrintUI and is registered', () => {
+    assert.ok(NAVIGATION_RS.includes('ShowPrintUI'), 'Should call ShowPrintUI');
+    assert.ok(NAVIGATION_RS.includes('ICoreWebView2_16'), 'Should use ICoreWebView2_16');
+    assert.ok(LIB_RS.includes('lens_cmds::navigation::lens_print'), 'Command registered');
+    assert.ok(API_JS.includes("invoke('lens_print'"), 'api wrapper exists');
   });
 });

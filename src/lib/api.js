@@ -405,6 +405,11 @@ export async function lensClearCache() {
   return invoke('lens_clear_cache');
 }
 
+/** Open the print UI (browser print preview) for the active lens tab. */
+export async function lensPrint() {
+  return invoke('lens_print');
+}
+
 // ============ Design Overlay ============
 
 /** Send a design overlay command (set_tool, set_color, undo, redo, clear, enable, disable). */

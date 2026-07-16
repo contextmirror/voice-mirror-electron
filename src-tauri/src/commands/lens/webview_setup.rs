@@ -50,6 +50,12 @@ pub(super) fn build_shortcut_script() -> String {
                 try {{
                     (new Image()).src = '{}' + 'find' + '?t=' + Date.now();
                 }} catch(err) {{}}
+            }} else if ((e.ctrlKey || e.metaKey) && lower === 'p') {{
+                e.preventDefault();
+                e.stopPropagation();
+                try {{
+                    (new Image()).src = '{}' + 'print' + '?t=' + Date.now();
+                }} catch(err) {{}}
             }} else if ((e.ctrlKey || e.metaKey) && (key === '+' || key === '=')) {{
                 e.preventDefault();
                 e.stopPropagation();
@@ -70,7 +76,7 @@ pub(super) fn build_shortcut_script() -> String {
                 }} catch(err) {{}}
             }}
         }}, true);"#,
-        shortcut_base, shortcut_base, shortcut_base, shortcut_base, shortcut_base, shortcut_base, shortcut_base
+        shortcut_base, shortcut_base, shortcut_base, shortcut_base, shortcut_base, shortcut_base, shortcut_base, shortcut_base
     )
 }
 

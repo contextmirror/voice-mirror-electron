@@ -123,6 +123,7 @@ pub use navigation::{
     lens_set_visible,
     lens_hard_refresh,
     lens_clear_cache,
+    lens_print,
 };
 
 pub use devtools::{

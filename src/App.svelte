@@ -11,7 +11,7 @@
   import { initStartupGreeting } from './lib/voice-greeting.js';
   import { initOpenFileRequestListener, drainStartupOpenPaths } from './lib/open-file-request.js';
   import { listen } from '@tauri-apps/api/event';
-  import { writeUserMessage, aiPtyInput, pttPress, pttRelease, cancelRecording, configurePttKey, configureDictationKey, injectText, showWindow, minimizeWindow, restartVoice } from './lib/api.js';
+  import { writeUserMessage, aiPtyInput, pttPress, pttRelease, cancelRecording, configurePttKey, configureDictationKey, injectText, showWindow, minimizeWindow, restartVoice, lensPrint } from './lib/api.js';
   import { chatStore } from './lib/stores/chat.svelte.js';
   import { toastStore } from './lib/stores/toast.svelte.js';
   import { tabsStore } from './lib/stores/tabs.svelte.js';
@@ -416,6 +416,9 @@
       else if (key === ',') { navigationStore.setView('settings'); }
       else if (key === 'find') {
         window.dispatchEvent(new CustomEvent('lens-find-toggle'));
+      }
+      else if (key === 'print') {
+        lensPrint().catch((err) => console.warn('[App] lens print failed:', err));
       }
       else if (key === 'zoom-in') {
         window.dispatchEvent(new CustomEvent('lens-zoom', { detail: 'in' }));

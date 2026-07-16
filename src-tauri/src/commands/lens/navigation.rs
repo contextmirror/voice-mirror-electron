@@ -251,6 +251,53 @@ pub fn lens_hard_refresh(
     }
 }
 
+/// Open the print UI for the active lens tab (Ctrl+P / browser menu).
+/// Uses `ICoreWebView2_16::ShowPrintUI` with the browser print-preview dialog.
+#[tauri::command]
+pub fn lens_print(
+    app: AppHandle,
+    state: tauri::State<'_, LensState>,
+) -> IpcResponse {
+    let webview = match get_lens_webview(&app, &state) {
+        Ok(w) => w,
+        Err(e) => return e,
+    };
+
+    let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
+    let _ = webview.with_webview(move |platform_webview| {
+        #[cfg(windows)]
+        {
+            use webview2_com::Microsoft::Web::WebView2::Win32::{
+                ICoreWebView2_16, COREWEBVIEW2_PRINT_DIALOG_KIND_BROWSER,
+            };
+            use windows_core::Interface;
+            unsafe {
+                let controller = platform_webview.controller();
+                let result = match controller.CoreWebView2() {
+                    Ok(core) => match core.cast::<ICoreWebView2_16>() {
+                        Ok(wv16) => wv16
+                            .ShowPrintUI(COREWEBVIEW2_PRINT_DIALOG_KIND_BROWSER)
+                            .map_err(|e| format!("ShowPrintUI failed: {:?}", e)),
+                        Err(e) => Err(format!("ICoreWebView2_16 unavailable: {:?}", e)),
+                    },
+                    Err(e) => Err(format!("No CoreWebView2: {:?}", e)),
+                };
+                let _ = tx.send(result);
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = tx.send(Err("Print is Windows-only".into()));
+        }
+    });
+
+    match rx.recv_timeout(std::time::Duration::from_secs(2)) {
+        Ok(Ok(())) => IpcResponse::ok_empty(),
+        Ok(Err(e)) => IpcResponse::err(e),
+        Err(_) => IpcResponse::err("Print timed out"),
+    }
+}
+
 /// Clear all browsing data (cache, cookies, localStorage, IndexedDB) for the
 /// lens webview. Called before navigating to a new dev server URL on project
 /// switch to prevent stale content from a previously-cached localhost port.

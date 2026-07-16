@@ -504,6 +504,7 @@ pub fn run() {
             lens_cmds::navigation::lens_set_visible,
             lens_cmds::navigation::lens_hard_refresh,
             lens_cmds::navigation::lens_clear_cache,
+            lens_cmds::navigation::lens_print,
             // Lens — device preview
             lens_cmds::device_preview::lens_create_device_webview,
             lens_cmds::device_preview::lens_close_device_webview,

@@ -63,7 +63,9 @@ carry what extensions need (`browser_extensions_enabled` env flag,
       webview fills the whole window while fullscreen (`syncBounds` honors it)
       and restores the pane bounds on exit. (`webview_setup.rs`,
       `LensPreview.svelte`)
-- [ ] **Print** — `ShowPrintUI` on Ctrl+P.
+- [x] **Print** — Ctrl+P in the child webview shortcut script → `lens-shortcut`
+      'print' → `lens_print` calls `ICoreWebView2_16::ShowPrintUI` (browser print
+      preview). (`webview_setup.rs`, `navigation.rs`, `App.svelte`)
 - [x] **Find match counts** — `find.rs` now returns `{found, total}`; total is a
       JS-side case-insensitive scan of the page's rendered `innerText` (the
       accepted approach). `FindBar` shows `current/total` (or "No results"),
