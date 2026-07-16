@@ -67,6 +67,19 @@
       tabindex="0"
       aria-selected={tab.id === browserTabsStore.activeTabId}
     >
+      <span class="browser-tab-icon" aria-hidden="true">
+        {#if tab.loading}
+          <span class="browser-tab-spinner"></span>
+        {:else if tab.favicon}
+          <img class="browser-tab-favicon" src={tab.favicon} alt="" />
+        {:else}
+          <svg class="browser-tab-globe" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="2" y1="12" x2="22" y2="12"/>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          </svg>
+        {/if}
+      </span>
       <span class="browser-tab-title">{truncate(tab.title)}</span>
       {#if browserTabsStore.tabs.length > 1}
         <button
@@ -182,14 +195,50 @@
     box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent);
   }
 
-  .browser-tab.loading .browser-tab-title {
-    opacity: 0.5;
-  }
-
   .browser-tab-title {
     overflow: hidden;
     text-overflow: ellipsis;
     min-width: 0;
+  }
+
+  /* Favicon / globe / spinner slot — fixed so titles don't shift */
+  .browser-tab-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+  }
+
+  .browser-tab-favicon {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+  }
+
+  .browser-tab-globe {
+    opacity: 0.55;
+  }
+
+  .browser-tab-spinner {
+    width: 10px;
+    height: 10px;
+    border: 1.5px solid var(--border-strong);
+    border-top-color: var(--accent);
+    border-radius: var(--radius-full);
+    animation: browser-tab-spin 0.8s linear infinite;
+  }
+
+  @keyframes browser-tab-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .browser-tab-spinner {
+      animation: none;
+      border-top-color: var(--border-strong);
+    }
   }
 
   .browser-tab-close {

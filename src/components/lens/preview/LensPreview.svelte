@@ -17,6 +17,8 @@
   let unlistenTitle = null;
   let unlistenFocusTab = null;
   let unlistenNewWindow = null;
+  let unlistenFavicon = null;
+  let unlistenHistoryState = null;
   let setupDone = false;
   const LOADING_TIMEOUT_MS = 15000;
   let loadingTimer = null;
@@ -376,6 +378,32 @@
       return;
     }
 
+    // A saved browser session (from workspace-state) takes precedence over
+    // the default blank tab — restarting the app no longer loses your tabs.
+    const session = browserTabsStore.takePendingRestore();
+    if (session) {
+      console.log('[LensPreview] Restoring browser session:', session.tabs.length, 'tab(s)');
+      try {
+        const ids = [];
+        for (const saved of session.tabs) {
+          const id = await browserTabsStore.openTab(saved.url, bounds);
+          if (id) {
+            ids.push(id);
+            if (saved.title) browserTabsStore.setTabTitle(id, saved.title);
+          }
+        }
+        if (ids.length > 0) {
+          const activeId = ids[Math.min(session.activeIndex ?? 0, ids.length - 1)];
+          await browserTabsStore.switchTab(activeId);
+          lensStore.setWebviewReady(true);
+          console.log('[LensPreview] Browser session restored');
+          return;
+        }
+      } catch (err) {
+        console.error('[LensPreview] Session restore failed, falling back to blank tab:', err);
+      }
+    }
+
     console.log('[LensPreview] Creating first browser tab at', bounds);
 
     try {
@@ -430,6 +458,27 @@
       const title = event.payload?.title;
       if (tabId && title) {
         browserTabsStore.setTabTitle(tabId, title);
+      }
+    });
+
+    // Favicons from WebView2 FaviconChanged → tab strip icons
+    unlistenFavicon = await listen('lens-favicon-changed', (event) => {
+      const tabId = event.payload?.tabId;
+      if (tabId) {
+        browserTabsStore.setTabFavicon(tabId, event.payload?.faviconUri || null);
+      }
+    });
+
+    // Real navigation history state from WebView2 HistoryChanged →
+    // back/forward button enablement
+    unlistenHistoryState = await listen('lens-history-changed', (event) => {
+      const tabId = event.payload?.tabId;
+      if (tabId) {
+        browserTabsStore.setTabHistoryState(
+          tabId,
+          event.payload?.canGoBack === true,
+          event.payload?.canGoForward === true
+        );
       }
     });
 
@@ -503,6 +552,14 @@
     if (unlistenNewWindow) {
       unlistenNewWindow();
       unlistenNewWindow = null;
+    }
+    if (unlistenFavicon) {
+      unlistenFavicon();
+      unlistenFavicon = null;
+    }
+    if (unlistenHistoryState) {
+      unlistenHistoryState();
+      unlistenHistoryState = null;
     }
     lensCloseAllTabs().catch(() => {});
     browserTabsStore.clearAll();

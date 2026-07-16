@@ -5,6 +5,7 @@
   import DesignToolbar from './preview/DesignToolbar.svelte';
   import FindBar from './browser/FindBar.svelte';
   import HistoryPanel from './browser/HistoryPanel.svelte';
+  import BookmarksPanel from './browser/BookmarksPanel.svelte';
   import DownloadsPanel from './browser/DownloadsPanel.svelte';
   import LensPreview from './preview/LensPreview.svelte';
   import ElementInspector from './browser/ElementInspector.svelte';
@@ -25,6 +26,7 @@
   import { lensStore } from '../../lib/stores/lens.svelte.js';
   import { browserTabsStore } from '../../lib/stores/browser-tabs.svelte.js';
   import { browserHistoryStore } from '../../lib/stores/browser-history.svelte.js';
+  import { browserBookmarksStore } from '../../lib/stores/browser-bookmarks.svelte.js';
   import { downloadsStore } from '../../lib/stores/downloads.svelte.js';
   import { lensSetVisible, startFileWatching, stopFileWatching, lensCapturePreview, lspShutdown, lensSetZoom, lensGetZoom, designGetElement, lensOpenDevtools, lensCloseDevtools, lensResizeDevtools, lensSetDevtoolsVisible, findDevtoolsUrl, detectDevServers, sandboxStartAck, logPreview } from '../../lib/api.js';
   import { unwrapResult } from '../../lib/utils.js';
@@ -139,6 +141,7 @@
 
   // ── History Panel ──
   let showHistory = $state(false);
+  let showBookmarks = $state(false);
 
   // ── Downloads Panel ──
   let showDownloads = $state(false);
@@ -213,9 +216,9 @@
     }
   });
 
-  // Freeze WebView2 when History or Downloads panels are open (airspace problem)
+  // Freeze WebView2 when History/Bookmarks/Downloads panels are open (airspace problem)
   $effect(() => {
-    if (showHistory || showDownloads) {
+    if (showHistory || showBookmarks || showDownloads) {
       lensStore.freeze();
     } else {
       lensStore.unfreeze();
@@ -226,9 +229,10 @@
     navigationStore.setView('settings');
   }
 
-  // Init browser history and downloads stores; destroy on cleanup
+  // Init browser history, bookmarks and downloads stores; destroy on cleanup
   $effect(() => {
     browserHistoryStore.init();
+    browserBookmarksStore.init();
     downloadsStore.init();
     return () => {
       browserHistoryStore.destroy();
@@ -800,6 +804,7 @@
                             onZoomOut={handleZoomOut}
                             onZoomReset={handleZoomReset}
                             onHistory={() => showHistory = true}
+                            onBookmarks={() => showBookmarks = true}
                             onDownloads={() => showDownloads = true}
                             onDownloadSettings={handleDownloadSettings}
                             onDevtools={toggleDevtools}
@@ -828,6 +833,9 @@
                           </div>
                           {#if showHistory}
                             <HistoryPanel onClose={() => showHistory = false} />
+                          {/if}
+                          {#if showBookmarks}
+                            <BookmarksPanel onClose={() => showBookmarks = false} />
                           {/if}
                           {#if showDownloads}
                             <DownloadsPanel onClose={() => showDownloads = false} />

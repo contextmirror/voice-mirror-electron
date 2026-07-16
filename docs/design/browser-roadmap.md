@@ -16,24 +16,25 @@ Verified versions: tauri 2.11.1, wry 0.55.1, webview2-com 0.38.2 — all three
 carry what extensions need (`browser_extensions_enabled` env flag,
 `ICoreWebView2Profile7::AddBrowserExtension`).
 
-## Tier 1 — table stakes (one batch)
+## Tier 1 — table stakes (SHIPPED 2026-07-16, branch worktree-browser-tier1)
 
-- [ ] **Tab favicons + loading spinners** — `FaviconChanged` (ICoreWebView2_15)
-      → `lens-favicon-changed {tabId, faviconUri}`; spinner replaces the
-      current title-dimming. (`BrowserTabBar.svelte`, `webview_setup.rs`)
-- [ ] **Native back/forward with real states** — today back/forward are
-      `history.back()` evals and the buttons never disable. Use
-      `GoBack`/`GoForward` + `HistoryChanged` → per-tab
-      `canGoBack`/`canGoForward`. (`navigation.rs`, `LensToolbar.svelte`)
-- [ ] **Browser session restore** — persist open tabs + active tab per project
-      in workspace-state; today `LensPreview` `onDestroy` closes everything and
-      you restart on about:blank.
-- [ ] **Bookmarks** — `bookmarks.json` beside the history store (same shape as
-      `history.rs`), star toggle in the address bar, panel like `HistoryPanel`.
-- [ ] **Download config + persistence** — `BrowserConfig.downloadAskLocation`/
-      `downloadPath` exist in schema but are wired to nothing; honor them in
-      the `DownloadStarting` handler and persist download records
-      (`downloads.json`) so the panel survives restart.
+- [x] **Tab favicons + loading spinners** — `FaviconChanged` (ICoreWebView2_15)
+      → `lens-favicon-changed {tabId, faviconUri}`; spinner in a fixed icon
+      slot (globe fallback). (`BrowserTabBar.svelte`, `webview_setup.rs`)
+- [x] **Native back/forward with real states** — `GoBack`/`GoForward` via COM
+      + `HistoryChanged` → per-tab `canGoBack`/`canGoForward`; toolbar buttons
+      disable. (`navigation.rs`, `LensToolbar.svelte`)
+- [x] **Browser session restore** — open tabs + active index persist in
+      workspace-state (`browserSession`); restored when the browser pane first
+      opens. Note: applies at app startup; switching projects mid-session
+      still carries tabs over (deliberate, revisit in Tier 2).
+- [x] **Bookmarks** — `browser-bookmarks.json` (`bookmarks.rs`), star in the
+      address bar, `BookmarksPanel`, Bookmarks entry in the browser menu.
+- [x] **Download config + persistence** — `downloadAskLocation`/`downloadPath`
+      now honored in `DownloadStarting` (ask → Save-As dialog; otherwise
+      silent to configured folder with "(n)" collision suffixes, Chrome-like);
+      finished downloads persist to `browser-downloads.json` and seed the
+      panel on startup.
 
 ## Tier 2 — the "feels like Chrome" layer
 

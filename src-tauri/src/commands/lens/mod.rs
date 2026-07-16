@@ -20,6 +20,7 @@ pub mod devtools;
 pub mod device_preview;
 pub mod find;
 pub mod history;
+pub mod bookmarks;
 pub mod downloads;
 pub mod zoom;
 
@@ -35,7 +36,7 @@ use super::IpcResponse;
 
 // ── Types & State ────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DownloadEntry {
     pub id: String,
@@ -154,6 +155,12 @@ pub use history::{
     lens_get_history,
     lens_clear_history,
     lens_delete_history_entry,
+};
+
+pub use bookmarks::{
+    lens_add_bookmark,
+    lens_remove_bookmark,
+    lens_get_bookmarks,
 };
 
 pub use downloads::{

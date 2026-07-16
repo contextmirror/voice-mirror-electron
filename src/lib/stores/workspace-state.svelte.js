@@ -9,6 +9,7 @@
 import { tabsStore } from './tabs.svelte.js';
 import { editorGroupsStore } from './editor-groups.svelte.js';
 import { layoutStore } from './layout.svelte.js';
+import { browserTabsStore } from './browser-tabs.svelte.js';
 import { saveWorkspaceState, loadWorkspaceState } from '../api.js';
 import { unwrapResult } from '../utils.js';
 
@@ -37,6 +38,7 @@ function collectState() {
     activeTabId: tabsStore.activeTabId || null,
     groups: editorGroupsStore.serialize(),
     layout: layoutStore.serialize(),
+    browserSession: browserTabsStore.serialize(),
   };
 }
 
@@ -77,6 +79,10 @@ export async function restoreState(projectPath) {
     editorGroupsStore.restore(data.groups);
     tabsStore.restore(data.tabs);
     layoutStore.restore(data.layout);
+
+    // Browser session: stash for LensPreview to apply when the browser pane
+    // first opens (webviews can't be created while the pane is display:none).
+    browserTabsStore.setPendingRestore(data.browserSession || null);
 
     // Restore active tab (uses tab ID for multi-group correctness)
     if (data.activeTabId) {

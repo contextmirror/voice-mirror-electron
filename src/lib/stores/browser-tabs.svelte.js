@@ -12,6 +12,8 @@ let counter = 0;
 function createBrowserTabsStore() {
   let tabs = $state([]);
   let activeTabId = $state(null);
+  /** Saved session waiting to be applied when the browser pane first opens */
+  let pendingRestore = null;
 
   return {
     get tabs() { return tabs; },
@@ -36,6 +38,9 @@ function createBrowserTabsStore() {
         title: 'New Tab',
         webviewLabel: null,
         loading: false,
+        favicon: null,
+        canGoBack: false,
+        canGoForward: false,
       };
 
       tabs.push(tab);
@@ -122,6 +127,9 @@ function createBrowserTabsStore() {
       tab.inputUrl = 'about:blank';
       tab.title = 'New Tab';
       tab.loading = false;
+      tab.favicon = null;
+      tab.canGoBack = false;
+      tab.canGoForward = false;
     },
 
     /**
@@ -190,6 +198,32 @@ function createBrowserTabsStore() {
     },
 
     /**
+     * Update a tab's favicon (from the WebView2 FaviconChanged event).
+     * @param {string} tabId
+     * @param {string|null} faviconUri
+     */
+    setTabFavicon(tabId, faviconUri) {
+      const tab = tabs.find(t => t.id === tabId);
+      if (tab) {
+        tab.favicon = faviconUri || null;
+      }
+    },
+
+    /**
+     * Update a tab's navigation history state (from HistoryChanged).
+     * @param {string} tabId
+     * @param {boolean} canGoBack
+     * @param {boolean} canGoForward
+     */
+    setTabHistoryState(tabId, canGoBack, canGoForward) {
+      const tab = tabs.find(t => t.id === tabId);
+      if (tab) {
+        tab.canGoBack = !!canGoBack;
+        tab.canGoForward = !!canGoForward;
+      }
+    },
+
+    /**
      * Update only the input URL (for URL bar typing, before navigation).
      * @param {string} tabId
      * @param {string} url
@@ -207,6 +241,43 @@ function createBrowserTabsStore() {
     clearAll() {
       tabs.length = 0;
       activeTabId = null;
+    },
+
+    /**
+     * Serialize the open tabs for workspace-state persistence.
+     * Returns null when there's nothing worth restoring (blank tabs only).
+     * @returns {{ tabs: Array<{url: string, title: string}>, activeIndex: number }|null}
+     */
+    serialize() {
+      const real = tabs.filter(t => t.url && t.url !== 'about:blank');
+      if (real.length === 0) return null;
+      const activeIdx = real.findIndex(t => t.id === activeTabId);
+      return {
+        tabs: real.map(t => ({ url: t.url, title: t.title })),
+        activeIndex: activeIdx === -1 ? 0 : activeIdx,
+      };
+    },
+
+    /**
+     * Stash a saved session to apply when the browser pane first opens.
+     * Only honored before the first webview exists (app startup) — live
+     * sessions are never clobbered.
+     * @param {{ tabs?: Array<{url: string, title?: string}>, activeIndex?: number }|null} session
+     */
+    setPendingRestore(session) {
+      pendingRestore = Array.isArray(session?.tabs) && session.tabs.length > 0
+        ? session
+        : null;
+    },
+
+    /**
+     * Consume the pending session (one-shot).
+     * @returns {{ tabs: Array<{url: string, title?: string}>, activeIndex?: number }|null}
+     */
+    takePendingRestore() {
+      const s = pendingRestore;
+      pendingRestore = null;
+      return s;
     },
 
     /**

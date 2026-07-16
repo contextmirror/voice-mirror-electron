@@ -376,7 +376,11 @@ pub fn run() {
             active_tab_id: std::sync::Mutex::new(None),
             bounds: std::sync::Mutex::new(None),
             device_webviews: std::sync::Mutex::new(Vec::new()),
-            downloads: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            // Seed with finished downloads from previous sessions so the
+            // Downloads panel isn't amnesiac across restarts.
+            downloads: std::sync::Arc::new(std::sync::Mutex::new(
+                lens_cmds::downloads::load_persisted(),
+            )),
             devtools_label: std::sync::Mutex::new(None),
         })
         .manage(services::file_watcher::FileWatcherState {
@@ -527,6 +531,10 @@ pub fn run() {
             lens_cmds::history::lens_get_history,
             lens_cmds::history::lens_clear_history,
             lens_cmds::history::lens_delete_history_entry,
+            // Lens — bookmarks
+            lens_cmds::bookmarks::lens_add_bookmark,
+            lens_cmds::bookmarks::lens_remove_bookmark,
+            lens_cmds::bookmarks::lens_get_bookmarks,
             // Lens — downloads
             lens_cmds::downloads::lens_get_downloads,
             lens_cmds::downloads::lens_clear_downloads,

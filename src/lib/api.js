@@ -517,6 +517,20 @@ export async function lensDeleteHistoryEntry(timestamp) {
   return invoke('lens_delete_history_entry', { timestamp });
 }
 
+// ============ Lens Bookmarks ============
+
+export async function lensAddBookmark(url, title) {
+  return invoke('lens_add_bookmark', { url, title });
+}
+
+export async function lensRemoveBookmark(url) {
+  return invoke('lens_remove_bookmark', { url });
+}
+
+export async function lensGetBookmarks() {
+  return invoke('lens_get_bookmarks');
+}
+
 // ============ Downloads ============
 
 export async function lensGetDownloads() {

@@ -439,6 +439,10 @@ describe('api.js -- exported async functions', () => {
     'lensGetHistory',
     'lensClearHistory',
     'lensDeleteHistoryEntry',
+    // Browser Bookmarks
+    'lensAddBookmark',
+    'lensRemoveBookmark',
+    'lensGetBookmarks',
     // Downloads
     'lensGetDownloads',
     'lensClearDownloads',

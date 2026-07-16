@@ -11,6 +11,7 @@
     onZoomReset,
     onDownloads,
     onHistory,
+    onBookmarks,
     onDownloadSettings,
   } = $props();
 
@@ -24,6 +25,7 @@
     'menu-zoom-reset': () => { onZoomReset?.(); },
     'menu-downloads': () => { closeMenu(); onDownloads?.(); },
     'menu-history': () => { closeMenu(); onHistory?.(); },
+    'menu-bookmarks': () => { closeMenu(); onBookmarks?.(); },
     'menu-download-settings': () => { closeMenu(); onDownloadSettings?.(); },
     'menu-close': () => { closeMenu(); },
   };
@@ -49,6 +51,7 @@ r.innerHTML='<div id="vm-menu-backdrop" style="position:fixed;inset:0;z-index:99
 +'<div style="height:1px;background:#3c3c3c;margin:4px 0;"></div>'
 +'<button data-action="menu-downloads" class="vmi" style="display:flex;align-items:center;width:100%;padding:7px 12px;border:none;background:transparent;color:#ccc;font-size:13px;cursor:pointer;text-align:left;font-family:inherit;">Downloads</button>'
 +'<button data-action="menu-history" class="vmi" style="display:flex;align-items:center;width:100%;padding:7px 12px;border:none;background:transparent;color:#ccc;font-size:13px;cursor:pointer;text-align:left;font-family:inherit;">History</button>'
++'<button data-action="menu-bookmarks" class="vmi" style="display:flex;align-items:center;width:100%;padding:7px 12px;border:none;background:transparent;color:#ccc;font-size:13px;cursor:pointer;text-align:left;font-family:inherit;">Bookmarks</button>'
 +'<div style="height:1px;background:#3c3c3c;margin:4px 0;"></div>'
 +'<button data-action="menu-download-settings" class="vmi" style="display:flex;align-items:center;width:100%;padding:7px 12px;border:none;background:transparent;color:#ccc;font-size:13px;cursor:pointer;text-align:left;font-family:inherit;">Download settings</button>'
 +'</div>'

@@ -3,6 +3,7 @@
   import { listen } from '@tauri-apps/api/event';
   import { lensStore } from '../../lib/stores/lens.svelte.js';
   import { browserTabsStore } from '../../lib/stores/browser-tabs.svelte.js';
+  import { browserBookmarksStore } from '../../lib/stores/browser-bookmarks.svelte.js';
   import { lensHardRefresh } from '../../lib/api.js';
   import BrowserMenu from './browser/BrowserMenu.svelte';
 
@@ -13,6 +14,7 @@
     onZoomReset,
     onDownloads,
     onHistory,
+    onBookmarks,
     onDownloadSettings,
     onDevtools,
     devtoolsActive = false,
@@ -39,6 +41,20 @@
     }
   }
 
+  // Real navigation state from WebView2 HistoryChanged (per-tab)
+  const canGoBack = $derived(browserTabsStore.activeTab?.canGoBack === true);
+  const canGoForward = $derived(browserTabsStore.activeTab?.canGoForward === true);
+
+  // Bookmark star state for the current page
+  const currentUrl = $derived(browserTabsStore.activeTab?.url || '');
+  const isBookmarkable = $derived(!!currentUrl && currentUrl !== 'about:blank');
+  const isBookmarked = $derived(browserBookmarksStore.has(currentUrl));
+
+  function handleBookmarkToggle() {
+    if (!isBookmarkable) return;
+    browserBookmarksStore.toggle(currentUrl, browserTabsStore.activeTab?.title || '');
+  }
+
   function handleBack() { lensStore.goBack(); }
   function handleForward() { lensStore.goForward(); }
   function handleReload(event) {
@@ -52,10 +68,10 @@
 
 <div class="lens-toolbar">
   <div class="toolbar-nav">
-    <button class="nav-btn" onclick={handleBack} title="Go back" aria-label="Go back">
+    <button class="nav-btn" onclick={handleBack} disabled={!canGoBack} title="Go back" aria-label="Go back">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
-    <button class="nav-btn" onclick={handleForward} title="Go forward" aria-label="Go forward">
+    <button class="nav-btn" onclick={handleForward} disabled={!canGoForward} title="Go forward" aria-label="Go forward">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
     </button>
     <button class="nav-btn" onclick={handleReload} title="Reload (Shift+click for hard refresh)" aria-label="Reload page">
@@ -72,6 +88,19 @@
       spellcheck="false"
       autocomplete="off"
     />
+    <button
+      type="button"
+      class="star-btn"
+      class:starred={isBookmarked}
+      onclick={handleBookmarkToggle}
+      disabled={!isBookmarkable}
+      title={isBookmarked ? 'Remove bookmark' : 'Bookmark this page'}
+      aria-label={isBookmarked ? 'Remove bookmark' : 'Bookmark this page'}
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill={isBookmarked ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+      </svg>
+    </button>
   </form>
 
   <button
@@ -105,6 +134,7 @@
     {onZoomReset}
     {onDownloads}
     {onHistory}
+    {onBookmarks}
     {onDownloadSettings}
   />
 
@@ -158,12 +188,44 @@
   .url-bar {
     flex: 1;
     display: flex;
+    position: relative;
+    align-items: center;
+  }
+
+  /* Bookmark star, inside the right edge of the address bar */
+  .star-btn {
+    position: absolute;
+    right: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: color var(--duration-fast) var(--ease-out);
+  }
+
+  .star-btn:hover:not(:disabled) {
+    color: var(--text);
+  }
+
+  .star-btn.starred {
+    color: var(--warn);
+  }
+
+  .star-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
   }
 
   .url-input {
     flex: 1;
     height: 28px;
-    padding: 0 8px;
+    padding: 0 30px 0 8px;
     border: 1px solid var(--border);
     border-radius: 4px;
     background: var(--bg);

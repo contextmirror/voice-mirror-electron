@@ -15,6 +15,7 @@
   import { chatStore } from './lib/stores/chat.svelte.js';
   import { toastStore } from './lib/stores/toast.svelte.js';
   import { tabsStore } from './lib/stores/tabs.svelte.js';
+  import { browserTabsStore } from './lib/stores/browser-tabs.svelte.js';
   import { terminalTabsStore } from './lib/stores/terminal-tabs.svelte.js';
   import { devServerManager } from './lib/stores/dev-server-manager.svelte.js';
   import { diagnosticsStore } from './lib/stores/diagnostics.svelte.js';
@@ -478,6 +479,10 @@
     void layoutStore.showChat;
     void layoutStore.showTerminal;
     void layoutStore.showFileTree;
+    // Browser session (open tabs + navigations) persists too
+    void browserTabsStore.tabs.length;
+    void browserTabsStore.activeTabId;
+    for (const t of browserTabsStore.tabs) void t.url;
     notifyChange();
   });
 

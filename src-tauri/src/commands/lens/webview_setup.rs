@@ -555,6 +555,109 @@ pub(super) fn register_new_window_handler(app: &AppHandle, webview: &tauri::Webv
     });
 }
 
+/// Register FaviconChanged + HistoryChanged handlers on a child webview.
+///
+/// - `HistoryChanged` → `lens-history-changed {tabId, canGoBack, canGoForward}`
+///   so the toolbar's back/forward buttons reflect real navigation state
+///   (previously they were `history.back()` evals that never disabled).
+/// - `FaviconChanged` (ICoreWebView2_15+) → `lens-favicon-changed {tabId,
+///   faviconUri}` so the tab strip can show real site icons. Degrades to
+///   no favicons on an old runtime.
+pub(super) fn register_navigation_state_handlers(
+    app: &AppHandle,
+    webview: &tauri::Webview,
+    tab_id: &str,
+) {
+    let app_handle = app.clone();
+    let tab_id = tab_id.to_string();
+    let _ = webview.with_webview(move |platform_webview| {
+        #[cfg(windows)]
+        {
+            use webview2_com::{FaviconChangedEventHandler, HistoryChangedEventHandler, take_pwstr};
+            use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_15;
+            use windows_core::Interface;
+
+            unsafe {
+                let controller = platform_webview.controller();
+                let core_webview = match controller.CoreWebView2() {
+                    Ok(wv) => wv,
+                    Err(e) => {
+                        warn!("[lens] Failed to get CoreWebView2 for nav-state handlers: {:?}", e);
+                        return;
+                    }
+                };
+
+                // HistoryChanged → real can-go-back/forward state
+                {
+                    let app_for_history = app_handle.clone();
+                    let tab_for_history = tab_id.clone();
+                    let handler = HistoryChangedEventHandler::create(Box::new(
+                        move |sender, _args| {
+                            if let Some(wv) = sender {
+                                let mut can_back = windows_core::BOOL::from(false);
+                                let mut can_fwd = windows_core::BOOL::from(false);
+                                let _ = wv.CanGoBack(&mut can_back);
+                                let _ = wv.CanGoForward(&mut can_fwd);
+                                let _ = app_for_history.emit(
+                                    "lens-history-changed",
+                                    serde_json::json!({
+                                        "tabId": tab_for_history,
+                                        "canGoBack": can_back.as_bool(),
+                                        "canGoForward": can_fwd.as_bool(),
+                                    }),
+                                );
+                            }
+                            Ok(())
+                        },
+                    ));
+                    let mut token: i64 = 0;
+                    if let Err(e) = core_webview.add_HistoryChanged(&handler, &mut token) {
+                        warn!("[lens] Failed to register HistoryChanged handler: {:?}", e);
+                    }
+                }
+
+                // FaviconChanged → tab favicon (needs ICoreWebView2_15+)
+                match core_webview.cast::<ICoreWebView2_15>() {
+                    Ok(_) => {
+                        let app_for_favicon = app_handle.clone();
+                        let tab_for_favicon = tab_id.clone();
+                        let handler = FaviconChangedEventHandler::create(Box::new(
+                            move |sender, _args| {
+                                if let Some(wv) = sender {
+                                    if let Ok(wv15) = wv.cast::<ICoreWebView2_15>() {
+                                        let mut uri_pwstr = windows_core::PWSTR::null();
+                                        if wv15.FaviconUri(&mut uri_pwstr).is_ok() {
+                                            let uri = take_pwstr(uri_pwstr);
+                                            let _ = app_for_favicon.emit(
+                                                "lens-favicon-changed",
+                                                serde_json::json!({
+                                                    "tabId": tab_for_favicon,
+                                                    "faviconUri": uri,
+                                                }),
+                                            );
+                                        }
+                                    }
+                                }
+                                Ok(())
+                            },
+                        ));
+                        // add_FaviconChanged lives on ICoreWebView2_15
+                        if let Ok(wv15) = core_webview.cast::<ICoreWebView2_15>() {
+                            let mut token: i64 = 0;
+                            if let Err(e) = wv15.add_FaviconChanged(&handler, &mut token) {
+                                warn!("[lens] Failed to register FaviconChanged handler: {:?}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("[lens] ICoreWebView2_15 unavailable — tabs get no favicons: {:?}", e);
+                    }
+                }
+            }
+        }
+    });
+}
+
 /// Override the child WebView2's user-agent with a current desktop-Chrome UA so
 /// identity providers (notably Google, which 403s embedded webviews) don't
 /// reject OAuth flows.
@@ -605,6 +708,25 @@ fn set_desktop_user_agent(webview: &tauri::Webview) {
             }
         }
     });
+}
+
+/// Pick a collision-free path for `filename` inside `dir` — "file (2).zip"
+/// style, like every browser.
+fn unique_download_path(dir: &std::path::Path, filename: &str) -> String {
+    let candidate = dir.join(filename);
+    if !candidate.exists() {
+        return candidate.to_string_lossy().into_owned();
+    }
+    let p = std::path::Path::new(filename);
+    let stem = p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "download".into());
+    let ext = p.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    for n in 1..1000u32 {
+        let c = dir.join(format!("{} ({}){}", stem, n, ext));
+        if !c.exists() {
+            return c.to_string_lossy().into_owned();
+        }
+    }
+    candidate.to_string_lossy().into_owned()
 }
 
 /// Hook the WebView2 `DownloadStarting` event so file downloads are tracked
@@ -665,13 +787,38 @@ fn register_download_handler(
                         // Get result file path from args (where WebView2 will save)
                         let mut result_path_pwstr = windows_core::PWSTR::null();
                         args.ResultFilePath(&mut result_path_pwstr)?;
-                        let result_path = take_pwstr(result_path_pwstr);
+                        let mut result_path = take_pwstr(result_path_pwstr);
 
                         // Extract filename from the path
                         let filename = std::path::Path::new(&result_path)
                             .file_name()
                             .map(|n| n.to_string_lossy().to_string())
                             .unwrap_or_else(|| "download".to_string());
+
+                        // Honor browser download settings (previously declared
+                        // in config but wired to nothing):
+                        //  - ask_location → native Save-As dialog (SetHandled(false))
+                        //  - otherwise    → silent download, to the configured
+                        //    folder if set+valid, else WebView2's default
+                        //    Downloads path. Chrome-like default.
+                        let browser_cfg = crate::commands::config::get_config_snapshot().browser;
+                        let ask_location = browser_cfg.download_ask_location;
+                        if !ask_location {
+                            if let Some(dir) = browser_cfg
+                                .download_path
+                                .as_deref()
+                                .filter(|d| !d.is_empty())
+                            {
+                                let dir_path = std::path::Path::new(dir);
+                                if dir_path.is_dir() {
+                                    let target = unique_download_path(dir_path, &filename);
+                                    let hpath = windows_core::HSTRING::from(target.as_str());
+                                    if args.SetResultFilePath(windows_core::PCWSTR(hpath.as_ptr())).is_ok() {
+                                        result_path = target;
+                                    }
+                                }
+                            }
+                        }
 
                         // Get URI from download operation
                         let mut uri_pwstr = windows_core::PWSTR::null();
@@ -723,8 +870,9 @@ fn register_download_handler(
 
                         info!("[lens] Download started: {} -> {}", filename, result_path);
 
-                        // Let WebView2 use its default Save-As dialog
-                        args.SetHandled(false)?;
+                        // ask_location → WebView2's Save-As dialog; otherwise
+                        // handled == silent download straight to result_path.
+                        args.SetHandled(!ask_location)?;
 
                         // Register BytesReceivedChanged handler for progress updates
                         {
@@ -806,7 +954,8 @@ fn register_download_handler(
                                         _ => "downloading",
                                     };
 
-                                    // Update in-memory entry
+                                    // Update in-memory entry; persist finished
+                                    // downloads so the panel survives restart
                                     if let Ok(mut guard) = downloads_state.lock() {
                                         if let Some(entry) = guard.iter_mut().find(|e| e.id == dl_id_state) {
                                             entry.state = state_str.to_string();
@@ -817,6 +966,9 @@ fn register_download_handler(
                                             if !final_path.is_empty() {
                                                 entry.path = final_path.clone();
                                             }
+                                        }
+                                        if state_str != "downloading" {
+                                            super::downloads::persist_finished(&guard);
                                         }
                                     }
 
@@ -933,6 +1085,7 @@ pub(super) async fn create_tab_webview(
                 register_custom_scheme_handler(&app_for_download, &webview_ref);
                 register_download_handler(&app_for_download, &webview_ref, downloads);
                 register_new_window_handler(&app_for_download, &webview_ref);
+                register_navigation_state_handlers(&app_for_download, &webview_ref, &tab_id_clone);
                 set_desktop_user_agent(&webview_ref);
                 Ok(label_clone)
             }

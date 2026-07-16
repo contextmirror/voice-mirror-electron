@@ -37,7 +37,38 @@ pub fn lens_navigate(
     }
 }
 
-/// Navigate the lens webview back in history.
+/// Run the native WebView2 GoBack/GoForward on a webview via COM.
+///
+/// Native navigation (unlike the old `history.back()` eval) participates in
+/// `HistoryChanged`, so `lens-history-changed` fires with fresh
+/// canGoBack/canGoForward state, and it works on pages where script is
+/// blocked or history is manipulated.
+fn native_history_nav(webview: &tauri::Webview, forward: bool) -> Result<(), String> {
+    let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
+    let eval = webview.with_webview(move |platform_webview| {
+        #[cfg(windows)]
+        unsafe {
+            let controller = platform_webview.controller();
+            let result = match controller.CoreWebView2() {
+                Ok(core) => {
+                    let r = if forward { core.GoForward() } else { core.GoBack() };
+                    r.map_err(|e| format!("{:?}", e))
+                }
+                Err(e) => Err(format!("No CoreWebView2: {:?}", e)),
+            };
+            let _ = tx.send(result);
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = tx.send(Err("Native history nav is Windows-only".into()));
+        }
+    });
+    eval.map_err(|e| format!("with_webview failed: {}", e))?;
+    rx.recv_timeout(std::time::Duration::from_secs(2))
+        .map_err(|_| "Timed out waiting for native navigation".to_string())?
+}
+
+/// Navigate the lens webview back in history (native GoBack).
 #[tauri::command]
 pub fn lens_go_back(
     app: AppHandle,
@@ -52,15 +83,10 @@ pub fn lens_go_back(
         Err(e) => return e,
     };
 
-    // Inject a script that navigates back and then reports the new URL
-    // so the frontend can clear the loading state.
-    let notify_script = format!(
-        r#"history.back(); setTimeout(function(){{ try {{ (new Image()).src = '{}url-changed?url=' + encodeURIComponent(location.href); }} catch(e){{}} }}, 300);"#,
-        if cfg!(target_os = "windows") { "https://lens-shortcut.localhost/" } else { "lens-shortcut://localhost/" }
-    );
-    match webview.eval(&notify_script) {
+    match native_history_nav(&webview, false) {
         Ok(()) => {
-            // Also emit immediately so loading clears even if the image trick fails
+            // Emit so the loading state clears; the page-load handler emits
+            // the real URL once the navigation lands.
             let _ = app.emit("lens-url-changed", serde_json::json!({ "tabId": active_id }));
             IpcResponse::ok_empty()
         }
@@ -68,7 +94,7 @@ pub fn lens_go_back(
     }
 }
 
-/// Navigate the lens webview forward in history.
+/// Navigate the lens webview forward in history (native GoForward).
 #[tauri::command]
 pub fn lens_go_forward(
     app: AppHandle,
@@ -83,11 +109,7 @@ pub fn lens_go_forward(
         Err(e) => return e,
     };
 
-    let notify_script = format!(
-        r#"history.forward(); setTimeout(function(){{ try {{ (new Image()).src = '{}url-changed?url=' + encodeURIComponent(location.href); }} catch(e){{}} }}, 300);"#,
-        if cfg!(target_os = "windows") { "https://lens-shortcut.localhost/" } else { "lens-shortcut://localhost/" }
-    );
-    match webview.eval(&notify_script) {
+    match native_history_nav(&webview, true) {
         Ok(()) => {
             let _ = app.emit("lens-url-changed", serde_json::json!({ "tabId": active_id }));
             IpcResponse::ok_empty()
