@@ -887,6 +887,99 @@ pub(super) fn register_audio_handlers(
     });
 }
 
+/// Register a `PermissionRequested` handler (base ICoreWebView2) so camera /
+/// mic / geolocation / notification prompts run through a VM-styled bar and
+/// persist per-site. See `permissions.rs` for the deferral flow. A remembered
+/// decision is applied synchronously (no prompt); an unremembered one is
+/// deferred and surfaced via `lens-permission-request`.
+pub(super) fn register_permission_handler(
+    app: &AppHandle,
+    webview: &tauri::Webview,
+    tab_id: &str,
+) {
+    let app_handle = app.clone();
+    let tab_id = tab_id.to_string();
+    let _ = webview.with_webview(move |platform_webview| {
+        #[cfg(windows)]
+        {
+            use webview2_com::{PermissionRequestedEventHandler, take_pwstr};
+            use webview2_com::Microsoft::Web::WebView2::Win32::{
+                COREWEBVIEW2_PERMISSION_STATE_ALLOW, COREWEBVIEW2_PERMISSION_STATE_DENY,
+            };
+            use super::permissions;
+
+            unsafe {
+                let controller = platform_webview.controller();
+                let core_webview = match controller.CoreWebView2() {
+                    Ok(wv) => wv,
+                    Err(e) => {
+                        warn!("[lens] Failed to get CoreWebView2 for permission handler: {:?}", e);
+                        return;
+                    }
+                };
+
+                let app_for_perm = app_handle.clone();
+                let tab_for_perm = tab_id.clone();
+                let handler = PermissionRequestedEventHandler::create(Box::new(
+                    move |_sender, args| {
+                        let args = match args {
+                            Some(a) => a,
+                            None => return Ok(()),
+                        };
+
+                        let mut kind_val = Default::default();
+                        let _ = args.PermissionKind(&mut kind_val);
+                        let kind = permissions::kind_to_str(kind_val);
+
+                        let mut uri_pwstr = windows_core::PWSTR::null();
+                        let _ = args.Uri(&mut uri_pwstr);
+                        let origin = take_pwstr(uri_pwstr);
+
+                        match permissions::lookup_decision(&origin, kind) {
+                            Some(allow) => {
+                                // Remembered — apply synchronously, no prompt.
+                                let state = if allow {
+                                    COREWEBVIEW2_PERMISSION_STATE_ALLOW
+                                } else {
+                                    COREWEBVIEW2_PERMISSION_STATE_DENY
+                                };
+                                let _ = args.SetState(state);
+                            }
+                            None => {
+                                // Unremembered — defer and ask the user.
+                                match args.GetDeferral() {
+                                    Ok(deferral) => {
+                                        let request_id = permissions::stash_pending(args.clone(), deferral);
+                                        let _ = app_for_perm.emit(
+                                            "lens-permission-request",
+                                            serde_json::json!({
+                                                "tabId": tab_for_perm,
+                                                "requestId": request_id,
+                                                "kind": kind,
+                                                "uri": origin,
+                                            }),
+                                        );
+                                    }
+                                    Err(e) => {
+                                        warn!("[lens] Failed to get permission deferral, denying: {:?}", e);
+                                        let _ = args.SetState(COREWEBVIEW2_PERMISSION_STATE_DENY);
+                                    }
+                                }
+                            }
+                        }
+                        Ok(())
+                    },
+                ));
+
+                let mut token: i64 = 0;
+                if let Err(e) = core_webview.add_PermissionRequested(&handler, &mut token) {
+                    warn!("[lens] Failed to register PermissionRequested: {:?}", e);
+                }
+            }
+        }
+    });
+}
+
 /// Override the child WebView2's user-agent with a current desktop-Chrome UA so
 /// identity providers (notably Google, which 403s embedded webviews) don't
 /// reject OAuth flows.
@@ -1330,6 +1423,7 @@ pub(super) async fn create_tab_webview(
                 register_cert_error_handler(&app_for_download, &webview_ref, &tab_id_clone);
                 register_fullscreen_handler(&app_for_download, &webview_ref, &tab_id_clone);
                 register_audio_handlers(&app_for_download, &webview_ref, &tab_id_clone);
+                register_permission_handler(&app_for_download, &webview_ref, &tab_id_clone);
                 set_desktop_user_agent(&webview_ref);
                 Ok(label_clone)
             }

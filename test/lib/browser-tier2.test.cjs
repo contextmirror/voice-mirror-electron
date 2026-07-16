@@ -22,6 +22,7 @@ const FINDBAR = read('src', 'components', 'lens', 'browser', 'FindBar.svelte');
 const WEBVIEW_SETUP = read('src-tauri', 'src', 'commands', 'lens', 'webview_setup.rs');
 const FIND_RS = read('src-tauri', 'src', 'commands', 'lens', 'find.rs');
 const AUDIO_RS = read('src-tauri', 'src', 'commands', 'lens', 'audio.rs');
+const PERMISSIONS_RS = read('src-tauri', 'src', 'commands', 'lens', 'permissions.rs');
 const MOD_RS = read('src-tauri', 'src', 'commands', 'lens', 'mod.rs');
 const LIB_RS = read('src-tauri', 'src', 'lib.rs');
 const API_JS = read('src', 'lib', 'api.js');
@@ -153,5 +154,31 @@ describe('browser tier2: tab reorder (drag)', () => {
     assert.ok(TAB_BAR.includes('handleDragStart'), 'Should have a dragstart handler');
     assert.ok(TAB_BAR.includes('browserTabsStore.reorderTab(draggedTabId, tabId)'), 'Drop should reorder');
     assert.ok(TAB_BAR.includes('x-vm-browser-tab'), 'Should use an isolated drag type');
+  });
+});
+
+describe('browser tier2: permission prompts', () => {
+  it('Rust handler defers unremembered requests and emits an event', () => {
+    assert.ok(WEBVIEW_SETUP.includes('add_PermissionRequested'), 'Should register PermissionRequested');
+    assert.ok(WEBVIEW_SETUP.includes('lens-permission-request'), 'Should emit the request event');
+    assert.ok(WEBVIEW_SETUP.includes('GetDeferral'), 'Unremembered requests are deferred');
+    assert.ok(WEBVIEW_SETUP.includes('permissions::lookup_decision'), 'Remembered decisions applied synchronously');
+    assert.ok(WEBVIEW_SETUP.includes('register_permission_handler(&app_for_download'), 'Handler attached per tab');
+  });
+
+  it('permissions.rs resolves the deferral on the main thread and persists', () => {
+    assert.ok(PERMISSIONS_RS.includes('browser-permissions.json'), 'Should persist decisions');
+    assert.ok(PERMISSIONS_RS.includes('run_on_main_thread'), 'Should resolve on the UI thread');
+    assert.ok(PERMISSIONS_RS.includes('deferral.Complete()'), 'Should complete the deferral');
+    assert.ok(PERMISSIONS_RS.includes('thread_local'), 'Pending requests kept on the UI thread');
+    assert.ok(LIB_RS.includes('lens_cmds::permissions::lens_permission_response'), 'Command registered');
+  });
+
+  it('LensWorkspace shows an Allow/Block bar under the toolbar', () => {
+    assert.ok(WORKSPACE.includes("listen('lens-permission-request'"), 'Should route the event');
+    assert.ok(WORKSPACE.includes('permission-bar'), 'Should render the prompt bar');
+    assert.ok(WORKSPACE.includes('answerPermission(true)'), 'Allow answers the prompt');
+    assert.ok(WORKSPACE.includes('answerPermission(false)'), 'Block answers the prompt');
+    assert.ok(WORKSPACE.includes('lensPermissionResponse'), 'Answer calls the response command');
   });
 });

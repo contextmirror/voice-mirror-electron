@@ -28,7 +28,7 @@
   import { browserHistoryStore } from '../../lib/stores/browser-history.svelte.js';
   import { browserBookmarksStore } from '../../lib/stores/browser-bookmarks.svelte.js';
   import { downloadsStore } from '../../lib/stores/downloads.svelte.js';
-  import { lensSetVisible, startFileWatching, stopFileWatching, lensCapturePreview, lspShutdown, lensSetZoom, lensGetZoom, designGetElement, lensOpenDevtools, lensCloseDevtools, lensResizeDevtools, lensSetDevtoolsVisible, findDevtoolsUrl, detectDevServers, sandboxStartAck, logPreview } from '../../lib/api.js';
+  import { lensSetVisible, startFileWatching, stopFileWatching, lensCapturePreview, lspShutdown, lensSetZoom, lensGetZoom, designGetElement, lensOpenDevtools, lensCloseDevtools, lensResizeDevtools, lensSetDevtoolsVisible, findDevtoolsUrl, detectDevServers, sandboxStartAck, logPreview, lensPermissionResponse } from '../../lib/api.js';
   import { unwrapResult } from '../../lib/utils.js';
   import { navigationStore } from '../../lib/stores/navigation.svelte.js';
   import { attachmentsStore } from '../../lib/stores/attachments.svelte.js';
@@ -232,6 +232,55 @@
 
   function handleDownloadSettings() {
     navigationStore.setView('settings');
+  }
+
+  // ── Permission prompt bar (under the toolbar; airspace-safe: it takes real
+  // layout space, pushing the child webview down) ──
+  /** @type {{requestId:number, kind:string, uri:string}|null} */
+  let permissionPrompt = $state(null);
+
+  const PERMISSION_LABELS = {
+    microphone: 'use your microphone',
+    camera: 'use your camera',
+    geolocation: 'know your location',
+    notifications: 'show notifications',
+    sensors: 'use device sensors',
+    clipboard: 'read your clipboard',
+    autoplay: 'autoplay media with sound',
+    'local-fonts': 'see your installed fonts',
+    downloads: 'download multiple files',
+    'file-access': 'read and edit files',
+    'window-management': 'manage windows',
+    other: 'access a device feature',
+  };
+
+  $effect(() => {
+    let unlisten;
+    let cancelled = false;
+    (async () => {
+      const fn = await listen('lens-permission-request', (e) => {
+        const p = e?.payload;
+        if (p?.requestId != null) {
+          permissionPrompt = { requestId: p.requestId, kind: p.kind || 'other', uri: p.uri || '' };
+        }
+      });
+      if (cancelled) { fn(); return; }
+      unlisten = fn;
+    })();
+    return () => { cancelled = true; unlisten?.(); };
+  });
+
+  function answerPermission(allow) {
+    const p = permissionPrompt;
+    permissionPrompt = null;
+    if (!p) return;
+    lensPermissionResponse(p.requestId, allow, p.uri, p.kind).catch((err) =>
+      console.warn('[LensWorkspace] permission response failed:', err)
+    );
+  }
+
+  function permissionOrigin(uri) {
+    try { return new URL(uri).host || uri; } catch { return uri; }
   }
 
   // Init browser history, bookmarks and downloads stores; destroy on cleanup
@@ -821,6 +870,18 @@
                               <div class="nav-progress-bar"></div>
                             </div>
                           {/if}
+                          {#if permissionPrompt}
+                            <div class="permission-bar" role="alertdialog" aria-label="Permission request">
+                              <span class="permission-text">
+                                <strong>{permissionOrigin(permissionPrompt.uri)}</strong>
+                                wants to {PERMISSION_LABELS[permissionPrompt.kind] || PERMISSION_LABELS.other}
+                              </span>
+                              <div class="permission-actions">
+                                <button class="permission-btn allow" onclick={() => answerPermission(true)}>Allow</button>
+                                <button class="permission-btn block" onclick={() => answerPermission(false)}>Block</button>
+                              </div>
+                            </div>
+                          {/if}
                           {#if lensStore.designMode}
                             <DesignToolbar
                               onSend={handleDesignSend}
@@ -1082,6 +1143,68 @@
     min-width: 300px;
     height: 100%;
     /* Native WebView2 renders here — this div is just a positioning placeholder */
+  }
+
+  /* ── Permission prompt bar (under the toolbar) ── */
+  .permission-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    flex-shrink: 0;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text);
+    animation: permission-bar-in 0.15s var(--ease-out, ease);
+  }
+
+  @keyframes permission-bar-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .permission-bar { animation: none; }
+  }
+
+  .permission-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .permission-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .permission-btn {
+    height: 26px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 4px);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 12px;
+    font-family: var(--font-family);
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+  }
+
+  .permission-btn.allow {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg);
+  }
+
+  .permission-btn.allow:hover {
+    background: color-mix(in srgb, var(--accent) 85%, black);
+  }
+
+  .permission-btn.block:hover {
+    border-color: var(--danger);
+    color: var(--danger);
   }
 
   /* ── Per-nav progress bar (thin accent bar under the toolbar) ── */

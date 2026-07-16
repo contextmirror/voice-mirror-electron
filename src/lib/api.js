@@ -456,6 +456,23 @@ export async function lensToggleTabMute(tabId) {
   return invoke('lens_toggle_tab_mute', { tabId });
 }
 
+// ============ Browser Permissions ============
+
+/** Answer a pending permission prompt (Allow/Block) and remember the choice. */
+export async function lensPermissionResponse(requestId, allow, origin, kind) {
+  return invoke('lens_permission_response', { requestId, allow, origin, kind });
+}
+
+/** Return all remembered per-site permission decisions. */
+export async function lensGetPermissions() {
+  return invoke('lens_get_permissions', {});
+}
+
+/** Clear a remembered permission (origin+kind), or all when both are empty. */
+export async function lensClearPermission(origin, kind) {
+  return invoke('lens_clear_permission', { origin, kind });
+}
+
 export async function lensOpenDevtools(url, x, y, width, height) {
   return invoke('lens_open_devtools', { url, x, y, width, height });
 }

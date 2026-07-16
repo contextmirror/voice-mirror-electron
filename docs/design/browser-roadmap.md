@@ -50,8 +50,14 @@ carry what extensions need (`browser_extensions_enabled` env flag,
       cert interstitial (with proceed-anyway) in the tab; a custom overlay would
       need freeze airspace + deferral/proceed plumbing that duplicates it.
       (`LensToolbar.svelte`, `webview_setup.rs`)
-- [ ] **Permission prompts** — `PermissionRequested` (currently untouched →
-      WebView2 defaults); VM-styled prompt + per-site remembered decisions.
+- [x] **Permission prompts** — `PermissionRequested` handled: remembered
+      decisions apply synchronously; unremembered ones take a deferral (stashed
+      in a UI-thread `thread_local`), emit `lens-permission-request`, and a
+      VM-styled Allow/Block bar under the toolbar answers via
+      `lens_permission_response` (resolves the deferral on the main thread +
+      persists to `browser-permissions.json`). Gap: no UI yet to review/reset
+      remembered decisions (edit the JSON). (`permissions.rs`,
+      `webview_setup.rs`, `LensWorkspace.svelte`)
 - [x] **HTML5 fullscreen** — `ContainsFullScreenElementChanged` (base
       ICoreWebView2) → `lens-fullscreen-changed {tabId, fullscreen}`; the active
       webview fills the whole window while fullscreen (`syncBounds` honors it)
