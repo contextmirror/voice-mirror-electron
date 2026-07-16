@@ -20,6 +20,7 @@ pub mod devtools;
 pub mod device_preview;
 pub mod find;
 pub mod audio;
+pub mod extensions;
 pub mod permissions;
 pub mod history;
 pub mod bookmarks;
@@ -146,6 +147,14 @@ pub use device_preview::{
 pub use zoom::{lens_set_zoom, lens_get_zoom};
 
 pub use audio::lens_toggle_tab_mute;
+
+pub use extensions::{
+    lens_extensions_list,
+    lens_extension_add,
+    lens_extension_install_crx,
+    lens_extension_set_enabled,
+    lens_extension_remove,
+};
 
 pub use permissions::{lens_permission_response, lens_get_permissions, lens_clear_permission};
 

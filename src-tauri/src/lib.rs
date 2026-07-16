@@ -518,6 +518,12 @@ pub fn run() {
 
             lens_cmds::audio::lens_toggle_tab_mute,
 
+            lens_cmds::extensions::lens_extensions_list,
+            lens_cmds::extensions::lens_extension_add,
+            lens_cmds::extensions::lens_extension_install_crx,
+            lens_cmds::extensions::lens_extension_set_enabled,
+            lens_cmds::extensions::lens_extension_remove,
+
             lens_cmds::permissions::lens_permission_response,
             lens_cmds::permissions::lens_get_permissions,
             lens_cmds::permissions::lens_clear_permission,

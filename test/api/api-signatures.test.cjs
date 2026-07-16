@@ -112,6 +112,12 @@ describe('api.js -- critical Tauri command names', () => {
     'lens_permission_response',
     'lens_get_permissions',
     'lens_clear_permission',
+    // Browser Extensions
+    'lens_extensions_list',
+    'lens_extension_add',
+    'lens_extension_install_crx',
+    'lens_extension_set_enabled',
+    'lens_extension_remove',
     // DevTools
     'lens_find_devtools_url',
     'lens_open_devtools',
@@ -319,6 +325,11 @@ describe('api.js -- exported async functions', () => {
     'lensPermissionResponse',
     'lensGetPermissions',
     'lensClearPermission',
+    'lensExtensionsList',
+    'lensExtensionAdd',
+    'lensExtensionInstallCrx',
+    'lensExtensionSetEnabled',
+    'lensExtensionRemove',
     'lensOpenDevtools',
     'findDevtoolsUrl',
     'lensCloseDevtools',
@@ -497,7 +508,7 @@ describe('api.js -- exported async functions', () => {
 });
 
 describe('api.js -- section organization', () => {
-  const sections = ['Config', 'Window', 'Voice', 'AI', 'Inbox', 'Chat', 'Screenshot', 'Tools', 'Shortcuts', 'Performance Stats', 'Config Migration', 'Design Overlay', 'Lens', 'Browser Tabs', 'Browser History', 'Downloads', 'Dev Server', 'GPU / Model Management', 'Files', 'Terminal', 'LSP', 'Project Output Channels', 'Output / Diagnostics', 'Workspace State'];
+  const sections = ['Config', 'Window', 'Voice', 'AI', 'Inbox', 'Chat', 'Screenshot', 'Tools', 'Shortcuts', 'Performance Stats', 'Config Migration', 'Design Overlay', 'Lens', 'Browser Tabs', 'Browser Extensions', 'Browser History', 'Downloads', 'Dev Server', 'GPU / Model Management', 'Files', 'Terminal', 'LSP', 'Project Output Channels', 'Output / Diagnostics', 'Workspace State'];
 
   for (const section of sections) {
     it(`has "${section}" section comment`, () => {

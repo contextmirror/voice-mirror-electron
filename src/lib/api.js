@@ -478,6 +478,33 @@ export async function lensClearPermission(origin, kind) {
   return invoke('lens_clear_permission', { origin, kind });
 }
 
+// ============ Browser Extensions ============
+
+/** List installed browser extensions ({ extensions: [{id, name, enabled, popup, dir}] }). */
+export async function lensExtensionsList() {
+  return invoke('lens_extensions_list', {});
+}
+
+/** Install an unpacked extension from a local folder. */
+export async function lensExtensionAdd(folder) {
+  return invoke('lens_extension_add', { folder });
+}
+
+/** Install a CRX from a file path or URL (Chrome Web Store CRX endpoint). */
+export async function lensExtensionInstallCrx(source) {
+  return invoke('lens_extension_install_crx', { source });
+}
+
+/** Enable or disable an installed extension by id. */
+export async function lensExtensionSetEnabled(id, enabled) {
+  return invoke('lens_extension_set_enabled', { id, enabled });
+}
+
+/** Remove an installed extension by id (WebView2 + managed folder). */
+export async function lensExtensionRemove(id) {
+  return invoke('lens_extension_remove', { id });
+}
+
 export async function lensOpenDevtools(url, x, y, width, height) {
   return invoke('lens_open_devtools', { url, x, y, width, height });
 }

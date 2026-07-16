@@ -24,7 +24,8 @@
         "shadow": false,
         "center": true,
         "visible": false,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "browserExtensionsEnabled": true
       }
     ],
     "withGlobalTauri": true,
