@@ -53,13 +53,6 @@
   }
 
   function syncBounds() {
-    // While a page is fullscreen the webview fills the whole window regardless
-    // of the pane rect. A resize event mid-fullscreen (e.g. window resized)
-    // re-applies the full-window bounds rather than clamping to the pane.
-    if (isFullscreen && lensStore.webviewReady) {
-      lensResizeWebview(0, 0, window.innerWidth, window.innerHeight).catch(() => {});
-      return;
-    }
     const bounds = getAbsoluteBounds();
     if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
       // Container is CSS-hidden (display:none — e.g. a file tab is active, not
@@ -69,6 +62,14 @@
       if (lensStore.webviewReady) {
         lensResizeWebview(-9999, -9999, 0, 0).catch(() => {});
       }
+      return;
+    }
+    // Container is visible and a page is in HTML5 fullscreen → fill the whole
+    // window regardless of the pane rect (re-applied on any mid-fullscreen
+    // resize). This branch is BELOW the hidden-container guard on purpose: a
+    // fullscreen video hidden behind a file tab is parked, not blown up.
+    if (isFullscreen && lensStore.webviewReady) {
+      lensResizeWebview(0, 0, window.innerWidth, window.innerHeight).catch(() => {});
       return;
     }
     lensResizeWebview(bounds.x, bounds.y, bounds.width, bounds.height).catch(() => {});
