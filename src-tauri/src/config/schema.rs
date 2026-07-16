@@ -251,9 +251,12 @@ pub struct BehaviorConfig {
     pub dictation_key: String,
     #[serde(default = "default_stats_hotkey")]
     pub stats_hotkey: String,
-    /// Whether to show toast notifications (default: true).
-    #[serde(default = "default_true")]
-    pub show_toasts: bool,
+    /// Float notifications as toasts over the workspace (opt-in). Renamed
+    /// from `show_toasts` when notifications went center-first — the old key
+    /// held the old default (`true`) in every existing config, not a user
+    /// choice, so it is deliberately ignored and dropped on next save.
+    #[serde(default)]
+    pub floating_toasts: bool,
 }
 
 impl Default for BehaviorConfig {
@@ -266,7 +269,9 @@ impl Default for BehaviorConfig {
             ptt_key: "MouseButton4".into(),
             dictation_key: "MouseButton5".into(),
             stats_hotkey: "CommandOrControl+Shift+M".into(),
-            show_toasts: true,
+            // Center-first notifications: floating toasts are opt-in; items
+            // land in the status-bar notification center (errors still float).
+            floating_toasts: false,
         }
     }
 }

@@ -59,7 +59,7 @@ const DEFAULT_CONFIG = {
     pttKey: 'MouseButton4',
     statsHotkey: 'CommandOrControl+Shift+M',
     dictationKey: 'MouseButton5',
-    showToasts: true,
+    floatingToasts: false,
   },
   window: {
     orbX: null,

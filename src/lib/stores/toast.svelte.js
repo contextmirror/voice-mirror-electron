@@ -109,8 +109,11 @@ function createToastStore() {
     progress = null,
     source = null,
   }) {
+    // Center-first: floating toasts are OPT-IN (behavior.floatingToasts).
+    // Everything always lands in the notification center; errors still
+    // float regardless so failures can't go unnoticed.
     const toastsDisabled =
-      severity !== 'error' && configStore.value?.behavior?.showToasts === false;
+      severity !== 'error' && configStore.value?.behavior?.floatingToasts !== true;
 
     // Use longer duration for multi-action toasts unless explicitly set
     const effectiveDuration = duration !== undefined

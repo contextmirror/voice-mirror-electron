@@ -146,6 +146,24 @@
     toastStore.setPanelOpen(false);
   }
 
+  // Ring the bell when new unread notifications arrive — in center-first
+  // mode there's no floating toast to catch the eye, so the bell itself
+  // must announce arrivals.
+  let bellRing = $state(false);
+  let lastUnreadCount = 0;
+  let bellRingTimer = null;
+  $effect(() => {
+    const count = toastStore.unreadCount;
+    if (count > lastUnreadCount) {
+      bellRing = false;
+      requestAnimationFrame(() => { bellRing = true; });
+      clearTimeout(bellRingTimer);
+      bellRingTimer = setTimeout(() => { bellRing = false; }, 900);
+    }
+    lastUnreadCount = count;
+    return () => clearTimeout(bellRingTimer);
+  });
+
   /** Run a notification action and resolve the item (it's dealt with). */
   function runNotifAction(notif, act) {
     act.callback();
@@ -542,6 +560,7 @@
     <div class="bell-anchor">
       <button
         class="sb-item bell-btn"
+        class:ring={bellRing}
         title="Notifications"
         onclick={toggleNotifPanel}
         aria-label="Notifications"
@@ -1095,6 +1114,21 @@
     pointer-events: none;
   }
 
+  /* Bell ring on new arrivals (center-first attention cue) */
+  .bell-btn.ring .bell-icon {
+    animation: bell-ring 0.8s var(--ease-out);
+    color: var(--accent);
+  }
+
+  @keyframes bell-ring {
+    0%, 100% { transform: rotate(0); }
+    15% { transform: rotate(-16deg); }
+    30% { transform: rotate(12deg); }
+    45% { transform: rotate(-8deg); }
+    60% { transform: rotate(5deg); }
+    75% { transform: rotate(-2deg); }
+  }
+
   /* ========== Notification Panel ========== */
   /* Same frosted-surface language as the toast capsules — the panel and the
      toasts are two states of one notification system. */
@@ -1356,6 +1390,10 @@
     .notif-dismiss,
     .notif-progress-bar {
       transition: none;
+    }
+
+    .bell-btn.ring .bell-icon {
+      animation: none;
     }
   }
 </style>

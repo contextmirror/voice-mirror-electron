@@ -20,7 +20,7 @@
   let startWithSystem = $state(false);
   let autoStartProvider = $state(false);
   let autoVoiceLoop = $state(true);
-  let showToasts = $state(true);
+  let floatingToasts = $state(false);
   let markdownPreview = $state(true);
   let debugMode = $state(false);
   let showDependencies = $state(false);
@@ -66,7 +66,7 @@
     startWithSystem = cfg.behavior?.startWithSystem === true;
     autoStartProvider = cfg.ai?.autoStart === true;
     autoVoiceLoop = cfg.ai?.autoVoiceLoop !== false;
-    showToasts = cfg.behavior?.showToasts !== false;
+    floatingToasts = cfg.behavior?.floatingToasts === true;
     markdownPreview = cfg.editor?.markdownPreview !== false;
     debugMode = cfg.advanced?.debugMode === true;
     showDependencies = cfg.advanced?.showDependencies === true;
@@ -108,7 +108,7 @@
         behavior: {
           startMinimized,
           startWithSystem,
-          showToasts,
+          floatingToasts,
         },
         ai: {
           autoStart: autoStartProvider,
@@ -190,10 +190,10 @@
     <h3>Notifications</h3>
     <div class="settings-group">
       <Toggle
-        label="Toast Notifications"
-        description="Show popup notifications for file operations and other events"
-        checked={showToasts}
-        onChange={(v) => (showToasts = v)}
+        label="Floating toasts"
+        description="Also pop notifications up over the workspace. When off, everything goes quietly to the notification bell in the status bar (errors still pop up)."
+        checked={floatingToasts}
+        onChange={(v) => (floatingToasts = v)}
       />
     </div>
   </section>

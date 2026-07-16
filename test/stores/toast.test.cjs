@@ -285,14 +285,21 @@ describe('toast.svelte.js -- progress support', () => {
   });
 });
 
-describe('toast.svelte.js -- showToasts=false still records to the center', () => {
-  it('disabled toasts land silently in the notification center', () => {
-    // Source-of-truth model: disabling toasts hides the FLOATING peek only;
-    // the notification center still records everything (errors still float).
-    assert.ok(src.includes('toastsDisabled'), 'Should compute the disabled state');
+describe('toast.svelte.js -- center-first: floating is opt-in', () => {
+  it('floating requires behavior.floatingToasts === true (errors always float)', () => {
+    // Source-of-truth model: without opt-in, only the FLOATING peek is
+    // skipped; the notification center still records everything.
+    assert.ok(
+      src.includes("configStore.value?.behavior?.floatingToasts !== true"),
+      'Floating should be opt-in via behavior.floatingToasts'
+    );
+    assert.ok(
+      src.includes("severity !== 'error'"),
+      'Errors must float regardless so failures cannot go unnoticed'
+    );
     assert.ok(
       src.includes('!panelOpen && !toastsDisabled'),
-      'Disabled or panel-open items should not float, but are still added'
+      'Non-floating items are still added to the center'
     );
   });
 });
