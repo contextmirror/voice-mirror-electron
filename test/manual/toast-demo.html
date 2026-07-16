@@ -41,13 +41,30 @@
     import { toastStore } from '/src/lib/stores/toast.svelte.js';
     import { applyTheme, PRESETS } from '/src/lib/stores/theme.svelte.js';
 
-    const themeKey = new URLSearchParams(location.search).get('theme') || 'midnight';
+    const params = new URLSearchParams(location.search);
+    const themeKey = params.get('theme') || 'midnight';
     const preset = PRESETS[themeKey] || PRESETS.midnight;
     applyTheme(preset.colors, preset.fonts);
     // base.css hides <body> until the app marks itself ready
     document.body.classList.add('app-ready');
 
     mount(ToastContainer, { target: document.body });
+
+    // ?panel=1 → mount the real StatusBar and open the notification center
+    // (toasts land inside it instead of floating). Best-effort: StatusBar
+    // touches Tauri APIs that no-op in a plain browser.
+    if (params.get('panel') === '1') {
+      try {
+        const { default: StatusBar } = await import('/src/components/shared/StatusBar.svelte');
+        const host = document.createElement('div');
+        host.style.cssText = 'position:fixed;bottom:0;left:0;right:0;';
+        document.body.appendChild(host);
+        mount(StatusBar, { target: host });
+        setTimeout(() => toastStore.setPanelOpen(true), 1600);
+      } catch (err) {
+        console.warn('StatusBar mount failed in harness:', err);
+      }
+    }
 
     toastStore.addToast({
       message: 'Tauri on :51437 is not running. Start it?',

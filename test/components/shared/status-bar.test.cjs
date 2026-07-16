@@ -288,20 +288,38 @@ describe('StatusBar.svelte: Notification panel', () => {
     assert.ok(src.includes('Clear All') || src.includes('clearAll'), 'Should have Clear All button');
   });
 
-  it('calls clearAllNotifications on Clear All', () => {
-    assert.ok(src.includes('clearAllNotifications'), 'Should call clearAllNotifications');
+  it('calls toastStore.clearAll on Clear all', () => {
+    assert.ok(src.includes('toastStore.clearAll()'), 'Should clear the unified store');
   });
 
-  it('calls dismissNotification for individual dismiss', () => {
-    assert.ok(src.includes('dismissNotification'), 'Should call dismissNotification');
+  it('calls toastStore.removeItem for individual dismiss', () => {
+    assert.ok(src.includes('toastStore.removeItem'), 'Should remove from the unified store');
   });
 
   it('has empty state text', () => {
-    assert.ok(src.includes('No notifications') || src.includes('no notifications'), 'Should have empty state');
+    assert.ok(src.includes("You're all caught up."), 'Should have empty state');
   });
 
-  it('renders notifications list from store', () => {
-    assert.ok(src.includes('statusBarStore.notifications'), 'Should read notifications from store');
+  it('renders notifications list from the unified store', () => {
+    assert.ok(src.includes('toastStore.notifications'), 'Should read notifications from toastStore');
+  });
+
+  it('panel open state lives in toastStore (suppresses floating toasts)', () => {
+    assert.ok(src.includes('toastStore.setPanelOpen'), 'Should toggle panel via the store');
+    assert.ok(src.includes('toastStore.panelOpen'), 'Should read panel state from the store');
+  });
+
+  it('renders severity chips and actionable pills in the panel', () => {
+    assert.ok(src.includes('notif-chip'), 'Rows should carry severity chips');
+    assert.ok(src.includes('runNotifAction'), 'Actions should be clickable from history');
+    assert.ok(src.includes('toastStore.resolveItem'), 'Acting on a row should resolve the item');
+  });
+
+  it('panel grows out of the bell with reduced-motion fallback', () => {
+    assert.ok(src.includes('in:panelIn'), 'Panel should use the grow-in transition');
+    assert.ok(src.includes('out:panelOut'), 'Panel should use the tuck-out transition');
+    assert.ok(src.includes('transform-origin: bottom right'), 'Motion should originate from the bell');
+    assert.ok(src.includes('prefersReducedMotion'), 'Should respect reduced motion');
   });
 
   it('notification panel positioned absolute', () => {
@@ -457,22 +475,35 @@ describe('App.svelte: status-bar-go-to-line listener', () => {
 });
 
 // ──────────────────────────────────────────────────
-// Task 6: Toast → notification routing
+// Task 6: Unified notifications — toastStore IS the notification center
 // ──────────────────────────────────────────────────
 
 const TOAST_SRC = fs.readFileSync(path.join(__dirname, '../../../src/lib/stores/toast.svelte.js'), 'utf-8');
+const SB_STORE_SRC = fs.readFileSync(path.join(__dirname, '../../../src/lib/stores/status-bar.svelte.js'), 'utf-8');
 
-describe('toast.svelte.js: notification routing', () => {
-  it('imports statusBarStore', () => {
-    assert.ok(TOAST_SRC.includes('statusBarStore'), 'Should import statusBarStore');
+describe('toast.svelte.js: unified notification center', () => {
+  it('does NOT import statusBarStore (dependency direction flipped)', () => {
+    assert.ok(!TOAST_SRC.includes('status-bar.svelte.js'), 'toastStore is the source of truth; statusBarStore delegates to IT');
   });
 
-  it('imports from status-bar.svelte.js', () => {
-    assert.ok(TOAST_SRC.includes('status-bar.svelte.js'), 'Should import from correct file');
+  it('every item carries a toastVisible peek flag', () => {
+    assert.ok(TOAST_SRC.includes('toastVisible'), 'Items should track their floating-peek state');
   });
 
-  it('calls addNotification when adding toast', () => {
-    assert.ok(TOAST_SRC.includes('addNotification'), 'Should route to notification store');
+  it('dismissing a toast keeps the item in the center', () => {
+    assert.ok(TOAST_SRC.includes("{ ...t, toastVisible: false }"), 'dismissToast should only hide the peek');
+  });
+
+  it('exposes notifications, unreadCount, and panelOpen', () => {
+    assert.ok(TOAST_SRC.includes('get notifications()'), 'Should expose center contents');
+    assert.ok(TOAST_SRC.includes('get unreadCount()'), 'Should expose unread count');
+    assert.ok(TOAST_SRC.includes('get panelOpen()'), 'Should expose panel state');
+  });
+
+  it('statusBarStore delegates its notification API to toastStore', () => {
+    assert.ok(SB_STORE_SRC.includes("import { toastStore } from './toast.svelte.js'"), 'statusBarStore should import toastStore');
+    assert.ok(SB_STORE_SRC.includes('toastStore.notifications'), 'notifications getter should delegate');
+    assert.ok(SB_STORE_SRC.includes('toastStore.unreadCount'), 'unreadCount getter should delegate');
   });
 });
 

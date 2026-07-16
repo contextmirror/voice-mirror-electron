@@ -92,8 +92,9 @@ describe('status-bar.svelte.js: reactive state', () => {
     assert.ok(/let\s+gitDirty\s*=\s*\$state\(/.test(src), 'Should use $state for gitDirty');
   });
 
-  it('uses $state for notifications', () => {
-    assert.ok(/let\s+notifications\s*=\s*\$state\(/.test(src), 'Should use $state for notifications');
+  it('does NOT hold its own notifications state (unified into toastStore)', () => {
+    assert.ok(!/let\s+notifications\s*=\s*\$state\(/.test(src), 'Notification state lives in toastStore now');
+    assert.ok(src.includes("import { toastStore } from './toast.svelte.js'"), 'Should import the unified store');
   });
 
   it('uses $state for lspHealth', () => {
@@ -318,29 +319,30 @@ describe('status-bar.svelte.js: notifications', () => {
     assert.ok(body.includes('source'), 'addNotification should accept source');
   });
 
-  it('notification shape includes id, message, severity, source, timestamp, read', () => {
-    assert.ok(src.includes('timestamp'), 'Notification should have timestamp');
-    assert.ok(src.includes('read'), 'Notification should have read flag');
+  it('addNotification delegates to the unified toastStore silently', () => {
+    const idx = src.indexOf('function addNotification');
+    const body = src.slice(idx, idx + 300);
+    assert.ok(body.includes('toastStore.addToast'), 'Should add via toastStore');
+    assert.ok(body.includes('toastStore.dismissToast'), 'Silent entries should never float');
   });
 
-  it('enforces max 100 notifications', () => {
-    assert.ok(src.includes('100'), 'Should enforce max 100 notifications');
-  });
-
-  it('has dismissNotification method', () => {
+  it('has dismissNotification method delegating to removeItem', () => {
     assert.ok(src.includes('dismissNotification'), 'Should have dismissNotification');
+    assert.ok(src.includes('toastStore.removeItem'), 'Should delegate removal');
   });
 
-  it('has markAllRead method', () => {
+  it('has markAllRead method delegating to toastStore', () => {
     assert.ok(src.includes('markAllRead'), 'Should have markAllRead');
+    assert.ok(src.includes('toastStore.markAllRead'), 'Should delegate markAllRead');
   });
 
-  it('has clearAllNotifications method', () => {
+  it('has clearAllNotifications method delegating to clearAll', () => {
     assert.ok(src.includes('clearAllNotifications'), 'Should have clearAllNotifications');
+    assert.ok(src.includes('toastStore.clearAll'), 'Should delegate clearAll');
   });
 
-  it('unreadCount counts notifications where read is false', () => {
-    assert.ok(src.includes('!n.read') || src.includes('n.read === false') || src.includes('!item.read'), 'Should count unread notifications');
+  it('unreadCount delegates to the unified store', () => {
+    assert.ok(src.includes('toastStore.unreadCount'), 'Should delegate unread counting');
   });
 });
 

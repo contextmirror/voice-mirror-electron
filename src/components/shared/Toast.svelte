@@ -9,11 +9,13 @@
    *
    * Props:
    *   toast {{ id, message, severity, action?, actions?, progress? }} - Toast data
-   *   onDismiss {function} - Callback to dismiss this toast
+   *   onDismiss {function} - Hide the toast (it stays in the notification center)
+   *   onResolve {function} - An action was clicked: the item is dealt with and
+   *                          leaves the notification center too
    */
   import { backOut, cubicOut, cubicIn } from 'svelte/easing';
 
-  let { toast, onDismiss = () => {} } = $props();
+  let { toast, onDismiss = () => {}, onResolve = onDismiss } = $props();
 
   const severityClass = $derived(toast.severity || 'info');
   // Single `action` and multi `actions` render the same way: inline pills,
@@ -113,7 +115,7 @@
             class:primary={i === 0}
             onclick={() => {
               act.callback();
-              onDismiss(toast.id);
+              onResolve(toast.id);
             }}
           >
             {act.label}

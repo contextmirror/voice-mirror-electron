@@ -7,6 +7,9 @@
    * encoding, EOL, language, notification bell (right side).
    */
   import { listen } from '@tauri-apps/api/event';
+  import { flip } from 'svelte/animate';
+  import { fade } from 'svelte/transition';
+  import { backOut, cubicIn, cubicOut } from 'svelte/easing';
   import { statusBarStore } from '../../lib/stores/status-bar.svelte.js';
   import { aiStatusStore } from '../../lib/stores/ai-status.svelte.js';
   import { PROVIDER_ICONS } from '../../lib/providers.js';
@@ -130,18 +133,65 @@
   }
 
   // -- Notification panel --
-  let notifPanelOpen = $state(false);
+  // Open state lives in toastStore so the floating toast stack can suppress
+  // itself while the panel is showing (the panel is THE surface then).
+  const notifPanelOpen = $derived(toastStore.panelOpen);
 
   function toggleNotifPanel(e) {
     e.stopPropagation();
-    if (!notifPanelOpen) {
-      statusBarStore.markAllRead();
-    }
-    notifPanelOpen = !notifPanelOpen;
+    toastStore.setPanelOpen(!toastStore.panelOpen);
   }
 
   function closeNotifPanel() {
-    notifPanelOpen = false;
+    toastStore.setPanelOpen(false);
+  }
+
+  /** Run a notification action and resolve the item (it's dealt with). */
+  function runNotifAction(notif, act) {
+    act.callback();
+    toastStore.resolveItem(notif.id);
+  }
+
+  /** Merge single `action` and `actions` array into one pill row. */
+  function notifActions(notif) {
+    return notif.action ? [notif.action] : (Array.isArray(notif.actions) ? notif.actions : []);
+  }
+
+  function prefersReducedMotion() {
+    return typeof matchMedia !== 'undefined'
+      && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  /** The panel grows out of the bell (bottom-right corner). */
+  function panelIn(node, { duration = 260 } = {}) {
+    if (prefersReducedMotion()) {
+      return { duration: 120, easing: cubicOut, css: (t) => `opacity: ${t}` };
+    }
+    return {
+      duration,
+      easing: backOut,
+      css: (t) => `
+        transform-origin: bottom right;
+        transform: translateY(${(1 - t) * 10}px) scale(${0.94 + t * 0.06});
+        opacity: ${Math.min(1, t * 1.5)};
+      `,
+    };
+  }
+
+  /** ...and tucks back into it. */
+  function panelOut(node, { duration = 150 } = {}) {
+    if (prefersReducedMotion()) {
+      return { duration: 100, easing: cubicIn, css: (t) => `opacity: ${t}` };
+    }
+    return {
+      duration,
+      easing: cubicIn,
+      css: (t) => `
+        transform-origin: bottom right;
+        transform: translateY(${(1 - t) * 8}px) scale(${0.96 + t * 0.04});
+        opacity: ${t};
+      `,
+    };
   }
 
   function handleDocumentClick() {
@@ -506,30 +556,89 @@
         {/if}
       </button>
 
-      <!-- Notification panel dropdown -->
+      <!-- Notification panel — the notification center, source of truth for
+           every toast. Items keep their action buttons here, so a prompt
+           missed as a toast is still actionable from history. -->
       {#if notifPanelOpen}
-        <div class="notif-panel" role="menu" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+        <div
+          class="notif-panel"
+          role="menu"
+          tabindex="-1"
+          in:panelIn
+          out:panelOut
+          onclick={(e) => e.stopPropagation()}
+          onkeydown={(e) => e.stopPropagation()}
+        >
           <div class="notif-header">
             <span class="notif-title">Notifications</span>
-            {#if statusBarStore.notifications.length > 0}
-              <button class="notif-clear" onclick={() => statusBarStore.clearAllNotifications()}>
-                Clear All
+            {#if toastStore.notifications.length > 0}
+              <button class="notif-clear" onclick={() => toastStore.clearAll()}>
+                Clear all
               </button>
             {/if}
           </div>
           <div class="notif-list">
-            {#if statusBarStore.notifications.length === 0}
-              <div class="notif-empty">No notifications</div>
+            {#if toastStore.notifications.length === 0}
+              <div class="notif-empty">You're all caught up.</div>
             {:else}
-              {#each statusBarStore.notifications as notif (notif.id)}
-                <div class="notif-item" class:unread={!notif.read}>
+              {#each toastStore.notifications as notif (notif.id)}
+                <div
+                  class="notif-item {notif.severity || 'info'}"
+                  class:unread={!notif.read}
+                  animate:flip={{ duration: 200 }}
+                  in:fade={{ duration: 150 }}
+                >
+                  <span class="notif-chip" aria-hidden="true">
+                    {#if notif.severity === 'success'}
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                    {:else if notif.severity === 'warning'}
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                      </svg>
+                    {:else if notif.severity === 'error'}
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                      </svg>
+                    {:else}
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="16" x2="12" y2="12"/>
+                        <line x1="12" y1="8" x2="12.01" y2="8"/>
+                      </svg>
+                    {/if}
+                  </span>
                   <div class="notif-content">
                     <span class="notif-message">{notif.message}</span>
-                    <span class="notif-time">{formatRelativeTime(notif.timestamp)}</span>
+                    {#if notif.progress != null}
+                      <div class="notif-progress-track">
+                        <div class="notif-progress-bar" style="width: {Math.min(100, Math.max(0, notif.progress))}%"></div>
+                      </div>
+                    {/if}
+                    <div class="notif-meta">
+                      <span class="notif-time">{formatRelativeTime(notif.createdAt)}</span>
+                      {#if notifActions(notif).length > 0}
+                        <span class="notif-actions">
+                          {#each notifActions(notif) as act, i}
+                            <button
+                              class="notif-action"
+                              class:primary={i === 0}
+                              onclick={() => runNotifAction(notif, act)}
+                            >
+                              {act.label}
+                            </button>
+                          {/each}
+                        </span>
+                      {/if}
+                    </div>
                   </div>
                   <button
                     class="notif-dismiss"
-                    onclick={() => statusBarStore.dismissNotification(notif.id)}
+                    onclick={() => toastStore.removeItem(notif.id)}
                     aria-label="Dismiss notification"
                     title="Dismiss"
                   >
@@ -979,39 +1088,39 @@
   }
 
   /* ========== Notification Panel ========== */
+  /* Same frosted-surface language as the toast capsules — the panel and the
+     toasts are two states of one notification system. */
   .notif-panel {
     position: absolute;
-    bottom: 100%;
+    bottom: calc(100% + 8px);
     right: 0;
-    width: 320px;
-    max-height: 360px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md, 6px);
-    box-shadow: var(--shadow-md, 0 8px 24px rgba(0, 0, 0, 0.3));
+    width: 380px;
+    max-height: 440px;
+    background: color-mix(in srgb, var(--bg-elevated) 86%, transparent);
+    backdrop-filter: blur(14px) saturate(1.3);
+    -webkit-backdrop-filter: blur(14px) saturate(1.3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
     z-index: 10002;
     display: flex;
     flex-direction: column;
-    animation: notif-in 0.12s ease-out;
-  }
-
-  @keyframes notif-in {
-    from { opacity: 0; transform: translateY(4px); }
-    to { opacity: 1; transform: translateY(0); }
+    overflow: hidden;
   }
 
   .notif-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 12px;
+    padding: 10px 14px;
     border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
   }
 
   .notif-title {
     font-size: 12px;
     font-weight: 600;
-    color: var(--text);
+    color: var(--text-strong);
   }
 
   .notif-clear {
@@ -1021,7 +1130,7 @@
     font-size: 11px;
     font-family: var(--font-family);
     cursor: pointer;
-    padding: 2px 4px;
+    padding: 2px 6px;
     border-radius: var(--radius-sm);
   }
 
@@ -1032,11 +1141,10 @@
   .notif-list {
     overflow-y: auto;
     flex: 1;
-    max-height: 300px;
   }
 
   .notif-empty {
-    padding: 20px 12px;
+    padding: 28px 12px;
     text-align: center;
     color: var(--muted);
     font-size: 12px;
@@ -1045,8 +1153,8 @@
   .notif-item {
     display: flex;
     align-items: flex-start;
-    gap: 6px;
-    padding: 8px 12px;
+    gap: 10px;
+    padding: 10px 14px;
     border-bottom: 1px solid var(--border);
     transition: background var(--duration-fast, 100ms);
   }
@@ -1060,8 +1168,30 @@
   }
 
   .notif-item.unread {
-    background: rgba(var(--accent-rgb, 99, 102, 241), 0.05);
+    background: color-mix(in srgb, var(--accent-subtle) 40%, transparent);
   }
+
+  /* Severity chip — same tinted-square language as the toast capsules */
+  .notif-chip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .notif-chip svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .notif-item.info .notif-chip    { color: var(--accent); background: var(--accent-subtle); }
+  .notif-item.success .notif-chip { color: var(--ok);     background: var(--ok-subtle); }
+  .notif-item.warning .notif-chip { color: var(--warn);   background: var(--warn-subtle); }
+  .notif-item.error .notif-chip   { color: var(--danger); background: var(--danger-subtle); }
 
   .notif-content {
     flex: 1;
@@ -1071,21 +1201,83 @@
   .notif-message {
     display: block;
     font-size: 12px;
+    line-height: 1.45;
     color: var(--text);
     word-break: break-word;
   }
 
+  .notif-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
   .notif-time {
-    display: block;
     font-size: 10px;
     color: var(--muted);
-    margin-top: 2px;
+    flex-shrink: 0;
+  }
+
+  /* Action pills — notifications stay actionable from history */
+  .notif-actions {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .notif-action {
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    font-family: var(--font-family);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--duration-fast) var(--ease-out),
+                border-color var(--duration-fast) var(--ease-out);
+  }
+
+  .notif-action:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
+  }
+
+  .notif-action.primary {
+    background: var(--accent);
+    color: var(--accent-contrast, white);
+    border-color: transparent;
+  }
+
+  .notif-action.primary:hover {
+    background: var(--accent-hover);
+  }
+
+  .notif-progress-track {
+    height: 3px;
+    margin-top: 6px;
+    background: var(--border);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+  }
+
+  .notif-progress-bar {
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.3s ease-out;
+    border-radius: var(--radius-full);
   }
 
   .notif-dismiss {
     flex-shrink: 0;
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     padding: 0;
     border: none;
     background: none;
@@ -1094,7 +1286,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-full);
     opacity: 0;
     transition: opacity var(--duration-fast, 100ms);
   }
@@ -1114,8 +1306,11 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .notif-panel {
-      animation: none;
+    .notif-item,
+    .notif-action,
+    .notif-dismiss,
+    .notif-progress-bar {
+      transition: none;
     }
   }
 </style>

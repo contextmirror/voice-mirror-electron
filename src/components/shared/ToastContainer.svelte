@@ -14,13 +14,19 @@
   function handleDismiss(id) {
     toastStore.dismissToast(id);
   }
+
+  function handleResolve(id) {
+    toastStore.resolveItem(id);
+  }
 </script>
 
-{#if toastStore.toasts.length > 0}
+<!-- Suppressed while the notification panel is open: the panel IS the
+     notification surface then, and new items land directly inside it. -->
+{#if toastStore.toasts.length > 0 && !toastStore.panelOpen}
   <div class="toast-container" aria-live="polite" aria-label="Notifications">
     {#each toastStore.toasts as toast (toast.id)}
       <div class="toast-slot" animate:flip={{ duration: 240 }}>
-        <Toast {toast} onDismiss={handleDismiss} />
+        <Toast {toast} onDismiss={handleDismiss} onResolve={handleResolve} />
       </div>
     {/each}
   </div>
