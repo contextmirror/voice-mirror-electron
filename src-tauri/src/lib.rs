@@ -524,6 +524,8 @@ pub fn run() {
             lens_cmds::extensions::lens_extension_set_enabled,
             lens_cmds::extensions::lens_extension_remove,
 
+            lens_cmds::privacy::lens_apply_privacy,
+
             lens_cmds::permissions::lens_permission_response,
             lens_cmds::permissions::lens_get_permissions,
             lens_cmds::permissions::lens_clear_permission,

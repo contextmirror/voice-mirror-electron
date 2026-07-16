@@ -2,7 +2,7 @@
   import { browserTabsStore } from '../../../lib/stores/browser-tabs.svelte.js';
   import { lensReload, lensHardRefresh, lensToggleTabMute } from '../../../lib/api.js';
 
-  let { onNewTab } = $props();
+  let { onNewTab, onNewPrivateTab } = $props();
 
   async function handleToggleMute(e, tabId) {
     e.stopPropagation();
@@ -77,6 +77,11 @@
     onNewTab?.();
   }
 
+  function handleContextNewPrivateTab() {
+    closeContextMenu();
+    onNewPrivateTab?.();
+  }
+
   function handleContextClose() {
     const id = contextMenu.tabId;
     closeContextMenu();
@@ -101,6 +106,7 @@
       class="browser-tab"
       class:active={tab.id === browserTabsStore.activeTabId}
       class:loading={tab.loading}
+      class:incognito={tab.incognito}
       class:drag-over={tab.id === dragOverTabId}
       class:dragging={tab.id === draggedTabId}
       draggable="true"
@@ -129,6 +135,15 @@
           </svg>
         {/if}
       </span>
+      {#if tab.incognito}
+        <svg class="browser-tab-private" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-label="Private tab">
+          <path d="M2 12h20"/>
+          <circle cx="6.5" cy="14.5" r="3"/>
+          <circle cx="17.5" cy="14.5" r="3"/>
+          <path d="M9.5 14.5c0-1 1-2 2.5-2s2.5 1 2.5 2"/>
+          <path d="M4 12l2-5h12l2 5"/>
+        </svg>
+      {/if}
       <span class="browser-tab-title">{truncate(tab.title)}</span>
       {#if tab.audible || tab.muted}
         <button
@@ -185,6 +200,9 @@
     <button class="context-menu-item" onclick={handleContextNewTab}>
       New Tab
     </button>
+    <button class="context-menu-item" onclick={handleContextNewPrivateTab}>
+      New Private Tab
+    </button>
     <button class="context-menu-item" onclick={handleContextClose}>
       Close Tab
     </button>
@@ -231,6 +249,17 @@
     max-width: 180px;
     position: relative;
     transition: color 0.15s ease;
+  }
+
+  /* Private (incognito) tab: subtle tint so it reads as a separate session. */
+  .browser-tab.incognito {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+  }
+
+  .browser-tab-private {
+    flex-shrink: 0;
+    color: var(--accent);
+    opacity: 0.85;
   }
 
   /* Accent underline indicator */

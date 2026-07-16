@@ -43,12 +43,12 @@
     };
   }
 
-  export function createNewTab(url = 'about:blank') {
+  export function createNewTab(url = 'about:blank', opts = {}) {
     const bounds = getAbsoluteBounds();
     if (bounds && bounds.width > 0 && bounds.height > 0) {
       // Re-clamp the newly-active webview to the current browser-pane rect so a
       // tab created mid-layout can never keep bounds that span the bottom panel.
-      browserTabsStore.openTab(url, bounds).then(() => syncBounds());
+      browserTabsStore.openTab(url, bounds, opts).then(() => syncBounds());
     }
   }
 

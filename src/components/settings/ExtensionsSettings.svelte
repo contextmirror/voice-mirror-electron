@@ -14,6 +14,7 @@
   import Button from '../shared/Button.svelte';
   import Toggle from '../shared/Toggle.svelte';
   import { toastStore } from '../../lib/stores/toast.svelte.js';
+  import { configStore, updateConfig } from '../../lib/stores/config.svelte.js';
   import { browserExtensionsStore } from '../../lib/stores/browser-extensions.svelte.js';
   import {
     lensExtensionsList,
@@ -21,6 +22,7 @@
     lensExtensionInstallCrx,
     lensExtensionSetEnabled,
     lensExtensionRemove,
+    lensApplyPrivacy,
   } from '../../lib/api.js';
 
   // Blessed one-click installs. CRX endpoint follows a redirect to the packed
@@ -142,6 +144,49 @@
 
   // Which blessed extensions are already installed (dim their button).
   const installedNames = $derived(new Set(extensions.map((e) => e.name)));
+
+  // ── Privacy toggles (persist on the WebView2 profile) ──
+  const TRACKING_LEVELS = [
+    { value: 'off', label: 'Off' },
+    { value: 'basic', label: 'Basic' },
+    { value: 'balanced', label: 'Balanced (default)' },
+    { value: 'strict', label: 'Strict' },
+  ];
+  let trackingPrevention = $state('balanced');
+  let passwordAutosave = $state(false);
+  let generalAutofill = $state(true);
+  let savingPrivacy = $state(false);
+
+  $effect(() => {
+    const b = configStore.value?.browser;
+    if (!b) return;
+    trackingPrevention = b.trackingPrevention || 'balanced';
+    passwordAutosave = b.passwordAutosave === true;
+    generalAutofill = b.generalAutofill !== false;
+  });
+
+  async function savePrivacy() {
+    savingPrivacy = true;
+    try {
+      await updateConfig({
+        browser: { trackingPrevention, passwordAutosave, generalAutofill },
+      });
+      // Push the new values onto the live profile (best-effort — needs a tab).
+      const res = await lensApplyPrivacy();
+      if (res?.success) {
+        toastStore.addToast({ message: 'Privacy settings applied', severity: 'success' });
+      } else {
+        toastStore.addToast({
+          message: res?.error || 'Saved — open a browser tab to apply',
+          severity: 'info',
+        });
+      }
+    } catch (e) {
+      toastStore.addToast({ message: `Save failed: ${e}`, severity: 'error' });
+    } finally {
+      savingPrivacy = false;
+    }
+  }
 </script>
 
 <div class="extensions-settings">
@@ -222,6 +267,47 @@
           </div>
         </div>
       {/each}
+    </div>
+  </section>
+
+  <section class="settings-section">
+    <h3>Privacy</h3>
+    <p class="ext-hint">
+      Applied to the browser profile (shared by all tabs) and remembered.
+    </p>
+    <div class="settings-group">
+      <div class="privacy-select-row">
+        <div class="privacy-text">
+          <span class="privacy-label">Tracking prevention</span>
+          <span class="privacy-desc">Block known trackers while browsing.</span>
+        </div>
+        <select
+          class="privacy-select"
+          bind:value={trackingPrevention}
+          aria-label="Tracking prevention level"
+        >
+          {#each TRACKING_LEVELS as lvl (lvl.value)}
+            <option value={lvl.value}>{lvl.label}</option>
+          {/each}
+        </select>
+      </div>
+      <Toggle
+        label="Offer to save passwords"
+        description="Let WebView2 prompt to save and fill site passwords"
+        checked={passwordAutosave}
+        onChange={(v) => (passwordAutosave = v)}
+      />
+      <Toggle
+        label="Autofill forms"
+        description="Autofill addresses and other general form data"
+        checked={generalAutofill}
+        onChange={(v) => (generalAutofill = v)}
+      />
+    </div>
+    <div class="ext-install-row">
+      <Button variant="primary" small onClick={savePrivacy} disabled={savingPrivacy}>
+        {savingPrivacy ? 'Applying…' : 'Apply privacy settings'}
+      </Button>
     </div>
   </section>
 </div>
@@ -380,5 +466,44 @@
 
   .ext-install-row {
     padding: 12px 0 0 0;
+  }
+
+  .privacy-select-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 12px;
+  }
+
+  .privacy-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .privacy-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .privacy-desc {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.3;
+  }
+
+  .privacy-select {
+    flex-shrink: 0;
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 12px;
+    cursor: pointer;
   }
 </style>

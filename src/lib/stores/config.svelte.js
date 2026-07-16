@@ -98,6 +98,9 @@ const DEFAULT_CONFIG = {
   browser: {
     downloadAskLocation: false,
     downloadPath: '',
+    trackingPrevention: 'balanced',
+    passwordAutosave: false,
+    generalAutofill: true,
   },
   workspace: {
     showChat: false,

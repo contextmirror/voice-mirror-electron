@@ -27,15 +27,16 @@ function createBrowserTabsStore() {
      * @param {{ x: number, y: number, width: number, height: number }|null} bounds - WebView2 position
      * @returns {Promise<string|null>} Tab ID or null on failure
      */
-    async openTab(url = 'about:blank', bounds = null) {
+    async openTab(url = 'about:blank', bounds = null, opts = {}) {
       if (tabs.length >= MAX_TABS) return null;
 
+      const incognito = opts?.incognito === true;
       const id = `btab-${Date.now()}-${++counter}`;
       const tab = {
         id,
         url,
         inputUrl: url,
-        title: 'New Tab',
+        title: incognito ? 'Private Tab' : 'New Tab',
         webviewLabel: null,
         loading: false,
         favicon: null,
@@ -44,6 +45,7 @@ function createBrowserTabsStore() {
         certError: false,
         audible: false,
         muted: false,
+        incognito,
       };
 
       tabs.push(tab);
@@ -54,7 +56,7 @@ function createBrowserTabsStore() {
         const y = bounds?.y ?? 0;
         const width = bounds?.width ?? 800;
         const height = bounds?.height ?? 600;
-        const result = await lensCreateTab(id, url, x, y, width, height);
+        const result = await lensCreateTab(id, url, x, y, width, height, incognito);
         // Store the webview label returned from Rust (extract from IpcResponse)
         const t = tabs.find(t => t.id === id);
         if (t && result) {

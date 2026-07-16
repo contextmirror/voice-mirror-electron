@@ -50,7 +50,7 @@ pub async fn lens_create_device_webview(
 
     // Create the WebView2 instance using the shared helper
     let downloads_arc = state.downloads.clone();
-    let label = create_tab_webview(&app, &webview_label, &url, x, y, width, height, downloads_arc).await?;
+    let label = create_tab_webview(&app, &webview_label, &url, x, y, width, height, downloads_arc, false).await?;
 
     // Store in device_webviews vec
     {

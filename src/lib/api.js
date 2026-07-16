@@ -432,8 +432,8 @@ export async function designExpandTreeNode(nodeId) {
 
 // ============ Browser Tabs ============
 
-export async function lensCreateTab(tabId, url, x, y, width, height) {
-  return invoke('lens_create_tab', { tabId, url, x, y, width, height });
+export async function lensCreateTab(tabId, url, x, y, width, height, incognito = false) {
+  return invoke('lens_create_tab', { tabId, url, x, y, width, height, incognito });
 }
 
 export async function lensCloseTab(tabId) {
@@ -503,6 +503,11 @@ export async function lensExtensionSetEnabled(id, enabled) {
 /** Remove an installed extension by id (WebView2 + managed folder). */
 export async function lensExtensionRemove(id) {
   return invoke('lens_extension_remove', { id });
+}
+
+/** Apply the persisted browser privacy toggles to the active tab's profile. */
+export async function lensApplyPrivacy() {
+  return invoke('lens_apply_privacy', {});
 }
 
 export async function lensOpenDevtools(url, x, y, width, height) {

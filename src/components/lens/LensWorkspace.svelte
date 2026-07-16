@@ -851,7 +851,10 @@
 
                         <!-- Browser layer: overlays editor content when visible (tab bar stays above) -->
                         <div class="preview-layer" class:visible={showBrowser}>
-                          <BrowserTabBar onNewTab={() => lensPreviewRef?.createNewTab()} />
+                          <BrowserTabBar
+                            onNewTab={() => lensPreviewRef?.createNewTab()}
+                            onNewPrivateTab={() => lensPreviewRef?.createNewTab('about:blank', { incognito: true })}
+                          />
                           <LensToolbar
                             {zoomLevel}
                             bind:suggestionsOpen={omniboxOpen}

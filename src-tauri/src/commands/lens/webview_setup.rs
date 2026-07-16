@@ -1352,6 +1352,7 @@ pub(super) async fn create_tab_webview(
     width: f64,
     height: f64,
     downloads: Arc<Mutex<Vec<DownloadEntry>>>,
+    incognito: bool,
 ) -> Result<String, String> {
     let parsed_url = url.parse::<tauri::Url>()
         .map_err(|e| format!("Invalid URL: {}", e))?;
@@ -1380,6 +1381,9 @@ pub(super) async fn create_tab_webview(
         let tab_id_for_handler = tab_id_clone.clone();
         let builder =
             WebviewBuilder::new(&label_clone, tauri::WebviewUrl::External(parsed_url))
+                // Private tab → InPrivate/non-persistent WebView2 DataStore
+                // (isolated cookies/storage, cleared when the webview closes).
+                .incognito(incognito)
                 .initialization_script(IPC_CRASH_GUARD_SCRIPT)
                 .initialization_script(&shortcut_script)
                 .initialization_script(CACHE_SCRIPT)
@@ -1431,6 +1435,9 @@ pub(super) async fn create_tab_webview(
                 register_audio_handlers(&app_for_download, &webview_ref, &tab_id_clone);
                 register_permission_handler(&app_for_download, &webview_ref, &tab_id_clone);
                 set_desktop_user_agent(&webview_ref);
+                // Apply the persisted privacy toggles to this tab's profile
+                // (best-effort — profile settings persist, so this is idempotent).
+                let _ = super::privacy::apply_privacy_to_webview(&webview_ref);
                 Ok(label_clone)
             }
             Err(e) => {

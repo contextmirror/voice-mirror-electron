@@ -21,6 +21,7 @@ pub mod device_preview;
 pub mod find;
 pub mod audio;
 pub mod extensions;
+pub mod privacy;
 pub mod permissions;
 pub mod history;
 pub mod bookmarks;
@@ -155,6 +156,8 @@ pub use extensions::{
     lens_extension_set_enabled,
     lens_extension_remove,
 };
+
+pub use privacy::lens_apply_privacy;
 
 pub use permissions::{lens_permission_response, lens_get_permissions, lens_clear_permission};
 

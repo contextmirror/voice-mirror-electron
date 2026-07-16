@@ -555,7 +555,7 @@ pub struct McpServerPref {
     pub enabled: bool,
 }
 
-/// Browser settings (download behavior).
+/// Browser settings (download behavior + privacy).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserConfig {
@@ -563,6 +563,16 @@ pub struct BrowserConfig {
     pub download_ask_location: bool,
     #[serde(default)]
     pub download_path: Option<String>,
+    /// WebView2 tracking-prevention level: "off" | "basic" | "balanced" | "strict".
+    /// Defaults to "balanced" (the WebView2 default).
+    #[serde(default = "default_tracking_prevention")]
+    pub tracking_prevention: String,
+    /// Offer to save passwords (WebView2 IsPasswordAutosaveEnabled). Default off.
+    #[serde(default)]
+    pub password_autosave: bool,
+    /// General autofill of forms (WebView2 IsGeneralAutofillEnabled). Default on.
+    #[serde(default = "default_true")]
+    pub general_autofill: bool,
 }
 
 impl Default for BrowserConfig {
@@ -570,6 +580,9 @@ impl Default for BrowserConfig {
         Self {
             download_ask_location: false,
             download_path: None,
+            tracking_prevention: default_tracking_prevention(),
+            password_autosave: false,
+            general_autofill: true,
         }
     }
 }
@@ -577,6 +590,7 @@ impl Default for BrowserConfig {
 // ============ Default value functions ============
 
 fn default_true() -> bool { true }
+fn default_tracking_prevention() -> String { "balanced".into() }
 fn default_wake_phrase() -> String { "hey_claude".into() }
 fn default_sensitivity() -> f64 { 0.5 }
 fn default_one() -> f64 { 1.0 }

@@ -30,9 +30,11 @@ pub async fn lens_create_tab(
     y: f64,
     width: f64,
     height: f64,
+    incognito: Option<bool>,
     state: tauri::State<'_, LensState>,
 ) -> Result<IpcResponse, String> {
-    info!("[lens] Creating tab {} at ({}, {}) {}x{} url={}", tab_id, x, y, width, height, url);
+    let incognito = incognito.unwrap_or(false);
+    info!("[lens] Creating tab {} at ({}, {}) {}x{} url={} incognito={}", tab_id, x, y, width, height, url, incognito);
 
     // Check tab cap
     {
@@ -56,7 +58,7 @@ pub async fn lens_create_tab(
 
     // Create the WebView2 instance
     let downloads_arc = state.downloads.clone();
-    let label = create_tab_webview(&app, &tab_id, &url, x, y, width, height, downloads_arc).await?;
+    let label = create_tab_webview(&app, &tab_id, &url, x, y, width, height, downloads_arc, incognito).await?;
 
     // Store the tab and set as active
     {
@@ -284,7 +286,7 @@ pub async fn lens_create_webview(
         .as_millis());
 
     let downloads_arc = state.downloads.clone();
-    let label = create_tab_webview(&app, &tab_id, &url, x, y, width, height, downloads_arc).await?;
+    let label = create_tab_webview(&app, &tab_id, &url, x, y, width, height, downloads_arc, false).await?;
 
     // Store the tab and set as active
     {

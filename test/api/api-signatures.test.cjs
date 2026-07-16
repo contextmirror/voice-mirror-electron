@@ -118,6 +118,7 @@ describe('api.js -- critical Tauri command names', () => {
     'lens_extension_install_crx',
     'lens_extension_set_enabled',
     'lens_extension_remove',
+    'lens_apply_privacy',
     // DevTools
     'lens_find_devtools_url',
     'lens_open_devtools',
@@ -330,6 +331,7 @@ describe('api.js -- exported async functions', () => {
     'lensExtensionInstallCrx',
     'lensExtensionSetEnabled',
     'lensExtensionRemove',
+    'lensApplyPrivacy',
     'lensOpenDevtools',
     'findDevtoolsUrl',
     'lensCloseDevtools',
