@@ -19,6 +19,9 @@
   let unlistenNewWindow = null;
   let unlistenFavicon = null;
   let unlistenHistoryState = null;
+  let unlistenCertError = null;
+  let unlistenAudioState = null;
+  let unlistenFullscreen = null;
   let setupDone = false;
   const LOADING_TIMEOUT_MS = 15000;
   let loadingTimer = null;
@@ -487,6 +490,27 @@
       }
     });
 
+    // TLS certificate errors → address-bar security chip error state.
+    // (WebView2 still renders its own built-in interstitial in the tab.)
+    unlistenCertError = await listen('lens-cert-error', (event) => {
+      const tabId = event.payload?.tabId;
+      if (tabId) {
+        browserTabsStore.setTabCertError(tabId, true);
+      }
+    });
+
+    // Per-tab audio state (ICoreWebView2_8) → speaker icon in the tab strip.
+    unlistenAudioState = await listen('lens-audio-state', (event) => {
+      const tabId = event.payload?.tabId;
+      if (!tabId) return;
+      if (typeof event.payload?.audible === 'boolean') {
+        browserTabsStore.setTabAudible(tabId, event.payload.audible);
+      }
+      if (typeof event.payload?.muted === 'boolean') {
+        browserTabsStore.setTabMuted(tabId, event.payload.muted);
+      }
+    });
+
     // Listen for window.open()/OAuth popups from child WebView2 instances —
     // the Rust NewWindowRequested handler emits these so we can open them as tabs.
     unlistenNewWindow = await listen('lens-new-window', (event) => {
@@ -565,6 +589,18 @@
     if (unlistenHistoryState) {
       unlistenHistoryState();
       unlistenHistoryState = null;
+    }
+    if (unlistenCertError) {
+      unlistenCertError();
+      unlistenCertError = null;
+    }
+    if (unlistenAudioState) {
+      unlistenAudioState();
+      unlistenAudioState = null;
+    }
+    if (unlistenFullscreen) {
+      unlistenFullscreen();
+      unlistenFullscreen = null;
     }
     lensCloseAllTabs().catch(() => {});
     browserTabsStore.clearAll();

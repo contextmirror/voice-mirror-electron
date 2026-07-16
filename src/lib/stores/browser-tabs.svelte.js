@@ -41,6 +41,9 @@ function createBrowserTabsStore() {
         favicon: null,
         canGoBack: false,
         canGoForward: false,
+        certError: false,
+        audible: false,
+        muted: false,
       };
 
       tabs.push(tab);
@@ -130,6 +133,9 @@ function createBrowserTabsStore() {
       tab.favicon = null;
       tab.canGoBack = false;
       tab.canGoForward = false;
+      tab.certError = false;
+      tab.audible = false;
+      tab.muted = false;
     },
 
     /**
@@ -170,6 +176,46 @@ function createBrowserTabsStore() {
       if (tab) {
         tab.url = url;
         tab.inputUrl = url;
+        // A (re)navigation clears any prior certificate error for this tab.
+        tab.certError = false;
+      }
+    },
+
+    /**
+     * Flag/clear a TLS certificate error for a tab (from lens-cert-error).
+     * Drives the address-bar security chip to its error state.
+     * @param {string} tabId
+     * @param {boolean} hasError
+     */
+    setTabCertError(tabId, hasError) {
+      const tab = tabs.find(t => t.id === tabId);
+      if (tab) {
+        tab.certError = !!hasError;
+      }
+    },
+
+    /**
+     * Update a tab's audio-playing state (ICoreWebView2_8
+     * IsDocumentPlayingAudioChanged).
+     * @param {string} tabId
+     * @param {boolean} audible
+     */
+    setTabAudible(tabId, audible) {
+      const tab = tabs.find(t => t.id === tabId);
+      if (tab) {
+        tab.audible = !!audible;
+      }
+    },
+
+    /**
+     * Update a tab's muted state (ICoreWebView2_8 IsMutedChanged / toggle).
+     * @param {string} tabId
+     * @param {boolean} muted
+     */
+    setTabMuted(tabId, muted) {
+      const tab = tabs.find(t => t.id === tabId);
+      if (tab) {
+        tab.muted = !!muted;
       }
     },
 

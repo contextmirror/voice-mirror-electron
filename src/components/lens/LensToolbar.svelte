@@ -143,6 +143,24 @@
   const canGoBack = $derived(browserTabsStore.activeTab?.canGoBack === true);
   const canGoForward = $derived(browserTabsStore.activeTab?.canGoForward === true);
 
+  // ── Security indicator ──
+  // Derived from the active tab URL (+ cert-error flag). 'secure' = padlock,
+  // 'insecure' = warning (plain http), 'error' = TLS cert problem, null = none
+  // (about:/file:/blank).
+  const security = $derived.by(() => {
+    if (browserTabsStore.activeTab?.certError) return 'error';
+    const u = browserTabsStore.activeTab?.url || '';
+    if (/^https:\/\//i.test(u)) return 'secure';
+    if (/^http:\/\//i.test(u)) return 'insecure';
+    return null;
+  });
+  const securityTitle = $derived(
+    security === 'secure' ? 'Connection is secure (HTTPS)'
+    : security === 'insecure' ? 'Not secure — this site uses plain HTTP'
+    : security === 'error' ? 'Certificate error — connection is not private'
+    : ''
+  );
+
   // Bookmark star state for the current page
   const currentUrl = $derived(browserTabsStore.activeTab?.url || '');
   const isBookmarkable = $derived(!!currentUrl && currentUrl !== 'about:blank');
@@ -193,8 +211,18 @@
   </div>
 
   <form class="url-bar" onsubmit={handleSubmit}>
+    {#if security}
+      <span class="security-chip security-{security}" title={securityTitle} role="img" aria-label={securityTitle}>
+        {#if security === 'secure'}
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        {:else}
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        {/if}
+      </span>
+    {/if}
     <input
       class="url-input"
+      class:has-security={!!security}
       type="text"
       bind:this={inputEl}
       bind:value={urlInput}
@@ -419,6 +447,31 @@
     }
   }
 
+  /* Security indicator chip, inside the left edge of the address bar */
+  .security-chip {
+    position: absolute;
+    left: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    pointer-events: auto;
+    z-index: 1;
+  }
+
+  .security-chip.security-secure {
+    color: var(--success, var(--accent));
+  }
+
+  .security-chip.security-insecure {
+    color: var(--muted);
+  }
+
+  .security-chip.security-error {
+    color: var(--danger);
+  }
+
   .url-input {
     flex: 1;
     height: 28px;
@@ -431,6 +484,11 @@
     font-family: var(--font-mono);
     outline: none;
     transition: border-color var(--duration-fast) var(--ease-out);
+  }
+
+  /* Make room for the security chip when present */
+  .url-input.has-security {
+    padding-left: 28px;
   }
 
   .url-input:focus {

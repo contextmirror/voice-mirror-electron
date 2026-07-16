@@ -658,6 +658,84 @@ pub(super) fn register_navigation_state_handlers(
     });
 }
 
+/// Register a `ServerCertificateErrorDetected` handler (ICoreWebView2_14+) so a
+/// TLS certificate error emits `lens-cert-error {tabId, uri, errorStatus}`.
+///
+/// The frontend uses this to flip the address-bar security chip to an error
+/// state. We deliberately DON'T override the action: leaving it at the WebView2
+/// default renders WebView2's own built-in interstitial (which includes the
+/// "proceed anyway" affordance). A custom DOM interstitial was skipped — it
+/// would need webview-freeze airspace handling plus deferral/proceed plumbing
+/// to re-drive the navigation, duplicating a page WebView2 already renders well.
+/// Degrades to WebView2 defaults on a runtime older than ICoreWebView2_14.
+pub(super) fn register_cert_error_handler(
+    app: &AppHandle,
+    webview: &tauri::Webview,
+    tab_id: &str,
+) {
+    let app_handle = app.clone();
+    let tab_id = tab_id.to_string();
+    let _ = webview.with_webview(move |platform_webview| {
+        #[cfg(windows)]
+        {
+            use webview2_com::{ServerCertificateErrorDetectedEventHandler, take_pwstr};
+            use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_14;
+            use windows_core::Interface;
+
+            unsafe {
+                let controller = platform_webview.controller();
+                let core_webview = match controller.CoreWebView2() {
+                    Ok(wv) => wv,
+                    Err(e) => {
+                        warn!("[lens] Failed to get CoreWebView2 for cert-error handler: {:?}", e);
+                        return;
+                    }
+                };
+
+                let wv14: ICoreWebView2_14 = match core_webview.cast() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!("[lens] ICoreWebView2_14 unavailable — no cert-error events: {:?}", e);
+                        return;
+                    }
+                };
+
+                let app_for_cert = app_handle.clone();
+                let tab_for_cert = tab_id.clone();
+                let handler = ServerCertificateErrorDetectedEventHandler::create(Box::new(
+                    move |_sender, args| {
+                        if let Some(args) = args {
+                            let mut status = Default::default();
+                            let _ = args.ErrorStatus(&mut status);
+                            let mut uri_pwstr = windows_core::PWSTR::null();
+                            let _ = args.RequestUri(&mut uri_pwstr);
+                            let uri = take_pwstr(uri_pwstr);
+                            let _ = app_for_cert.emit(
+                                "lens-cert-error",
+                                serde_json::json!({
+                                    "tabId": tab_for_cert,
+                                    "uri": uri,
+                                    "errorStatus": status.0,
+                                }),
+                            );
+                        }
+                        // Leave the action at its default → WebView2's built-in
+                        // interstitial (with proceed-anyway) renders in the tab.
+                        Ok(())
+                    },
+                ));
+
+                let mut token: i64 = 0;
+                if let Err(e) = wv14.add_ServerCertificateErrorDetected(&handler, &mut token) {
+                    warn!("[lens] Failed to register ServerCertificateErrorDetected: {:?}", e);
+                } else {
+                    info!("[lens] Cert-error handler registered (token={})", token);
+                }
+            }
+        }
+    });
+}
+
 /// Override the child WebView2's user-agent with a current desktop-Chrome UA so
 /// identity providers (notably Google, which 403s embedded webviews) don't
 /// reject OAuth flows.
@@ -1086,6 +1164,7 @@ pub(super) async fn create_tab_webview(
                 register_download_handler(&app_for_download, &webview_ref, downloads);
                 register_new_window_handler(&app_for_download, &webview_ref);
                 register_navigation_state_handlers(&app_for_download, &webview_ref, &tab_id_clone);
+                register_cert_error_handler(&app_for_download, &webview_ref, &tab_id_clone);
                 set_desktop_user_agent(&webview_ref);
                 Ok(label_clone)
             }

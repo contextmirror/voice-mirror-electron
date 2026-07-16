@@ -51,3 +51,24 @@ describe('browser tier2: omnibox', () => {
     );
   });
 });
+
+describe('browser tier2: security indicator', () => {
+  it('toolbar derives a padlock/warning/error chip from the active tab', () => {
+    assert.ok(TOOLBAR.includes('security-chip'), 'Should render a security chip');
+    assert.ok(/security === 'secure'/.test(TOOLBAR), 'https → secure');
+    assert.ok(/security === 'insecure'|'insecure'/.test(TOOLBAR), 'http → insecure');
+    assert.ok(TOOLBAR.includes('certError'), 'cert error feeds the chip');
+  });
+
+  it('Rust registers a ServerCertificateErrorDetected handler', () => {
+    assert.ok(WEBVIEW_SETUP.includes('add_ServerCertificateErrorDetected'), 'Should register the cert handler');
+    assert.ok(WEBVIEW_SETUP.includes('lens-cert-error'), 'Should emit lens-cert-error');
+    assert.ok(WEBVIEW_SETUP.includes('register_cert_error_handler(&app_for_download'), 'Handler attached per tab');
+  });
+
+  it('cert error flows into the tab store and clears on navigation', () => {
+    assert.ok(TABS_STORE.includes('setTabCertError'), 'store exposes setTabCertError');
+    assert.ok(/certError = false/.test(TABS_STORE), 'navigation clears the cert error');
+    assert.ok(PREVIEW.includes("listen('lens-cert-error'"), 'LensPreview routes the event');
+  });
+});

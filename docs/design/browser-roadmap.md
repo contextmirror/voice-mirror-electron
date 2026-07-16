@@ -38,10 +38,18 @@ carry what extensions need (`browser_extensions_enabled` env flag,
 
 ## Tier 2 — the "feels like Chrome" layer
 
-- [ ] **Omnibox** — address-bar suggestion dropdown fed by history + bookmarks
-      (+ optional search suggestions).
-- [ ] **Security indicator** — padlock/warning chip in the address bar;
-      interstitial via `ServerCertificateErrorDetected`.
+- [x] **Omnibox** — address-bar suggestion dropdown fed by history + bookmarks,
+      filtered as you type, up/down/enter/escape keyboard nav. Bindable
+      `suggestionsOpen` folds into LensWorkspace's freeze() (airspace).
+      (`LensToolbar.svelte`, `LensWorkspace.svelte`)
+- [x] **Security indicator** — padlock (https) / warning (http) / error chip at
+      the LEFT of the address bar, derived from the active tab URL + cert-error
+      flag. `ServerCertificateErrorDetected` (ICoreWebView2_14) emits
+      `lens-cert-error` → chip goes red. NOTE: the custom DOM interstitial was
+      SKIPPED — leaving the WebView2 default action renders its own built-in
+      cert interstitial (with proceed-anyway) in the tab; a custom overlay would
+      need freeze airspace + deferral/proceed plumbing that duplicates it.
+      (`LensToolbar.svelte`, `webview_setup.rs`)
 - [ ] **Permission prompts** — `PermissionRequested` (currently untouched →
       WebView2 defaults); VM-styled prompt + per-site remembered decisions.
 - [ ] **HTML5 fullscreen** — `ContainsFullScreenElementChanged` (videos can't
