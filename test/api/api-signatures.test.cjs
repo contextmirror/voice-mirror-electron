@@ -107,6 +107,7 @@ describe('api.js -- critical Tauri command names', () => {
     'lens_set_visible',
     'lens_hard_refresh',
     'lens_clear_cache',
+    'lens_toggle_tab_mute',
     // DevTools
     'lens_find_devtools_url',
     'lens_open_devtools',
@@ -309,6 +310,7 @@ describe('api.js -- exported async functions', () => {
     'lensCloseAllTabs',
     'lensSetZoom',
     'lensGetZoom',
+    'lensToggleTabMute',
     'lensOpenDevtools',
     'findDevtoolsUrl',
     'lensCloseDevtools',

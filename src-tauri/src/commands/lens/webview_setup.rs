@@ -791,6 +791,102 @@ pub(super) fn register_fullscreen_handler(
     });
 }
 
+/// Register audio-state handlers (ICoreWebView2_8) so a tab that starts/stops
+/// playing audio, or is muted/unmuted, emits `lens-audio-state {tabId, audible?,
+/// muted?}`. Drives the speaker icon in the tab strip. Degrades to no audio
+/// indicator on a runtime older than ICoreWebView2_8.
+pub(super) fn register_audio_handlers(
+    app: &AppHandle,
+    webview: &tauri::Webview,
+    tab_id: &str,
+) {
+    let app_handle = app.clone();
+    let tab_id = tab_id.to_string();
+    let _ = webview.with_webview(move |platform_webview| {
+        #[cfg(windows)]
+        {
+            use webview2_com::{IsDocumentPlayingAudioChangedEventHandler, IsMutedChangedEventHandler};
+            use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_8;
+            use windows_core::Interface;
+
+            unsafe {
+                let controller = platform_webview.controller();
+                let core_webview = match controller.CoreWebView2() {
+                    Ok(wv) => wv,
+                    Err(e) => {
+                        warn!("[lens] Failed to get CoreWebView2 for audio handlers: {:?}", e);
+                        return;
+                    }
+                };
+
+                let wv8: ICoreWebView2_8 = match core_webview.cast() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!("[lens] ICoreWebView2_8 unavailable — no tab audio indicator: {:?}", e);
+                        return;
+                    }
+                };
+
+                // IsDocumentPlayingAudioChanged → audible state
+                {
+                    let app_for_audio = app_handle.clone();
+                    let tab_for_audio = tab_id.clone();
+                    let handler = IsDocumentPlayingAudioChangedEventHandler::create(Box::new(
+                        move |sender, _args| {
+                            if let Some(wv) = sender {
+                                if let Ok(wv8) = wv.cast::<ICoreWebView2_8>() {
+                                    let mut playing = windows_core::BOOL::from(false);
+                                    let _ = wv8.IsDocumentPlayingAudio(&mut playing);
+                                    let _ = app_for_audio.emit(
+                                        "lens-audio-state",
+                                        serde_json::json!({
+                                            "tabId": tab_for_audio,
+                                            "audible": playing.as_bool(),
+                                        }),
+                                    );
+                                }
+                            }
+                            Ok(())
+                        },
+                    ));
+                    let mut token: i64 = 0;
+                    if let Err(e) = wv8.add_IsDocumentPlayingAudioChanged(&handler, &mut token) {
+                        warn!("[lens] Failed to register IsDocumentPlayingAudioChanged: {:?}", e);
+                    }
+                }
+
+                // IsMutedChanged → muted state
+                {
+                    let app_for_mute = app_handle.clone();
+                    let tab_for_mute = tab_id.clone();
+                    let handler = IsMutedChangedEventHandler::create(Box::new(
+                        move |sender, _args| {
+                            if let Some(wv) = sender {
+                                if let Ok(wv8) = wv.cast::<ICoreWebView2_8>() {
+                                    let mut muted = windows_core::BOOL::from(false);
+                                    let _ = wv8.IsMuted(&mut muted);
+                                    let _ = app_for_mute.emit(
+                                        "lens-audio-state",
+                                        serde_json::json!({
+                                            "tabId": tab_for_mute,
+                                            "muted": muted.as_bool(),
+                                        }),
+                                    );
+                                }
+                            }
+                            Ok(())
+                        },
+                    ));
+                    let mut token: i64 = 0;
+                    if let Err(e) = wv8.add_IsMutedChanged(&handler, &mut token) {
+                        warn!("[lens] Failed to register IsMutedChanged: {:?}", e);
+                    }
+                }
+            }
+        }
+    });
+}
+
 /// Override the child WebView2's user-agent with a current desktop-Chrome UA so
 /// identity providers (notably Google, which 403s embedded webviews) don't
 /// reject OAuth flows.
@@ -1233,6 +1329,7 @@ pub(super) async fn create_tab_webview(
                 register_navigation_state_handlers(&app_for_download, &webview_ref, &tab_id_clone);
                 register_cert_error_handler(&app_for_download, &webview_ref, &tab_id_clone);
                 register_fullscreen_handler(&app_for_download, &webview_ref, &tab_id_clone);
+                register_audio_handlers(&app_for_download, &webview_ref, &tab_id_clone);
                 set_desktop_user_agent(&webview_ref);
                 Ok(label_clone)
             }

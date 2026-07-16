@@ -514,6 +514,8 @@ pub fn run() {
             // Lens — zoom
             lens_cmds::zoom::lens_set_zoom,
             lens_cmds::zoom::lens_get_zoom,
+
+            lens_cmds::audio::lens_toggle_tab_mute,
             // Lens — DevTools (embedded side-panel)
             lens_cmds::devtools::lens_find_devtools_url,
             lens_cmds::devtools::lens_open_devtools,

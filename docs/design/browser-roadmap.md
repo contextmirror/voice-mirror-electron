@@ -63,8 +63,10 @@ carry what extensions need (`browser_extensions_enabled` env flag,
       accepted approach). `FindBar` shows `current/total` (or "No results"),
       tracking the active match forward/back with wraparound. (`find.rs`,
       `FindBar.svelte`)
-- [ ] **Tab audio** — playing indicator + mute toggle
-      (`IsDocumentPlayingAudio`/`IsMuted`, ICoreWebView2_8).
+- [x] **Tab audio** — playing indicator + click-to-mute in the tab strip.
+      `IsDocumentPlayingAudioChanged`/`IsMutedChanged` (ICoreWebView2_8) emit
+      `lens-audio-state`; `lens_toggle_tab_mute` flips `SetIsMuted`.
+      (`audio.rs`, `webview_setup.rs`, `BrowserTabBar.svelte`)
 - [ ] **Tab reorder (drag)** in `BrowserTabBar`.
 - [x] **Per-nav progress bar** — thin indeterminate accent bar under the toolbar
       while the active tab loads. Per-tab `loading` is now driven by Tauri

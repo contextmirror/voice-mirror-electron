@@ -451,6 +451,11 @@ export async function lensGetZoom(tabId) {
   return invoke('lens_get_zoom', { tabId });
 }
 
+/** Toggle mute on a browser tab; returns { muted } with the new state. */
+export async function lensToggleTabMute(tabId) {
+  return invoke('lens_toggle_tab_mute', { tabId });
+}
+
 export async function lensOpenDevtools(url, x, y, width, height) {
   return invoke('lens_open_devtools', { url, x, y, width, height });
 }

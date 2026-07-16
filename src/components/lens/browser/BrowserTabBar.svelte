@@ -1,8 +1,20 @@
 <script>
   import { browserTabsStore } from '../../../lib/stores/browser-tabs.svelte.js';
-  import { lensReload, lensHardRefresh } from '../../../lib/api.js';
+  import { lensReload, lensHardRefresh, lensToggleTabMute } from '../../../lib/api.js';
 
   let { onNewTab } = $props();
+
+  async function handleToggleMute(e, tabId) {
+    e.stopPropagation();
+    try {
+      const res = await lensToggleTabMute(tabId);
+      if (typeof res?.data?.muted === 'boolean') {
+        browserTabsStore.setTabMuted(tabId, res.data.muted);
+      }
+    } catch (err) {
+      console.warn('[BrowserTabBar] toggle mute failed:', err);
+    }
+  }
 
   let contextMenu = $state({ visible: false, x: 0, y: 0, tabId: null });
 
@@ -81,6 +93,21 @@
         {/if}
       </span>
       <span class="browser-tab-title">{truncate(tab.title)}</span>
+      {#if tab.audible || tab.muted}
+        <button
+          class="browser-tab-audio"
+          class:muted={tab.muted}
+          onclick={(e) => handleToggleMute(e, tab.id)}
+          title={tab.muted ? 'Unmute tab' : 'Mute tab'}
+          aria-label={tab.muted ? 'Unmute tab' : 'Mute tab'}
+        >
+          {#if tab.muted}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+          {:else}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+          {/if}
+        </button>
+      {/if}
       {#if browserTabsStore.tabs.length > 1}
         <button
           class="browser-tab-close"
@@ -239,6 +266,38 @@
       animation: none;
       border-top-color: var(--border-strong);
     }
+  }
+
+  .browser-tab-audio {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+  }
+
+  .browser-tab-audio:hover {
+    color: var(--text);
+    background: color-mix(in srgb, var(--text) 8%, transparent);
+  }
+
+  .browser-tab-audio.muted {
+    color: var(--danger);
+  }
+
+  .browser-tab.active .browser-tab-audio {
+    color: var(--text);
+  }
+
+  .browser-tab.active .browser-tab-audio.muted {
+    color: var(--danger);
   }
 
   .browser-tab-close {

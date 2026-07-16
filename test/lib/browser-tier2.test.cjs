@@ -21,6 +21,8 @@ const PREVIEW = read('src', 'components', 'lens', 'preview', 'LensPreview.svelte
 const FINDBAR = read('src', 'components', 'lens', 'browser', 'FindBar.svelte');
 const WEBVIEW_SETUP = read('src-tauri', 'src', 'commands', 'lens', 'webview_setup.rs');
 const FIND_RS = read('src-tauri', 'src', 'commands', 'lens', 'find.rs');
+const AUDIO_RS = read('src-tauri', 'src', 'commands', 'lens', 'audio.rs');
+const MOD_RS = read('src-tauri', 'src', 'commands', 'lens', 'mod.rs');
 const LIB_RS = read('src-tauri', 'src', 'lib.rs');
 const API_JS = read('src', 'lib', 'api.js');
 const APP_SVELTE = read('src', 'App.svelte');
@@ -116,5 +118,26 @@ describe('browser tier2: find match counts', () => {
     assert.ok(FINDBAR.includes('countLabel'), 'Should compute a current/total label');
     assert.ok(/res\?\.data\?\.total/.test(FINDBAR), 'Should read total from the response');
     assert.ok(FINDBAR.includes('No results'), 'Should show a no-results state');
+  });
+});
+
+describe('browser tier2: tab audio', () => {
+  it('Rust registers audio-state handlers and a mute command', () => {
+    assert.ok(WEBVIEW_SETUP.includes('add_IsDocumentPlayingAudioChanged'), 'Should register audio-playing handler');
+    assert.ok(WEBVIEW_SETUP.includes('add_IsMutedChanged'), 'Should register muted handler');
+    assert.ok(WEBVIEW_SETUP.includes('lens-audio-state'), 'Should emit lens-audio-state');
+    assert.ok(WEBVIEW_SETUP.includes('register_audio_handlers(&app_for_download'), 'Handlers attached per tab');
+    assert.ok(AUDIO_RS.includes('SetIsMuted'), 'Mute command toggles IsMuted');
+    assert.ok(MOD_RS.includes('lens_toggle_tab_mute'), 'Command re-exported');
+    assert.ok(LIB_RS.includes('lens_cmds::audio::lens_toggle_tab_mute'), 'Command registered in handler');
+  });
+
+  it('store + tab strip + api wire the audio state and mute toggle', () => {
+    assert.ok(TABS_STORE.includes('setTabAudible'), 'store exposes setTabAudible');
+    assert.ok(TABS_STORE.includes('setTabMuted'), 'store exposes setTabMuted');
+    assert.ok(PREVIEW.includes("listen('lens-audio-state'"), 'LensPreview routes the event');
+    assert.ok(TAB_BAR.includes('browser-tab-audio'), 'Tab strip renders a speaker icon');
+    assert.ok(TAB_BAR.includes('lensToggleTabMute'), 'Speaker click toggles mute');
+    assert.ok(API_JS.includes("invoke('lens_toggle_tab_mute'"), 'api wrapper exists');
   });
 });

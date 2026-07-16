@@ -19,6 +19,7 @@ pub(crate) use webview_setup::MAIN_IFRAME_IPC_GUARD_SCRIPT;
 pub mod devtools;
 pub mod device_preview;
 pub mod find;
+pub mod audio;
 pub mod history;
 pub mod bookmarks;
 pub mod downloads;
@@ -141,6 +142,8 @@ pub use device_preview::{
 };
 
 pub use zoom::{lens_set_zoom, lens_get_zoom};
+
+pub use audio::lens_toggle_tab_mute;
 
 pub use find::{
     lens_find_on_page,
