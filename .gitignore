@@ -11,6 +11,9 @@ src-tauri/target/
 # (see docs/design/app-preview-reliability.md "Working on this")
 src-tauri/target-audit/
 
+# Staged nightly release assets (rebuilt by scripts/release-nightly.cjs each cut)
+release-nightly/
+
 # Staged MCP sidecar for externalBin bundling (built artifact, copied at build time)
 src-tauri/binaries/
 
