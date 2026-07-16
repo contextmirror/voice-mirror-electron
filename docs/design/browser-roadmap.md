@@ -67,7 +67,9 @@ carry what extensions need (`browser_extensions_enabled` env flag,
       `IsDocumentPlayingAudioChanged`/`IsMutedChanged` (ICoreWebView2_8) emit
       `lens-audio-state`; `lens_toggle_tab_mute` flips `SetIsMuted`.
       (`audio.rs`, `webview_setup.rs`, `BrowserTabBar.svelte`)
-- [ ] **Tab reorder (drag)** in `BrowserTabBar`.
+- [x] **Tab reorder (drag)** — HTML5 drag-to-reorder in `BrowserTabBar` (pure
+      frontend array move via `browserTabsStore.reorderTab`; isolated
+      `x-vm-browser-tab` drag type so it never collides with editor-tab DnD).
 - [x] **Per-nav progress bar** — thin indeterminate accent bar under the toolbar
       while the active tab loads. Per-tab `loading` is now driven by Tauri
       `on_page_load` Started/Finished → `lens-loading-changed` (previously the

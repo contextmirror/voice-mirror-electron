@@ -141,3 +141,17 @@ describe('browser tier2: tab audio', () => {
     assert.ok(API_JS.includes("invoke('lens_toggle_tab_mute'"), 'api wrapper exists');
   });
 });
+
+describe('browser tier2: tab reorder (drag)', () => {
+  it('store exposes a pure-frontend reorderTab', () => {
+    assert.ok(TABS_STORE.includes('reorderTab(draggedId, targetId)'), 'Should expose reorderTab');
+    assert.ok(TABS_STORE.includes('tabs.splice(insertIdx, 0, moved)'), 'Should splice the moved tab in');
+  });
+
+  it('tab strip is draggable and reorders on drop', () => {
+    assert.ok(TAB_BAR.includes('draggable="true"'), 'Tabs should be draggable');
+    assert.ok(TAB_BAR.includes('handleDragStart'), 'Should have a dragstart handler');
+    assert.ok(TAB_BAR.includes('browserTabsStore.reorderTab(draggedTabId, tabId)'), 'Drop should reorder');
+    assert.ok(TAB_BAR.includes('x-vm-browser-tab'), 'Should use an isolated drag type');
+  });
+});

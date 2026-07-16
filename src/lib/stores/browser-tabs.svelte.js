@@ -157,6 +157,25 @@ function createBrowserTabsStore() {
     },
 
     /**
+     * Reorder tabs by moving `draggedId` next to `targetId` (drag-to-reorder).
+     * Pure frontend array move — the backend keys tabs by id, so order is a
+     * UI-only concern. Dragging rightward drops after the target, leftward
+     * before it, so a tab can be dragged all the way to either end.
+     * @param {string} draggedId
+     * @param {string} targetId
+     */
+    reorderTab(draggedId, targetId) {
+      if (draggedId === targetId) return;
+      const from = tabs.findIndex(t => t.id === draggedId);
+      const to = tabs.findIndex(t => t.id === targetId);
+      if (from === -1 || to === -1) return;
+      const [moved] = tabs.splice(from, 1);
+      const newTargetIdx = tabs.findIndex(t => t.id === targetId);
+      const insertIdx = from < to ? newTargetIdx + 1 : newTargetIdx;
+      tabs.splice(insertIdx, 0, moved);
+    },
+
+    /**
      * Set active tab directly (from MCP-initiated tab switch, no backend call needed).
      * @param {string} id
      */

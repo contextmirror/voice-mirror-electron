@@ -18,6 +18,36 @@
 
   let contextMenu = $state({ visible: false, x: 0, y: 0, tabId: null });
 
+  // ── Drag-to-reorder ──
+  let draggedTabId = $state(null);
+  let dragOverTabId = $state(null);
+
+  function handleDragStart(e, tabId) {
+    draggedTabId = tabId;
+    e.dataTransfer.effectAllowed = 'move';
+    // Custom type so this never collides with the editor-tab / file-tree DnD.
+    try { e.dataTransfer.setData('application/x-vm-browser-tab', tabId); } catch (_) {}
+  }
+
+  function handleDragOver(e, tabId) {
+    if (!draggedTabId || draggedTabId === tabId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    dragOverTabId = tabId;
+  }
+
+  function handleDrop(e, tabId) {
+    e.preventDefault();
+    if (draggedTabId) browserTabsStore.reorderTab(draggedTabId, tabId);
+    draggedTabId = null;
+    dragOverTabId = null;
+  }
+
+  function handleDragEnd() {
+    draggedTabId = null;
+    dragOverTabId = null;
+  }
+
   function handleClose(e, tabId) {
     e.stopPropagation();
     browserTabsStore.closeTab(tabId);
@@ -71,6 +101,13 @@
       class="browser-tab"
       class:active={tab.id === browserTabsStore.activeTabId}
       class:loading={tab.loading}
+      class:drag-over={tab.id === dragOverTabId}
+      class:dragging={tab.id === draggedTabId}
+      draggable="true"
+      ondragstart={(e) => handleDragStart(e, tab.id)}
+      ondragover={(e) => handleDragOver(e, tab.id)}
+      ondrop={(e) => handleDrop(e, tab.id)}
+      ondragend={handleDragEnd}
       onclick={() => browserTabsStore.switchTab(tab.id)}
       onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') browserTabsStore.switchTab(tab.id); }}
       oncontextmenu={(e) => handleContextMenu(e, tab.id)}
@@ -215,6 +252,16 @@
 
   .browser-tab.active {
     color: var(--text-strong);
+  }
+
+  /* Drag-to-reorder feedback */
+  .browser-tab.dragging {
+    opacity: 0.5;
+  }
+
+  .browser-tab.drag-over {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    box-shadow: inset 2px 0 0 var(--accent);
   }
 
   .browser-tab.active::after {
