@@ -14,7 +14,6 @@ import { projectStore } from './project.svelte.js';
 import { lspDiagnosticsStore } from './lsp-diagnostics.svelte.js';
 import { navigationStore } from './navigation.svelte.js';
 import { tabsStore } from './tabs.svelte.js';
-import { toastStore } from './toast.svelte.js';
 
 // -- Constants --
 const GIT_POLL_INTERVAL = 15000;
@@ -121,28 +120,12 @@ function createStatusBarStore() {
     editorFocused = false;
   }
 
-  // ── Notifications ──────────────────────────────────────────────────────
-  // The notification center's source of truth is the unified toastStore
-  // (every toast IS a notification item). These delegate for API compat.
-
-  function addNotification({ message, severity = 'info', source = null }) {
-    // Silent center entry: never floats as a toast.
-    const id = toastStore.addToast({ message, severity, source, duration: 0 });
-    if (id) toastStore.dismissToast(id);
-    return id;
-  }
-
-  function dismissNotification(id) {
-    toastStore.removeItem(id);
-  }
-
-  function markAllRead() {
-    toastStore.markAllRead();
-  }
-
-  function clearAllNotifications() {
-    toastStore.clearAll();
-  }
+  // NOTE: notifications live entirely in the unified toastStore (every toast
+  // IS a notification-center item) — read/mutate them there, not here. The
+  // old delegating addNotification/dismissNotification/markAllRead/
+  // clearAllNotifications wrappers were removed once call-site-free: a
+  // silent add-then-dismiss path here once made items "appear in the center
+  // but never as a toast", masking bugs.
 
   // ── Polling ────────────────────────────────────────────────────────────
 
@@ -258,8 +241,6 @@ function createStatusBarStore() {
     get devServerStatus() { return devServerStatus; },
     get devServerPort() { return devServerPort; },
     get lspHealth() { return lspHealth; },
-    get notifications() { return toastStore.notifications; },
-    get unreadCount() { return toastStore.unreadCount; },
 
     // -- Editor setters --
     setCursor,
@@ -269,12 +250,6 @@ function createStatusBarStore() {
     setLanguage,
     setEditorFocused,
     clearEditorState,
-
-    // -- Notifications --
-    addNotification,
-    dismissNotification,
-    markAllRead,
-    clearAllNotifications,
 
     // -- Polling --
     startPolling,

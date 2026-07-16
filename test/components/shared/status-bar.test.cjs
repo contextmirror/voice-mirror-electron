@@ -258,8 +258,8 @@ describe('StatusBar.svelte: R6 - Notification bell', () => {
     assert.ok(src.includes('bell') || src.includes('notification'), 'Should have notification bell');
   });
 
-  it('reads unreadCount from store', () => {
-    assert.ok(src.includes('statusBarStore.unreadCount'), 'Should read unreadCount');
+  it('reads unreadCount from the unified toastStore', () => {
+    assert.ok(src.includes('toastStore.unreadCount'), 'Should read unreadCount from toastStore');
   });
 
   it('shows badge when unread > 0', () => {
@@ -500,10 +500,13 @@ describe('toast.svelte.js: unified notification center', () => {
     assert.ok(TOAST_SRC.includes('get panelOpen()'), 'Should expose panel state');
   });
 
-  it('statusBarStore delegates its notification API to toastStore', () => {
-    assert.ok(SB_STORE_SRC.includes("import { toastStore } from './toast.svelte.js'"), 'statusBarStore should import toastStore');
-    assert.ok(SB_STORE_SRC.includes('toastStore.notifications'), 'notifications getter should delegate');
-    assert.ok(SB_STORE_SRC.includes('toastStore.unreadCount'), 'unreadCount getter should delegate');
+  it('statusBarStore has NO notification API — toastStore is the only surface', () => {
+    // A dead delegating addNotification here once created "center-only"
+    // entries that never floated as toasts, masking bugs. Keep it deleted.
+    assert.ok(!SB_STORE_SRC.includes('function addNotification'), 'addNotification must not exist');
+    assert.ok(!SB_STORE_SRC.includes('function dismissNotification'), 'dismissNotification must not exist');
+    assert.ok(!SB_STORE_SRC.includes('function clearAllNotifications'), 'clearAllNotifications must not exist');
+    assert.ok(!SB_STORE_SRC.includes('get notifications()'), 'notifications getter must not exist');
   });
 });
 

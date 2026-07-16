@@ -551,8 +551,8 @@
           <path d="M8 1.5a3.5 3.5 0 0 0-3.5 3.5c0 3.5-1.5 4.5-1.5 4.5h10s-1.5-1-1.5-4.5A3.5 3.5 0 0 0 8 1.5z"/>
           <path d="M6.5 12a1.5 1.5 0 0 0 3 0"/>
         </svg>
-        {#if statusBarStore.unreadCount > 0}
-          <span class="badge">{statusBarStore.unreadCount}</span>
+        {#if toastStore.unreadCount > 0}
+          <span class="badge">{toastStore.unreadCount}</span>
         {/if}
       </button>
 
@@ -570,7 +570,12 @@
           onkeydown={(e) => e.stopPropagation()}
         >
           <div class="notif-header">
-            <span class="notif-title">Notifications</span>
+            <span class="notif-title">
+              Notifications
+              {#if toastStore.notifications.length > 0}
+                <span class="notif-count">{toastStore.notifications.length}</span>
+              {/if}
+            </span>
             {#if toastStore.notifications.length > 0}
               <button class="notif-clear" onclick={() => toastStore.clearAll()}>
                 Clear all
@@ -613,40 +618,43 @@
                     {/if}
                   </span>
                   <div class="notif-content">
-                    <span class="notif-message">{notif.message}</span>
+                    <div class="notif-top">
+                      <span class="notif-message">{notif.message}</span>
+                      <span class="notif-side">
+                        {#if !notif.read}<span class="notif-dot" aria-label="Unread"></span>{/if}
+                        <button
+                          class="notif-dismiss"
+                          onclick={() => toastStore.removeItem(notif.id)}
+                          aria-label="Dismiss notification"
+                          title="Dismiss"
+                        >
+                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <line x1="4" y1="4" x2="12" y2="12"/>
+                            <line x1="12" y1="4" x2="4" y2="12"/>
+                          </svg>
+                        </button>
+                      </span>
+                    </div>
                     {#if notif.progress != null}
                       <div class="notif-progress-track">
                         <div class="notif-progress-bar" style="width: {Math.min(100, Math.max(0, notif.progress))}%"></div>
                       </div>
                     {/if}
-                    <div class="notif-meta">
-                      <span class="notif-time">{formatRelativeTime(notif.createdAt)}</span>
-                      {#if notifActions(notif).length > 0}
-                        <span class="notif-actions">
-                          {#each notifActions(notif) as act, i}
-                            <button
-                              class="notif-action"
-                              class:primary={i === 0}
-                              onclick={() => runNotifAction(notif, act)}
-                            >
-                              {act.label}
-                            </button>
-                          {/each}
-                        </span>
-                      {/if}
-                    </div>
+                    {#if notifActions(notif).length > 0}
+                      <div class="notif-actions">
+                        {#each notifActions(notif) as act, i}
+                          <button
+                            class="notif-action"
+                            class:primary={i === 0}
+                            onclick={() => runNotifAction(notif, act)}
+                          >
+                            {act.label}
+                          </button>
+                        {/each}
+                      </div>
+                    {/if}
+                    <span class="notif-time">{formatRelativeTime(notif.createdAt)}</span>
                   </div>
-                  <button
-                    class="notif-dismiss"
-                    onclick={() => toastStore.removeItem(notif.id)}
-                    aria-label="Dismiss notification"
-                    title="Dismiss"
-                  >
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-                      <line x1="4" y1="4" x2="12" y2="12"/>
-                      <line x1="12" y1="4" x2="4" y2="12"/>
-                    </svg>
-                  </button>
                 </div>
               {/each}
             {/if}
@@ -1112,15 +1120,32 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px;
+    padding: 11px 14px;
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
 
   .notif-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
     font-size: 12px;
     font-weight: 600;
     color: var(--text-strong);
+  }
+
+  .notif-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 17px;
+    height: 15px;
+    padding: 0 5px;
+    border-radius: var(--radius-full);
+    background: var(--accent-subtle);
+    color: var(--accent);
+    font-size: 10px;
+    font-weight: 600;
   }
 
   .notif-clear {
@@ -1153,9 +1178,9 @@
   .notif-item {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--border);
+    gap: 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
     transition: background var(--duration-fast, 100ms);
   }
 
@@ -1168,7 +1193,7 @@
   }
 
   .notif-item.unread {
-    background: color-mix(in srgb, var(--accent-subtle) 40%, transparent);
+    background: color-mix(in srgb, var(--accent-subtle) 30%, transparent);
   }
 
   /* Severity chip — same tinted-square language as the toast capsules */
@@ -1176,16 +1201,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
-    height: 22px;
+    width: 26px;
+    height: 26px;
     border-radius: var(--radius-sm);
     flex-shrink: 0;
-    margin-top: 1px;
   }
 
   .notif-chip svg {
-    width: 12px;
-    height: 12px;
+    width: 13px;
+    height: 13px;
   }
 
   .notif-item.info .notif-chip    { color: var(--accent); background: var(--accent-subtle); }
@@ -1198,40 +1222,62 @@
     min-width: 0;
   }
 
+  .notif-top {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
   .notif-message {
-    display: block;
-    font-size: 12px;
-    line-height: 1.45;
+    flex: 1;
+    min-width: 0;
+    font-size: 12.5px;
+    line-height: 1.5;
     color: var(--text);
     word-break: break-word;
   }
 
-  .notif-meta {
+  /* Unread dot sits where the dismiss button appears on hover */
+  .notif-side {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-top: 4px;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .notif-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: var(--radius-full);
+    background: var(--accent);
+  }
+
+  .notif-item:hover .notif-dot {
+    display: none;
   }
 
   .notif-time {
-    font-size: 10px;
+    display: block;
+    margin-top: 6px;
+    font-size: 10.5px;
     color: var(--muted);
-    flex-shrink: 0;
   }
 
   /* Action pills — notifications stay actionable from history */
   .notif-actions {
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 6px;
     flex-wrap: wrap;
-    justify-content: flex-end;
+    margin-top: 10px;
   }
 
   .notif-action {
-    padding: 2px 10px;
-    font-size: 11px;
+    padding: 3px 12px;
+    font-size: 11.5px;
     font-weight: 500;
     font-family: var(--font-family);
     border: 1px solid var(--border);
@@ -1261,7 +1307,7 @@
 
   .notif-progress-track {
     height: 3px;
-    margin-top: 6px;
+    margin-top: 8px;
     background: var(--border);
     border-radius: var(--radius-full);
     overflow: hidden;
@@ -1275,9 +1321,8 @@
   }
 
   .notif-dismiss {
-    flex-shrink: 0;
-    width: 18px;
-    height: 18px;
+    position: absolute;
+    inset: 0;
     padding: 0;
     border: none;
     background: none;

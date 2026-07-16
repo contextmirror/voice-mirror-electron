@@ -160,7 +160,21 @@
     }
   });
 
+  // Session memory for "Not now" on the dev-server consent prompt: don't
+  // re-offer for this project until something actually changes (a server
+  // start clears it; "Always start" sets autoStartServer which skips the
+  // prompt entirely). Without this, every re-detection re-floated the
+  // prompt the user had just declined.
+  const consentDismissed = new Set();
+
+  // Guards against parked async runs: detectAndNavigate awaits webview
+  // readiness (up to 10s), so a project switch mid-wait left the OLD call
+  // to resume later and prompt for the wrong project. Each call takes a
+  // generation; stale generations bail after every await.
+  let detectionGeneration = 0;
+
   async function detectAndNavigate(project) {
+    const generation = ++detectionGeneration;
     // Wait for the webview to be ready (may still be creating during first project load)
     if (!lensStore.webviewReady) {
       // Poll for readiness up to 10 seconds (webview creation can take a few seconds)
@@ -177,12 +191,15 @@
         console.warn('[lens] Webview not ready after 10s, skipping detection');
         return;
       }
+      // Superseded while waiting → a newer call owns detection now.
+      if (generation !== detectionGeneration) return;
     }
 
     lensStore.setDevServerLoading(true);
 
     try {
       const result = await detectDevServers(project.path);
+      if (generation !== detectionGeneration) return;
       /** @type {{ servers?: unknown[], packageManager?: string }} */
       const data = unwrapResult(result) || {};
       const servers = data.servers || [];
@@ -224,7 +241,10 @@
         } else {
           const autoStart = project.autoStartServer;
           console.log('[lens] Auto-start check:', { autoStart, framework: stoppedServer.framework, port: stoppedServer.port });
-          if (autoStart === null || autoStart === undefined) {
+          if (consentDismissed.has(project.path)) {
+            // "Not now" already answered this session — don't re-offer.
+            console.log('[lens] Consent declined this session, skipping offer');
+          } else if (autoStart === null || autoStart === undefined) {
             if (stoppedServer.needsSetup) {
               // Missing venv or deps — offer to set up environment
               toastStore.addToast({
@@ -236,12 +256,13 @@
                   {
                     label: 'Set up & start',
                     callback: () => {
+                      consentDismissed.delete(project.path);
                       devServerManager.startServer(stoppedServer, launchPath, packageManager);
                     },
                   },
                   {
                     label: 'Not now',
-                    callback: () => {},
+                    callback: () => consentDismissed.add(project.path),
                   },
                 ],
               });
@@ -256,6 +277,7 @@
                   {
                     label: 'Always start',
                     callback: () => {
+                      consentDismissed.delete(project.path);
                       projectStore.updateActiveField('autoStartServer', true);
                       devServerManager.startServer(stoppedServer, launchPath, packageManager);
                     },
@@ -263,12 +285,13 @@
                   {
                     label: 'Start once',
                     callback: () => {
+                      consentDismissed.delete(project.path);
                       devServerManager.startServer(stoppedServer, launchPath, packageManager);
                     },
                   },
                   {
                     label: 'Not now',
-                    callback: () => {},
+                    callback: () => consentDismissed.add(project.path),
                   },
                 ],
               });

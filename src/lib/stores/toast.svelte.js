@@ -100,13 +100,6 @@ function createToastStore() {
     progress = null,
     source = null,
   }) {
-    // Deduplicate by key — the new item replaces the old one entirely
-    // (center row included), so re-prompts never pile up in history.
-    if (key) {
-      const existing = items.find(t => t.key === key);
-      if (existing) removeItem(existing.id);
-    }
-
     const toastsDisabled =
       severity !== 'error' && configStore.value?.behavior?.showToasts === false;
 
@@ -114,6 +107,26 @@ function createToastStore() {
     const effectiveDuration = duration !== undefined
       ? duration
       : (actions ? MULTI_ACTION_DURATION : DEFAULT_DURATION);
+
+    // Deduplicate by key.
+    if (key) {
+      const existing = items.find(t => t.key === key);
+      if (existing && existing.toastVisible) {
+        // Still on screen → refresh in place (same id, same stack position,
+        // reset hide timer). Re-raising sources (e.g. dev-server detection
+        // re-running) must not churn a visible sticky prompt into a "new"
+        // toast that re-pops.
+        clearTimer(existing.id);
+        items = items.map(t => t.id === existing.id
+          ? { ...t, message, severity, duration: effectiveDuration, action, actions, progress, source, createdAt: Date.now() }
+          : t);
+        scheduleHide(existing.id, effectiveDuration);
+        return existing.id;
+      }
+      // Gone from screen → the new item replaces the old one entirely
+      // (center row included), so re-prompts never pile up in history.
+      if (existing) removeItem(existing.id);
+    }
 
     const id = uid();
     const item = {

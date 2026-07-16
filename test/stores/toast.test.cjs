@@ -217,10 +217,22 @@ describe('toast.svelte.js -- key-based deduplication', () => {
     );
   });
 
-  it('removes the existing item on dedup so center rows never pile up', () => {
-    const dedupBlock = src.split('if (key)')[1]?.split('}')[0] || '';
+  it('refreshes a still-visible same-key toast in place (no re-pop churn)', () => {
+    // Re-raising sources (dev-server detection re-runs) must not churn a
+    // visible sticky prompt into a "new" toast that re-animates.
     assert.ok(
-      dedupBlock.includes('removeItem(existing.id)'),
+      src.includes('existing && existing.toastVisible'),
+      'Should detect a still-visible same-key toast'
+    );
+    assert.ok(
+      src.includes('scheduleHide(existing.id, effectiveDuration)'),
+      'In-place refresh should reset the hide timer on the SAME id'
+    );
+  });
+
+  it('replaces a no-longer-visible same-key item entirely (no center pile-up)', () => {
+    assert.ok(
+      src.includes('removeItem(existing.id)'),
       'Should remove the existing item (toast AND center row) on replace'
     );
   });
