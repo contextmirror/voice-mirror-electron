@@ -31,7 +31,7 @@ const apiSrc = fs.readFileSync(
   'utf-8'
 );
 const toolbarSrc = fs.readFileSync(
-  path.join(__dirname, '../../src/components/lens/DesignToolbar.svelte'),
+  path.join(__dirname, '../../src/components/lens/preview/DesignToolbar.svelte'),
   'utf-8'
 );
 const workspaceSrc = fs.readFileSync(

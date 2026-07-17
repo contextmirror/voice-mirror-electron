@@ -315,32 +315,60 @@ pub async fn list_windows(cdp_port: u16) -> Result<Vec<AppWindow>, String> {
         ));
     }
     let windows = crate::commands::screenshot::list_visible_windows_metadata()?;
-    let main_proc = match cdp_page_title(cdp_port).await {
-        Some(title) => {
-            let t = title.trim().to_lowercase();
-            windows
-                .iter()
-                .find(|w| {
-                    let wt = w.title.trim().to_lowercase();
-                    !wt.is_empty() && (wt == t || wt.contains(&t) || t.contains(&wt))
-                })
-                .map(|w| w.process_name.clone())
-        }
-        None => None,
-    };
-    let result = match main_proc {
-        Some(proc) if !proc.is_empty() => windows
+
+    // Identify the app's windows by PROCESS — the port-listener PID or an
+    // ancestor (see app_pids_for_cdp_port). This is title-independent: the old
+    // path resolved the app's process by matching the CDP page title against a
+    // window title, but they legitimately differ (the vanilla create-tauri-app
+    // template's page title "Tauri App" vs its window "tauri-vanilla"), so it
+    // returned an EMPTY list and the preview poll wrongly declared a live,
+    // mirrored window "closed" ~2s after it attached.
+    let app_pids = app_pids_for_cdp_port(cdp_port);
+    let result: Vec<AppWindow> = if !app_pids.is_empty() {
+        windows
             .into_iter()
-            .filter(|w| w.process_name == proc && !w.title.trim().is_empty())
-            // Never list Voice Mirror's own windows as app targets.
+            .filter(|w| !w.title.trim().is_empty())
             .filter(|w| !crate::services::sandbox::is_host_window(w.hwnd, &w.title))
+            .filter(|w| {
+                crate::services::sandbox::pid_of_hwnd(w.hwnd)
+                    .map(|p| app_pids.contains(&p))
+                    .unwrap_or(false)
+            })
             .map(|w| AppWindow {
                 visible: is_hwnd_presentable(w.hwnd),
                 hwnd: w.hwnd,
                 title: w.title,
             })
-            .collect(),
-        _ => Vec::new(),
+            .collect()
+    } else {
+        // Fallback (couldn't resolve the port's PID): the legacy CDP-title →
+        // process-name match.
+        let main_proc = match cdp_page_title(cdp_port).await {
+            Some(title) => {
+                let t = title.trim().to_lowercase();
+                windows
+                    .iter()
+                    .find(|w| {
+                        let wt = w.title.trim().to_lowercase();
+                        !wt.is_empty() && (wt == t || wt.contains(&t) || t.contains(&wt))
+                    })
+                    .map(|w| w.process_name.clone())
+            }
+            None => None,
+        };
+        match main_proc {
+            Some(proc) if !proc.is_empty() => windows
+                .into_iter()
+                .filter(|w| w.process_name == proc && !w.title.trim().is_empty())
+                .filter(|w| !crate::services::sandbox::is_host_window(w.hwnd, &w.title))
+                .map(|w| AppWindow {
+                    visible: is_hwnd_presentable(w.hwnd),
+                    hwnd: w.hwnd,
+                    title: w.title,
+                })
+                .collect(),
+            _ => Vec::new(),
+        }
     };
     Ok(result)
 }
@@ -472,11 +500,60 @@ pub async fn capture_app_window(port: u16) -> Result<Value, String> {
     }
 }
 
+/// The process ids that could own the app's OS window for the app on `cdp_port`.
+///
+/// The debug port is opened by a DIFFERENT process than the one that owns the
+/// window: for WebView2/Tauri the app.exe spawns the msedgewebview2.exe browser
+/// process that binds `--remote-debugging-port`, and the window belongs to
+/// app.exe (the browser's PARENT); for Electron/Chromium the main process owns
+/// both. So the window owner is the port-listener PID or one of its ANCESTORS.
+/// Returns {port_pid} ∪ ancestors (bounded) for exact PID-based window matching
+/// that DOESN'T depend on the CDP page title equalling the OS window title — the
+/// vanilla create-tauri-app template sets them differently (HTML `<title>`
+/// "Tauri App" vs window "tauri-vanilla"), which stranded title-matching for
+/// ~20s before the CDP-screencast fallback every launch.
+#[cfg(windows)]
+fn app_pids_for_cdp_port(cdp_port: u16) -> std::collections::HashSet<u32> {
+    use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+    let mut pids = std::collections::HashSet::new();
+    let Some(info) = crate::services::ports::find_port(cdp_port) else {
+        return pids;
+    };
+    if info.pid == 0 {
+        return pids;
+    }
+    pids.insert(info.pid);
+
+    // Walk up the parent chain (bounded) so an app.exe grandparent still matches.
+    let mut sys = System::new();
+    sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
+    let mut current = Pid::from_u32(info.pid);
+    for _ in 0..5 {
+        match sys.process(current).and_then(|p| p.parent()) {
+            Some(parent) => {
+                let ppid = parent.as_u32();
+                if ppid == 0 || !pids.insert(ppid) {
+                    break;
+                }
+                current = parent;
+            }
+            None => break,
+        }
+    }
+    pids
+}
+
+#[cfg(not(windows))]
+fn app_pids_for_cdp_port(_cdp_port: u16) -> std::collections::HashSet<u32> {
+    std::collections::HashSet::new()
+}
+
 /// Find the OS window for the app on `cdp_port`. Prefers the RESOLVED sandbox
 /// target — the window the last snapshot acted on (`active_hwnd`) — so the
-/// preview mirrors exactly what Claude drives. Falls back to matching the CDP
-/// page title against the visible window list. NEVER returns Voice Mirror's own
-/// window. Retries briefly — the window may still be appearing right after launch.
+/// preview mirrors exactly what Claude drives. Then matches by PROCESS (the app
+/// owns the window; robust to title mismatches), then by CDP page title as a
+/// last resort. NEVER returns Voice Mirror's own window. Retries briefly — the
+/// window may still be appearing right after launch.
 async fn find_app_hwnd(cdp_port: u16) -> Option<i64> {
     for attempt in 0..20 {
         // 1. Prefer the window the snapshot resolved to (unless it's the host).
@@ -491,7 +568,45 @@ async fn find_app_hwnd(cdp_port: u16) -> Option<i64> {
                 return Some(h);
             }
         }
-        // 2. Fall back to matching the CDP page title, skipping host windows.
+
+        // 2. Match by PROCESS — the app's window is owned by the port-listener's
+        // PID or an ancestor. This is title-independent, so it binds the moment
+        // the window exists (the vanilla template's title differs from its
+        // window name). Prefer the foreground match, then the largest window
+        // (the main window over a splash/tooltip).
+        let app_pids = app_pids_for_cdp_port(cdp_port);
+        if !app_pids.is_empty() {
+            if let Ok(windows) = crate::commands::screenshot::list_visible_windows_metadata() {
+                let mut matches: Vec<&_> = windows
+                    .iter()
+                    .filter(|w| {
+                        !crate::services::sandbox::is_host_window(w.hwnd, &w.title)
+                            && crate::services::sandbox::pid_of_hwnd(w.hwnd)
+                                .map(|p| app_pids.contains(&p))
+                                .unwrap_or(false)
+                    })
+                    .collect();
+                if !matches.is_empty() {
+                    let fg = crate::services::sandbox::foreground_hwnd();
+                    if let Some(w) = matches.iter().find(|w| Some(w.hwnd) == fg) {
+                        info!(
+                            "[sandbox_stream] matched app window '{}' by PID (foreground) on CDP :{}",
+                            w.title, cdp_port
+                        );
+                        return Some(w.hwnd);
+                    }
+                    // Largest by area = the app's main window, not a helper.
+                    matches.sort_by_key(|w| -((w.width as i64) * (w.height as i64)));
+                    info!(
+                        "[sandbox_stream] matched app window '{}' by PID on CDP :{}",
+                        matches[0].title, cdp_port
+                    );
+                    return Some(matches[0].hwnd);
+                }
+            }
+        }
+
+        // 3. Last resort: match the CDP page title, skipping host windows.
         if let Some(title) = cdp_page_title(cdp_port).await {
             match crate::commands::screenshot::list_visible_windows_metadata() {
                 Ok(windows) => {

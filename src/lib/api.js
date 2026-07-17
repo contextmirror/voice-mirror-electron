@@ -16,20 +16,12 @@ export async function getConfig() {
   return invoke('get_config');
 }
 
-export async function getApiKey(provider) {
-  return invoke('get_api_key', { provider });
-}
-
 export async function setConfig(patch) {
   return invoke('set_config', { patch });
 }
 
 export async function resetConfig() {
   return invoke('reset_config');
-}
-
-export async function getPlatformInfo() {
-  return invoke('get_platform_info');
 }
 
 // ============ Window ============
@@ -44,18 +36,6 @@ export async function setWindowPosition(x, y) {
 
 export async function minimizeWindow() {
   return invoke('minimize_window');
-}
-
-export async function maximizeWindow() {
-  return invoke('maximize_window');
-}
-
-export async function saveWindowBounds() {
-  return invoke('save_window_bounds');
-}
-
-export async function quitApp() {
-  return invoke('quit_app');
 }
 
 export async function setWindowSize(width, height) {
@@ -77,6 +57,14 @@ export async function setResizable(value) {
  */
 export async function showWindow() {
   return invoke('show_window');
+}
+
+/**
+ * Drain the file paths this launch was started with ("Open with Voice
+ * Mirror" from the shell). One-shot: returns them once, empty after.
+ */
+export async function takeStartupOpenPaths() {
+  return invoke('take_startup_open_paths');
 }
 
 // ============ Voice ============
@@ -116,10 +104,6 @@ export async function listAudioDevices() {
 
 export async function speakText(text) {
   return invoke('speak_text', { text });
-}
-
-export async function stopSpeaking() {
-  return invoke('stop_speaking');
 }
 
 export async function pttPress() {
@@ -196,14 +180,6 @@ export async function startAI(options = {}) {
 
 export async function stopAI() {
   return invoke('stop_ai');
-}
-
-export async function interruptAI() {
-  return invoke('interrupt_ai');
-}
-
-export async function getProvider() {
-  return invoke('get_provider');
 }
 
 export async function getAIStatus() {
@@ -321,10 +297,6 @@ export async function exportChatToFile(path, content) {
 
 // ============ Screenshot ============
 
-export async function takeScreenshot() {
-  return invoke('take_screenshot');
-}
-
 /**
  * Save a base64/data-URL image to a temp file and get back its absolute path.
  * Used by the AI terminal to turn a dropped/pasted image into a readable path
@@ -359,14 +331,9 @@ export async function lensCapturePreview() {
 
 // ============ Tools ============
 
-/** Detect available CLI tools (claude, opencode, ollama, cargo). */
-export async function scanCliTools() {
-  return invoke('scan_cli_tools');
-}
-
 /**
- * Check npm package versions (installed vs latest) and system tool status.
- * Returns { npm: { ghosttyWeb, opencode, claudeCode }, system: { node, ollama, ffmpeg } }
+ * Check system tool status (installed vs latest where updatable).
+ * Returns { system: { node, ollama, ffmpeg, claude, opencode } }
  */
 export async function checkNpmVersions() {
   return invoke('check_npm_versions');
@@ -374,7 +341,7 @@ export async function checkNpmVersions() {
 
 /**
  * Update (install) a global npm package to latest.
- * Only whitelisted packages are allowed: ghostty-web, opencode, @anthropic-ai/claude-code
+ * Only whitelisted packages are allowed: @anthropic-ai/claude-code, opencode
  */
 export async function updateNpmPackage(pkg) {
   return invoke('update_npm_package', { package: pkg });
@@ -394,10 +361,6 @@ export async function unregisterAllShortcuts() {
   return invoke('unregister_all_shortcuts');
 }
 
-export async function listShortcuts() {
-  return invoke('list_shortcuts');
-}
-
 // ============ Performance Stats ============
 
 export async function getProcessStats() {
@@ -407,14 +370,6 @@ export async function getProcessStats() {
 // ============ Config Migration ============
 
 // ============ Lens ============
-
-export async function lensCreateWebview(url, x, y, width, height) {
-  return invoke('lens_create_webview', { url, x, y, width, height });
-}
-
-export async function lensCloseWebview() {
-  return invoke('lens_close_webview');
-}
 
 export async function lensNavigate(url) {
   return invoke('lens_navigate', { url });
@@ -450,6 +405,11 @@ export async function lensClearCache() {
   return invoke('lens_clear_cache');
 }
 
+/** Open the print UI (browser print preview) for the active lens tab. */
+export async function lensPrint() {
+  return invoke('lens_print');
+}
+
 // ============ Design Overlay ============
 
 /** Send a design overlay command (set_tool, set_color, undo, redo, clear, enable, disable). */
@@ -472,8 +432,8 @@ export async function designExpandTreeNode(nodeId) {
 
 // ============ Browser Tabs ============
 
-export async function lensCreateTab(tabId, url, x, y, width, height) {
-  return invoke('lens_create_tab', { tabId, url, x, y, width, height });
+export async function lensCreateTab(tabId, url, x, y, width, height, incognito = false) {
+  return invoke('lens_create_tab', { tabId, url, x, y, width, height, incognito });
 }
 
 export async function lensCloseTab(tabId) {
@@ -494,6 +454,60 @@ export async function lensSetZoom(tabId, factor) {
 
 export async function lensGetZoom(tabId) {
   return invoke('lens_get_zoom', { tabId });
+}
+
+/** Toggle mute on a browser tab; returns { muted } with the new state. */
+export async function lensToggleTabMute(tabId) {
+  return invoke('lens_toggle_tab_mute', { tabId });
+}
+
+// ============ Browser Permissions ============
+
+/** Answer a pending permission prompt (Allow/Block) and remember the choice. */
+export async function lensPermissionResponse(requestId, allow, origin, kind) {
+  return invoke('lens_permission_response', { requestId, allow, origin, kind });
+}
+
+/** Return all remembered per-site permission decisions. */
+export async function lensGetPermissions() {
+  return invoke('lens_get_permissions', {});
+}
+
+/** Clear a remembered permission (origin+kind), or all when both are empty. */
+export async function lensClearPermission(origin, kind) {
+  return invoke('lens_clear_permission', { origin, kind });
+}
+
+// ============ Browser Extensions ============
+
+/** List installed browser extensions ({ extensions: [{id, name, enabled, popup, dir}] }). */
+export async function lensExtensionsList() {
+  return invoke('lens_extensions_list', {});
+}
+
+/** Install an unpacked extension from a local folder. */
+export async function lensExtensionAdd(folder) {
+  return invoke('lens_extension_add', { folder });
+}
+
+/** Install a CRX from a file path or URL (Chrome Web Store CRX endpoint). */
+export async function lensExtensionInstallCrx(source) {
+  return invoke('lens_extension_install_crx', { source });
+}
+
+/** Enable or disable an installed extension by id. */
+export async function lensExtensionSetEnabled(id, enabled) {
+  return invoke('lens_extension_set_enabled', { id, enabled });
+}
+
+/** Remove an installed extension by id (WebView2 + managed folder). */
+export async function lensExtensionRemove(id) {
+  return invoke('lens_extension_remove', { id });
+}
+
+/** Apply the persisted browser privacy toggles to the active tab's profile. */
+export async function lensApplyPrivacy() {
+  return invoke('lens_apply_privacy', {});
 }
 
 export async function lensOpenDevtools(url, x, y, width, height) {
@@ -562,6 +576,20 @@ export async function lensDeleteHistoryEntry(timestamp) {
   return invoke('lens_delete_history_entry', { timestamp });
 }
 
+// ============ Lens Bookmarks ============
+
+export async function lensAddBookmark(url, title) {
+  return invoke('lens_add_bookmark', { url, title });
+}
+
+export async function lensRemoveBookmark(url) {
+  return invoke('lens_remove_bookmark', { url });
+}
+
+export async function lensGetBookmarks() {
+  return invoke('lens_get_bookmarks');
+}
+
 // ============ Downloads ============
 
 export async function lensGetDownloads() {
@@ -622,31 +650,6 @@ export async function detectDevServers(projectRoot) {
 
 // ============ Sandbox (drive an app being built over CDP) ============
 
-/**
- * Snapshot an external app's UI via its CDP remote-debugging port.
- * The app must be running with `--remote-debugging-port=<port>`.
- * @param {number} port
- * @returns {Promise<{ success: boolean, data?: { pageUrl: string, tree: string, refCount: number } }>}
- */
-export async function sandboxSnapshot(port, window) {
-  return invoke('sandbox_snapshot', { port, window: window ?? null });
-}
-
-/** Click an element in the sandboxed app by its @ref (from the last snapshot). */
-export async function sandboxClick(port, elementRef) {
-  return invoke('sandbox_click', { port, elementRef });
-}
-
-/** Type text into an element in the sandboxed app by its @ref. */
-export async function sandboxType(port, elementRef, text) {
-  return invoke('sandbox_type', { port, elementRef, text });
-}
-
-/** Screenshot the sandboxed app's web contents. Returns { base64, contentType }. */
-export async function sandboxScreenshot(port) {
-  return invoke('sandbox_screenshot', { port });
-}
-
 /** Record the active sandbox app's CDP port so the sandbox MCP tools can default to it. */
 export async function sandboxSetActivePort(port) {
   return invoke('sandbox_set_active_port', { port });
@@ -673,11 +676,58 @@ export async function sandboxListWindows(port) {
 }
 
 /**
- * The OS window (HWND) Claude is currently driving — the live preview mirrors
- * this so the human watches exactly the window Claude acts on. Returns { hwnd }.
+ * Find a NATIVE app's OS window by walking the launch terminal's process tree
+ * (`cargo run` → app.exe). Returns `{ hwnd }` (null until the window appears).
+ * @param {string} shellId - the launching terminal session id
  */
-export async function sandboxActiveHwnd() {
-  return invoke('sandbox_active_hwnd');
+export async function findNativeWindow(shellId) {
+  return invoke('find_native_window', { id: shellId });
+}
+
+/** Whether an OS window still exists — native-app liveness. Returns `{ alive }`. */
+export async function isWindowAlive(hwnd) {
+  return invoke('is_window_alive', { hwnd });
+}
+
+/**
+ * Acknowledge a `sandbox-start-request` event back to the backend, so the
+ * sandbox_start MCP tool reports what ACTUALLY happened instead of guessing.
+ * @param {{launchId: number, status: string, reason?: string, devPort?: number, cdpPort?: number, framework?: string}} params
+ */
+export async function sandboxStartAck(params) {
+  return invoke('sandbox_start_ack', { params });
+}
+
+/**
+ * Allocate a genuinely free CDP debug port for a dev-app launch (replaces the
+ * old derived-port formula, which collided for dev ports 1000 apart).
+ * @returns {Promise<{success: boolean, data?: {port: number}}>}
+ */
+export async function findFreeCdpPort() {
+  return invoke('find_free_cdp_port');
+}
+
+/**
+ * Bridge a repo's pinned package manager (yarn/pnpm) via corepack when it isn't
+ * globally installed, so projects like excalidraw (`packageManager: yarn@…`,
+ * start = `yarn && vite`) launch with only npm on PATH. Returns the shim dir to
+ * prepend to the dev-server PTY's PATH (`pathPrepend`), or null when no bridge
+ * is needed.
+ * @param {string} projectPath
+ * @returns {Promise<{success: boolean, data?: {pathPrepend: string|null}}>}
+ */
+export async function ensureCorepackShims(projectPath) {
+  return invoke('ensure_corepack_shims', { projectPath });
+}
+
+/**
+ * Log an App-Preview lifecycle event to the `preview` output channel
+ * (ring buffer + preview.jsonl), so launch decisions survive for diagnosis.
+ * @param {string} level - error | warn | info | debug
+ * @param {string} message
+ */
+export async function logPreview(level, message) {
+  return invoke('log_preview', { params: { level, message } });
 }
 
 /**
@@ -717,10 +767,6 @@ export async function deleteSttModel(modelSize) {
 }
 
 // ============ Files ============
-
-export async function getProjectRoot() {
-  return invoke('get_project_root');
-}
 
 export async function listDirectory(path, root) {
   return invoke('list_directory', { path: path || null, root: root || null });
@@ -937,11 +983,6 @@ export async function terminalDetectProfiles() {
   return invoke('terminal_detect_profiles');
 }
 
-/** List all active terminal sessions. */
-export async function terminalList() {
-  return invoke('terminal_list');
-}
-
 // ============ LSP ============
 
 export async function lspOpenFile(path, content, projectRoot) {
@@ -1134,14 +1175,6 @@ export async function registerProjectChannel(label, projectPath, framework, port
 
 export async function unregisterProjectChannel(label) {
   return invoke('unregister_project_channel', { params: { label } });
-}
-
-export async function pushProjectLog(label, level, message) {
-  return invoke('push_project_log', { params: { label, level, message } });
-}
-
-export async function listProjectChannels() {
-  return invoke('list_project_channels');
 }
 
 // ============ Output / Diagnostics ============

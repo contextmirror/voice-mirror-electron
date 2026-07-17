@@ -1,21 +1,22 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { listen } from '@tauri-apps/api/event';
   import LensToolbar from './LensToolbar.svelte';
-  import DesignToolbar from './DesignToolbar.svelte';
-  import FindBar from './FindBar.svelte';
-  import HistoryPanel from './HistoryPanel.svelte';
-  import DownloadsPanel from './DownloadsPanel.svelte';
-  import LensPreview from './LensPreview.svelte';
-  import ElementInspector from './ElementInspector.svelte';
-  import BrowserTabBar from './BrowserTabBar.svelte';
-  import FileTree from './FileTree.svelte';
-  import GroupTabBar from './GroupTabBar.svelte';
-  import FileEditor from './FileEditor.svelte';
-  import DiffViewer from './DiffViewer.svelte';
-  import EditorPane from './EditorPane.svelte';
-  import DevicePreview from './DevicePreview.svelte';
-  import SandboxPreview from './SandboxPreview.svelte';
+  import DesignToolbar from './preview/DesignToolbar.svelte';
+  import FindBar from './browser/FindBar.svelte';
+  import HistoryPanel from './browser/HistoryPanel.svelte';
+  import BookmarksPanel from './browser/BookmarksPanel.svelte';
+  import DownloadsPanel from './browser/DownloadsPanel.svelte';
+  import LensPreview from './preview/LensPreview.svelte';
+  import ElementInspector from './browser/ElementInspector.svelte';
+  import BrowserTabBar from './browser/BrowserTabBar.svelte';
+  import FileTree from './tree/FileTree.svelte';
+  import GroupTabBar from './editor/GroupTabBar.svelte';
+  import FileEditor from './editor/FileEditor.svelte';
+  import DiffViewer from './editor/DiffViewer.svelte';
+  import EditorPane from './editor/EditorPane.svelte';
+  import DevicePreview from './browser/DevicePreview.svelte';
+  import SandboxPreview from './preview/SandboxPreview.svelte';
   import SplitPanel from '../shared/SplitPanel.svelte';
   import ChatPanel from '../chat/ChatPanel.svelte';
   import TerminalTabs from '../terminal/TerminalTabs.svelte';
@@ -25,8 +26,9 @@
   import { lensStore } from '../../lib/stores/lens.svelte.js';
   import { browserTabsStore } from '../../lib/stores/browser-tabs.svelte.js';
   import { browserHistoryStore } from '../../lib/stores/browser-history.svelte.js';
+  import { browserBookmarksStore } from '../../lib/stores/browser-bookmarks.svelte.js';
   import { downloadsStore } from '../../lib/stores/downloads.svelte.js';
-  import { lensSetVisible, startFileWatching, stopFileWatching, lensCapturePreview, lspShutdown, lensSetZoom, lensGetZoom, designGetElement, lensOpenDevtools, lensCloseDevtools, lensResizeDevtools, lensSetDevtoolsVisible, findDevtoolsUrl, detectDevServers } from '../../lib/api.js';
+  import { lensSetVisible, startFileWatching, stopFileWatching, lensCapturePreview, lspShutdown, lensSetZoom, lensGetZoom, designGetElement, lensOpenDevtools, lensCloseDevtools, lensResizeDevtools, lensSetDevtoolsVisible, findDevtoolsUrl, detectDevServers, sandboxStartAck, logPreview, lensPermissionResponse } from '../../lib/api.js';
   import { unwrapResult } from '../../lib/utils.js';
   import { navigationStore } from '../../lib/stores/navigation.svelte.js';
   import { attachmentsStore } from '../../lib/stores/attachments.svelte.js';
@@ -35,7 +37,7 @@
   import { devicePreviewStore } from '../../lib/stores/device-preview.svelte.js';
   import { sandboxPreviewStore } from '../../lib/stores/sandbox-preview.svelte.js';
   import { devServerManager } from '../../lib/stores/dev-server-manager.svelte.js';
-  import { LSP_EXTENSIONS } from '../../lib/editor-lsp.svelte.js';
+  import { LSP_EXTENSIONS } from '../../lib/editor/editor-lsp.svelte.js';
   import { setActionHandler } from '../../lib/stores/shortcuts.svelte.js';
 
   let {
@@ -52,19 +54,30 @@
   let devicePreviewRatio = $state(0.5);    // editor vs device preview
   let appPreviewRatio = $state(0.6);       // editor vs app preview (live app)
 
+  // Copy store → local when a workspace-state restore lands. restoreState()
+  // runs AFTER mount, so a one-shot onMount read misses the persisted ratios
+  // (and the local→store sync effects below would immediately overwrite the
+  // store with defaults). Keyed on the restore counter with untracked ratio
+  // reads so this can't form a feedback loop with the sync effects.
+  // NOTE: this effect must stay ABOVE the sync effects — if a restore already
+  // happened before this component mounts, effects run in creation order, and
+  // the store values must be copied to the locals before the sync effects
+  // push the local defaults back into the store.
+  $effect(() => {
+    if (layoutStore.restoreCount === 0) return;
+    untrack(() => {
+      chatRatio = layoutStore.chatRatio;
+      centerRatio = layoutStore.centerRatio;
+      previewRatio = layoutStore.previewRatio;
+      devicePreviewRatio = layoutStore.devicePreviewRatio;
+    });
+  });
+
   // Sync local ratios → layout store (for workspace state persistence)
   $effect(() => { layoutStore.setChatRatio(chatRatio); });
   $effect(() => { layoutStore.setCenterRatio(centerRatio); });
   $effect(() => { layoutStore.setPreviewRatio(previewRatio); });
   $effect(() => { layoutStore.setDevicePreviewRatio(devicePreviewRatio); });
-
-  // Initialize ratios from layout store on mount (restored workspace state)
-  onMount(() => {
-    if (layoutStore.chatRatio !== 0.18) chatRatio = layoutStore.chatRatio;
-    if (layoutStore.centerRatio !== 0.75) centerRatio = layoutStore.centerRatio;
-    if (layoutStore.previewRatio !== 0.78) previewRatio = layoutStore.previewRatio;
-    if (layoutStore.devicePreviewRatio !== 0.5) devicePreviewRatio = layoutStore.devicePreviewRatio;
-  });
 
   // Browser is a fixed UI element, not a tab — follows the first (leftmost) group
   let showBrowser = $state(false);
@@ -128,6 +141,7 @@
 
   // ── History Panel ──
   let showHistory = $state(false);
+  let showBookmarks = $state(false);
 
   // ── Downloads Panel ──
   let showDownloads = $state(false);
@@ -202,9 +216,14 @@
     }
   });
 
-  // Freeze WebView2 when History or Downloads panels are open (airspace problem)
+  // ── Omnibox dropdown open-state (bound from LensToolbar) ──
+  let omniboxOpen = $state(false);
+
+  // Freeze WebView2 when History/Bookmarks/Downloads panels OR the omnibox
+  // suggestion dropdown are open (airspace problem — the native child WebView2
+  // paints above any DOM below the toolbar).
   $effect(() => {
-    if (showHistory || showDownloads) {
+    if (showHistory || showBookmarks || showDownloads || omniboxOpen) {
       lensStore.freeze();
     } else {
       lensStore.unfreeze();
@@ -215,9 +234,59 @@
     navigationStore.setView('settings');
   }
 
-  // Init browser history and downloads stores; destroy on cleanup
+  // ── Permission prompt bar (under the toolbar; airspace-safe: it takes real
+  // layout space, pushing the child webview down) ──
+  /** @type {{requestId:number, kind:string, uri:string}|null} */
+  let permissionPrompt = $state(null);
+
+  const PERMISSION_LABELS = {
+    microphone: 'use your microphone',
+    camera: 'use your camera',
+    geolocation: 'know your location',
+    notifications: 'show notifications',
+    sensors: 'use device sensors',
+    clipboard: 'read your clipboard',
+    autoplay: 'autoplay media with sound',
+    'local-fonts': 'see your installed fonts',
+    downloads: 'download multiple files',
+    'file-access': 'read and edit files',
+    'window-management': 'manage windows',
+    other: 'access a device feature',
+  };
+
+  $effect(() => {
+    let unlisten;
+    let cancelled = false;
+    (async () => {
+      const fn = await listen('lens-permission-request', (e) => {
+        const p = e?.payload;
+        if (p?.requestId != null) {
+          permissionPrompt = { requestId: p.requestId, kind: p.kind || 'other', uri: p.uri || '' };
+        }
+      });
+      if (cancelled) { fn(); return; }
+      unlisten = fn;
+    })();
+    return () => { cancelled = true; unlisten?.(); };
+  });
+
+  function answerPermission(allow) {
+    const p = permissionPrompt;
+    permissionPrompt = null;
+    if (!p) return;
+    lensPermissionResponse(p.requestId, allow, p.uri, p.kind).catch((err) =>
+      console.warn('[LensWorkspace] permission response failed:', err)
+    );
+  }
+
+  function permissionOrigin(uri) {
+    try { return new URL(uri).host || uri; } catch { return uri; }
+  }
+
+  // Init browser history, bookmarks and downloads stores; destroy on cleanup
   $effect(() => {
     browserHistoryStore.init();
+    browserBookmarksStore.init();
     downloadsStore.init();
     return () => {
       browserHistoryStore.destroy();
@@ -249,25 +318,35 @@
     let unlistenSelected;
     let unlistenDeselected;
     let unlistenUrlChanged;
+    let cancelled = false;
 
     (async () => {
-      unlistenSelected = await listen('element-selected', async () => {
+      const selected = await listen('element-selected', async () => {
         const result = await designGetElement();
         if (result?.success && result.data) {
           inspectorData = result.data;
         }
       });
+      // If cleanup ran before listen() resolved, unsubscribe immediately —
+      // otherwise the listener leaks forever (cleanup saw undefined).
+      if (cancelled) { selected(); return; }
+      unlistenSelected = selected;
 
-      unlistenDeselected = await listen('element-deselected', () => {
+      const deselected = await listen('element-deselected', () => {
         inspectorData = null;
       });
+      if (cancelled) { deselected(); return; }
+      unlistenDeselected = deselected;
 
-      unlistenUrlChanged = await listen('lens-url-changed', () => {
+      const urlChanged = await listen('lens-url-changed', () => {
         inspectorData = null;
       });
+      if (cancelled) { urlChanged(); return; }
+      unlistenUrlChanged = urlChanged;
     })();
 
     return () => {
+      cancelled = true;
       unlistenSelected?.();
       unlistenDeselected?.();
       unlistenUrlChanged?.();
@@ -289,12 +368,26 @@
   $effect(() => {
     let unlistenStart;
     let unlistenAttached;
+    let cancelled = false;
 
     (async () => {
-      unlistenStart = await listen('sandbox-start-request', async (e) => {
+      const start = await listen('sandbox-start-request', async (e) => {
+        // Every start request MUST be acknowledged so the sandbox_start MCP
+        // tool reports what actually happened instead of claiming "launching"
+        // for requests that were silently dropped here.
+        const launchId = e?.payload?.launchId;
+        const ack = (status, extra = {}) => {
+          if (launchId == null) return;
+          sandboxStartAck({ launchId, status, ...extra }).catch((err) =>
+            console.warn('[sandbox] start ack failed:', err)
+          );
+        };
+
         const path = e?.payload?.path || projectStore.root || projectStore.activeProject?.path;
         if (!path) {
-          console.warn('[sandbox] start requested but no project path available');
+          logPreview('warn', '[launch] start requested but no project path available (no active project in the Lens workspace)').catch(() => {});
+          ack('refused', { reason: 'No project path available — open a project in the Lens workspace or pass an explicit `path`' });
+          sandboxPreviewStore.launchFailed('No project is open — open a project folder first.');
           return;
         }
         try {
@@ -306,29 +399,55 @@
           const target =
             servers.find((s) => (s.framework || '').toLowerCase() === 'tauri') || servers[0];
           if (target) {
+            // Monorepo workspace members carry their own spawn dir (`cwd`) —
+            // the dev server must run in apps/<member>, not the workspace root.
+            const launchPath = target.cwd || path;
             // `force` (from the user's Open-app/App-tab path) tears down a stale
             // 'running' server first so the relaunch isn't a silent no-op.
-            devServerManager.startServer(target, path, data.packageManager, {
+            const outcome = await devServerManager.startServer(target, launchPath, data.packageManager, {
               force: e?.payload?.force === true,
             });
+            ack(outcome?.status || 'spawned', {
+              reason: outcome?.reason,
+              devPort: outcome?.devPort ?? target.port,
+              cdpPort: outcome?.cdpPort ?? undefined,
+              framework: outcome?.framework ?? target.framework,
+            });
+            if (outcome?.status === 'refused') {
+              sandboxPreviewStore.launchFailed(outcome.reason || 'The launcher refused to start the app.');
+            }
           } else {
-            console.warn('[sandbox] start: no dev server detected in', path);
+            logPreview('warn', `[launch] no dev server detected in ${path}`).catch(() => {});
+            ack('refused', { reason: `No dev server detected in ${path}` });
+            sandboxPreviewStore.launchFailed(
+              `No dev server detected in ${path}. If this folder holds several projects, open one app's own folder instead.`
+            );
           }
         } catch (err) {
-          console.warn('[sandbox] start failed:', err);
+          logPreview('error', `[launch] start failed: ${err?.message || err}`).catch(() => {});
+          ack('refused', { reason: `Launch failed in the frontend: ${err?.message || err}` });
+          sandboxPreviewStore.launchFailed(`Launch failed: ${err?.message || err}`);
         }
       });
 
-      unlistenAttached = await listen('sandbox-attached', (e) => {
+      // If cleanup ran before listen() resolved, unsubscribe immediately —
+      // otherwise the listener leaks forever (cleanup saw undefined).
+      if (cancelled) { start(); return; }
+      unlistenStart = start;
+
+      const attached = await listen('sandbox-attached', (e) => {
         const port = e?.payload?.port;
         if (port) {
           showBrowser = false;
           sandboxPreviewStore.open(port, { attached: true });
         }
       });
+      if (cancelled) { attached(); return; }
+      unlistenAttached = attached;
     })();
 
     return () => {
+      cancelled = true;
       unlistenStart?.();
       unlistenAttached?.();
     };
@@ -702,8 +821,12 @@
         <!-- Horizontal split: center-column | file tree -->
         <SplitPanel direction="horizontal" bind:ratio={previewRatio} minA={300} minB={140} collapseB={!layoutStore.showFileTree}>
           {#snippet panelA()}
-            <!-- Center column: editor/preview (top) | terminal (bottom) -->
-            <SplitPanel direction="vertical" bind:ratio={centerRatio} minA={200} minB={80} collapseB={!layoutStore.showTerminal}>
+            <!-- Center column: editor/preview (top) | terminal (bottom).
+                 minB keeps the terminal at a usable ~7 rows after the tab bar —
+                 dragging it shorter puts TUIs (Claude Code) into a degenerate
+                 1-2 row layout that renders as overlapping garble. Hiding the
+                 terminal entirely goes through the layout toggle (collapseB). -->
+            <SplitPanel direction="vertical" bind:ratio={centerRatio} minA={200} minB={160} collapseB={!layoutStore.showTerminal}>
               {#snippet panelA()}
                 <div class="preview-area">
                  <SplitPanel direction="horizontal" bind:ratio={appPreviewRatio} minA={300} minB={240} collapseB={!sandboxPreviewStore.visible || sandboxPreviewStore.maximized}>
@@ -728,18 +851,40 @@
 
                         <!-- Browser layer: overlays editor content when visible (tab bar stays above) -->
                         <div class="preview-layer" class:visible={showBrowser}>
-                          <BrowserTabBar onNewTab={() => lensPreviewRef?.createNewTab()} />
+                          <BrowserTabBar
+                            onNewTab={() => lensPreviewRef?.createNewTab()}
+                            onNewPrivateTab={() => lensPreviewRef?.createNewTab('about:blank', { incognito: true })}
+                          />
                           <LensToolbar
                             {zoomLevel}
+                            bind:suggestionsOpen={omniboxOpen}
                             onZoomIn={handleZoomIn}
                             onZoomOut={handleZoomOut}
                             onZoomReset={handleZoomReset}
                             onHistory={() => showHistory = true}
+                            onBookmarks={() => showBookmarks = true}
                             onDownloads={() => showDownloads = true}
                             onDownloadSettings={handleDownloadSettings}
                             onDevtools={toggleDevtools}
                             devtoolsActive={showDevtools}
                           />
+                          {#if browserTabsStore.activeTab?.loading}
+                            <div class="nav-progress" role="progressbar" aria-label="Page loading">
+                              <div class="nav-progress-bar"></div>
+                            </div>
+                          {/if}
+                          {#if permissionPrompt}
+                            <div class="permission-bar" role="alertdialog" aria-label="Permission request">
+                              <span class="permission-text">
+                                <strong>{permissionOrigin(permissionPrompt.uri)}</strong>
+                                wants to {PERMISSION_LABELS[permissionPrompt.kind] || PERMISSION_LABELS.other}
+                              </span>
+                              <div class="permission-actions">
+                                <button class="permission-btn allow" onclick={() => answerPermission(true)}>Allow</button>
+                                <button class="permission-btn block" onclick={() => answerPermission(false)}>Block</button>
+                              </div>
+                            </div>
+                          {/if}
                           {#if lensStore.designMode}
                             <DesignToolbar
                               onSend={handleDesignSend}
@@ -763,6 +908,9 @@
                           </div>
                           {#if showHistory}
                             <HistoryPanel onClose={() => showHistory = false} />
+                          {/if}
+                          {#if showBookmarks}
+                            <BookmarksPanel onClose={() => showBookmarks = false} />
                           {/if}
                           {#if showDownloads}
                             <DownloadsPanel onClose={() => showDownloads = false} />
@@ -998,6 +1146,103 @@
     min-width: 300px;
     height: 100%;
     /* Native WebView2 renders here — this div is just a positioning placeholder */
+  }
+
+  /* ── Permission prompt bar (under the toolbar) ── */
+  .permission-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    flex-shrink: 0;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text);
+    animation: permission-bar-in 0.15s var(--ease-out, ease);
+  }
+
+  @keyframes permission-bar-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .permission-bar { animation: none; }
+  }
+
+  .permission-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .permission-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .permission-btn {
+    height: 26px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 4px);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 12px;
+    font-family: var(--font-family);
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+  }
+
+  .permission-btn.allow {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg);
+  }
+
+  .permission-btn.allow:hover {
+    background: color-mix(in srgb, var(--accent) 85%, black);
+  }
+
+  .permission-btn.block:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+
+  /* ── Per-nav progress bar (thin accent bar under the toolbar) ── */
+  .nav-progress {
+    position: relative;
+    height: 2px;
+    flex-shrink: 0;
+    overflow: hidden;
+    background: transparent;
+  }
+
+  .nav-progress-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 40%;
+    background: var(--accent);
+    border-radius: 0 2px 2px 0;
+    animation: nav-progress-indeterminate 1.1s var(--ease-out, ease) infinite;
+  }
+
+  @keyframes nav-progress-indeterminate {
+    0%   { left: -40%; width: 40%; }
+    50%  { left: 30%; width: 55%; }
+    100% { left: 100%; width: 40%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nav-progress-bar {
+      animation: none;
+      width: 100%;
+      left: 0;
+      opacity: 0.6;
+    }
   }
 
 </style>

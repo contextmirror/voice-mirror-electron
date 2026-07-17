@@ -1,42 +1,78 @@
 /**
- * toast.js -- Svelte 5 reactive store for toast notifications.
+ * toast.svelte.js -- Unified notification store (Svelte 5 runes).
  *
- * Manages a stack of toast messages with auto-dismiss and manual dismiss.
+ * THE notification center's source of truth. Every notification is one item
+ * in `items`; a floating toast is just that item's transient "peek" state
+ * (`toastVisible`). When a toast times out or is dismissed it stays in the
+ * notification center — with its action buttons still clickable — until the
+ * user resolves, dismisses, or clears it there.
+ *
+ * Surfaces:
+ *  - ToastContainer renders `toasts` (visible peeks, suppressed entirely
+ *    while the notification panel is open — new items land in the panel).
+ *  - The status bar bell renders `notifications` (all items, newest first)
+ *    and `unreadCount`.
+ *
  * Severity levels: info, success, warning, error.
  */
 
+import { untrack } from 'svelte';
 import { uid } from '../utils.js';
 import { configStore } from './config.svelte.js';
-import { statusBarStore } from './status-bar.svelte.js';
 
 /**
- * @typedef {Object} Toast
- * @property {string} id - Unique toast ID
- * @property {string} message - Toast message text
+ * @typedef {Object} NotificationItem
+ * @property {string} id - Unique ID
+ * @property {string} message - Message text
  * @property {'info'|'success'|'warning'|'error'} severity - Visual style
- * @property {number} duration - Auto-dismiss duration in ms (0 = no auto-dismiss)
+ * @property {number} duration - Toast auto-hide duration in ms (0 = sticky)
  * @property {{ label: string, callback: () => void }|null} action - Optional action button
  * @property {Array<{ label: string, callback: () => void }>|null} actions - Optional multiple action buttons
- * @property {string|null} key - Deduplication key
+ * @property {string|null} key - Deduplication key (same key replaces the item)
  * @property {number|null} progress - Progress bar value 0-100, null for no bar
+ * @property {string|null} source - Originating subsystem, for grouping/debugging
  * @property {number} createdAt - Creation timestamp
+ * @property {boolean} read - Seen in the notification panel
+ * @property {boolean} toastVisible - Currently floating as a toast
  */
 
 const DEFAULT_DURATION = 5000;
-const MAX_TOASTS = 5;
+const MAX_VISIBLE_TOASTS = 5;
+const MAX_ITEMS = 100;
+
+/** Duration for toasts with multiple actions (gives user time to read and click) */
+const MULTI_ACTION_DURATION = 15000;
 
 function createToastStore() {
-  let toasts = $state([]);
+  /** @type {NotificationItem[]} insertion order, oldest first */
+  let items = $state([]);
 
-  /** @type {Map<string, number>} Active dismiss timers */
+  /** Notification panel (status-bar bell) open state — shared so the
+   *  floating toast stack can suppress itself while the panel is showing. */
+  let panelOpen = $state(false);
+
+  /** @type {Map<string, number>} Active toast-hide timers */
   const timers = new Map();
 
   /**
-   * Schedule auto-dismiss for a toast.
-   * @param {string} id
-   * @param {number} duration
+   * Keys whose toast the USER dismissed (✕) this session. Re-raises of a
+   * user-dismissed key update the center quietly instead of re-floating —
+   * closing a prompt is an answer, and re-detection loops must respect it.
+   * Cleared when the user acts on the item (fresh consent cycle).
+   * @type {Set<string>}
    */
-  function scheduleDismiss(id, duration) {
+  const dismissedKeys = new Set();
+
+  function clearTimer(id) {
+    const timer = timers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      timers.delete(id);
+    }
+  }
+
+  /** Hide a toast peek after its duration; the item stays in the center. */
+  function scheduleHide(id, duration) {
     if (duration <= 0) return;
     const timer = window.setTimeout(() => {
       dismissToast(id);
@@ -44,15 +80,26 @@ function createToastStore() {
     timers.set(id, timer);
   }
 
-  /** Duration for toasts with multiple actions (gives user time to read and click) */
-  const MULTI_ACTION_DURATION = 15000;
-
   /**
-   * Add a toast notification.
-   * @param {{ message: string, severity?: string, duration?: number, action?: { label: string, callback: () => void }|null, actions?: Array<{ label: string, callback: () => void }>|null, key?: string|null, progress?: number|null }} options
-   * @returns {string} The toast ID
+   * Add a notification. It always lands in the notification center; it also
+   * floats as a toast unless the panel is open (then it arrives in the
+   * panel directly, already read) or non-error toasts are disabled in
+   * behavior settings (then it lands unread, silently).
+   *
+   * Wrapped in `untrack`: this both reads and writes `items` (key dedup +
+   * push), so a caller inside an `$effect` would otherwise register `items`
+   * as a dependency of that effect and re-run itself on every add — an
+   * infinite loop (effect_update_depth_exceeded) that kills the whole
+   * reactivity graph. Store mutators must never leak deps into callers.
+   *
+   * @param {{ message: string, severity?: string, duration?: number, action?: { label: string, callback: () => void }|null, actions?: Array<{ label: string, callback: () => void }>|null, key?: string|null, progress?: number|null, source?: string|null }} options
+   * @returns {string} The notification ID
    */
-  function addToast({
+  function addToast(options) {
+    return untrack(() => addToastInner(options));
+  }
+
+  function addToastInner({
     message,
     severity = 'info',
     duration,
@@ -60,23 +107,49 @@ function createToastStore() {
     actions = null,
     key = null,
     progress = null,
+    source = null,
   }) {
-    // Respect the showToasts config setting (errors always shown)
-    if (severity !== 'error' && configStore.value?.behavior?.showToasts === false) return null;
-
-    // Deduplicate by key — dismiss existing toast with same key
-    if (key) {
-      const existing = toasts.find(t => t.key === key);
-      if (existing) dismissToast(existing.id);
-    }
+    // Center-first: floating toasts are OPT-IN (behavior.floatingToasts).
+    // Everything always lands in the notification center; errors still
+    // float regardless so failures can't go unnoticed.
+    const toastsDisabled =
+      severity !== 'error' && configStore.value?.behavior?.floatingToasts !== true;
 
     // Use longer duration for multi-action toasts unless explicitly set
     const effectiveDuration = duration !== undefined
       ? duration
       : (actions ? MULTI_ACTION_DURATION : DEFAULT_DURATION);
 
+    // Deduplicate by key.
+    if (key) {
+      const existing = items.find(t => t.key === key);
+      if (existing && existing.toastVisible) {
+        // Still on screen → refresh in place (same id, same stack position,
+        // reset hide timer). Re-raising sources (e.g. dev-server detection
+        // re-running) must not churn a visible sticky prompt into a "new"
+        // toast that re-pops.
+        clearTimer(existing.id);
+        items = items.map(t => t.id === existing.id
+          ? { ...t, message, severity, duration: effectiveDuration, action, actions, progress, source, createdAt: Date.now() }
+          : t);
+        scheduleHide(existing.id, effectiveDuration);
+        return existing.id;
+      }
+      if (existing && dismissedKeys.has(key)) {
+        // The user closed this prompt (✕) — that's an answer. Update the
+        // center row quietly; do NOT re-float this session.
+        items = items.map(t => t.id === existing.id
+          ? { ...t, message, severity, duration: effectiveDuration, action, actions, progress, source, createdAt: Date.now() }
+          : t);
+        return existing.id;
+      }
+      // Gone from screen (timed out or row cleared) → the new item replaces
+      // the old one entirely, so re-prompts never pile up in history.
+      if (existing) removeItem(existing.id);
+    }
+
     const id = uid();
-    const toast = {
+    const item = {
       id,
       message,
       severity,
@@ -85,67 +158,168 @@ function createToastStore() {
       actions,
       key,
       progress,
+      source,
       createdAt: Date.now(),
+      // Arriving while the panel is open counts as seen.
+      read: panelOpen,
+      // Never re-float a key the user already closed this session.
+      toastVisible: !panelOpen && !toastsDisabled && !(key && dismissedKeys.has(key)),
     };
 
-    // Trim oldest if over limit
-    if (toasts.length >= MAX_TOASTS) {
-      const oldest = toasts[0];
-      dismissToast(oldest.id);
+    // Cap the floating stack: hide the oldest visible peek, keep its item.
+    if (item.toastVisible) {
+      const visible = items.filter(t => t.toastVisible);
+      if (visible.length >= MAX_VISIBLE_TOASTS) {
+        dismissToast(visible[0].id);
+      }
     }
 
-    toasts = [...toasts, toast];
-    scheduleDismiss(id, effectiveDuration);
+    // Trim the center history if over max (oldest first)
+    let updated = [...items, item];
+    if (updated.length > MAX_ITEMS) {
+      for (const dropped of updated.slice(0, updated.length - MAX_ITEMS)) {
+        clearTimer(dropped.id);
+      }
+      updated = updated.slice(updated.length - MAX_ITEMS);
+    }
+    items = updated;
 
-    // Persist to notification center (status bar bell)
-    statusBarStore.addNotification({
-      message,
-      severity,
-      source: 'toast',
-    });
-
+    if (item.toastVisible) scheduleHide(id, effectiveDuration);
     return id;
   }
 
   /**
-   * Dismiss (remove) a toast by ID.
+   * Hide a toast peek. The item STAYS in the notification center, unread,
+   * with its actions intact. Untracked — safe to call from effects.
+   * @param {string} id
+   * @param {{ byUser?: boolean }} [opts] - byUser: the human clicked ✕ (as
+   *   opposed to an auto-hide timer or programmatic hide). A user dismissal
+   *   of a keyed prompt suppresses re-floats of that key for the session.
+   */
+  function dismissToast(id, { byUser = false } = {}) {
+    untrack(() => {
+      clearTimer(id);
+      if (byUser) {
+        const item = items.find(t => t.id === id);
+        if (item?.key) dismissedKeys.add(item.key);
+      }
+      items = items.map(t => t.id === id ? { ...t, toastVisible: false } : t);
+    });
+  }
+
+  /**
+   * Resolve an item: an action was clicked (from the toast or the panel),
+   * so the notification is dealt with and leaves the center entirely.
+   * Acting also lifts any dismissal suppression on the key — a fresh
+   * occurrence later starts a fresh consent cycle.
    * @param {string} id
    */
-  function dismissToast(id) {
-    const timer = timers.get(id);
-    if (timer) {
-      clearTimeout(timer);
-      timers.delete(id);
-    }
-    toasts = toasts.filter((t) => t.id !== id);
+  function resolveItem(id) {
+    untrack(() => {
+      const item = items.find(t => t.id === id);
+      if (item?.key) dismissedKeys.delete(item.key);
+    });
+    removeItem(id);
   }
 
   /**
-   * Update an existing toast's properties (e.g., message, progress).
-   * @param {string} id - Toast ID to update
-   * @param {Partial<Toast>} updates - Properties to merge
+   * Remove an item from the center (and its toast peek, if floating).
+   * Untracked — safe to call from effects.
+   * @param {string} id
+   */
+  function removeItem(id) {
+    untrack(() => {
+      clearTimer(id);
+      items = items.filter(t => t.id !== id);
+    });
+  }
+
+  /**
+   * Remove an item by its dedup key (no-op if none). For retiring
+   * context-bound notifications (e.g. a project's consent prompt when the
+   * user switches away from that project) — stale context shouldn't linger
+   * in history either. Untracked — safe to call from effects.
+   * @param {string} key
+   */
+  function dismissByKey(key) {
+    untrack(() => {
+      const existing = items.find(t => t.key === key);
+      if (existing) removeItem(existing.id);
+    });
+  }
+
+  /**
+   * Update an existing item's properties (e.g., message, progress).
+   * Untracked — safe to call from effects.
+   * @param {string} id - Notification ID to update
+   * @param {Partial<NotificationItem>} updates - Properties to merge
    */
   function updateToast(id, updates) {
-    toasts = toasts.map(t => t.id === id ? { ...t, ...updates } : t);
+    untrack(() => {
+      items = items.map(t => t.id === id ? { ...t, ...updates } : t);
+    });
   }
 
   /**
-   * Dismiss all toasts.
+   * Hide all floating toast peeks (items stay in the center).
+   * Untracked — safe to call from effects.
    */
   function dismissAll() {
-    for (const [, timer] of timers) {
-      clearTimeout(timer);
-    }
-    timers.clear();
-    toasts = [];
+    untrack(() => {
+      for (const [, timer] of timers) {
+        clearTimeout(timer);
+      }
+      timers.clear();
+      items = items.map(t => t.toastVisible ? { ...t, toastVisible: false } : t);
+    });
+  }
+
+  /** Empty the notification center entirely. */
+  function clearAll() {
+    untrack(() => {
+      for (const [, timer] of timers) {
+        clearTimeout(timer);
+      }
+      timers.clear();
+      items = [];
+    });
+  }
+
+  /** Mark every item as read (bell badge resets). */
+  function markAllRead() {
+    untrack(() => {
+      items = items.map(t => t.read ? t : { ...t, read: true });
+    });
+  }
+
+  /**
+   * Open/close the notification panel. Opening marks everything read and
+   * suppresses the floating stack (new arrivals land in the panel).
+   * @param {boolean} open
+   */
+  function setPanelOpen(open) {
+    panelOpen = open;
+    if (open) markAllRead();
   }
 
   return {
-    get toasts() { return toasts; },
+    /** Floating toast peeks, oldest first (newest renders nearest the bell) */
+    get toasts() { return items.filter(t => t.toastVisible); },
+    /** Full notification center contents, newest first */
+    get notifications() { return [...items].reverse(); },
+    get unreadCount() { return items.filter(t => !t.read).length; },
+    get panelOpen() { return panelOpen; },
+
     addToast,
     updateToast,
     dismissToast,
+    dismissByKey,
     dismissAll,
+    resolveItem,
+    removeItem,
+    markAllRead,
+    clearAll,
+    setPanelOpen,
   };
 }
 

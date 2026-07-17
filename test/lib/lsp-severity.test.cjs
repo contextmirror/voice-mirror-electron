@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 
 const src = fs.readFileSync(
-  path.join(__dirname, '../../src/lib/lsp-severity.js'),
+  path.join(__dirname, '../../src/lib/editor/lsp-severity.js'),
   'utf-8'
 );
 

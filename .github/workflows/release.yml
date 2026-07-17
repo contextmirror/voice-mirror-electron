@@ -29,10 +29,12 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-          - os: macos-latest
-            target: x86_64-apple-darwin
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+          # macOS/Linux disabled: the Rust backend doesn't compile off-Windows
+          # yet (un-gated `windows` crate usage). Re-add with the port.
+          # - os: macos-latest
+          #   target: x86_64-apple-darwin
+          # - os: ubuntu-latest
+          #   target: x86_64-unknown-linux-gnu
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -97,6 +99,27 @@ jobs:
       - name: Run npm tests
         run: npm test
 
+      # tauri.conf.json declares binaries/voice-mirror-mcp as an externalBin;
+      # the tauri build script fails if the target-triple file is missing.
+      - name: Build MCP sidecar
+        working-directory: src-tauri
+        shell: bash
+        run: |
+          # Placeholders first: the sidecar is a bin of the same crate, so
+          # building it runs the same tauri build script that checks the file.
+          # tools/espeak-ng is provisioned locally and gitignored; an empty dir
+          # satisfies the bundle-resource existence check (CI bundles built
+          # here are smoke builds — shipping installers are staged locally
+          # where the real espeak-ng exists).
+          mkdir -p ../tools/espeak-ng
+          mkdir -p binaries
+          ext=""
+          if [ "$RUNNER_OS" = "Windows" ]; then ext=".exe"; fi
+          touch "binaries/voice-mirror-mcp-${{ matrix.target }}$ext"
+          cargo build --release --bin voice-mirror-mcp --target ${{ matrix.target }}
+          cp "target/${{ matrix.target }}/release/voice-mirror-mcp$ext" \
+             "binaries/voice-mirror-mcp-${{ matrix.target }}$ext"
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa # v0.6.1
         env:
@@ -151,6 +174,12 @@ jobs:
             -o -name "*.json" -o -name "*.sig" \
             -o -name "*.tar.gz" -o -name "*.zip" \
           \) -exec cp {} release-files/ \;
+          # Evergreen alias: lets the website deep-link
+          # releases/latest/download/voice-mirror-x64-setup.exe
+          setup=$(ls release-files/*_x64-setup.exe 2>/dev/null | head -1)
+          if [ -n "$setup" ]; then
+            cp "$setup" release-files/voice-mirror-x64-setup.exe
+          fi
           echo "=== Release files ==="
           ls -la release-files/
 

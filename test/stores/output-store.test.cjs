@@ -90,3 +90,30 @@ describe('output.svelte.js store', () => {
     assert.ok(src.includes('toggleWordWrap'));
   });
 });
+
+// -- Initial history load (regression: the App-Preview-looks-empty bug) --
+
+describe('output.svelte.js -- initial history load', () => {
+  it('unwraps the IpcResponse envelope when loading channel history', () => {
+    // get_output_logs returns { success, data: { entries } }. Reading
+    // `result?.entries` (the old code) silently loaded NOTHING, so the panel
+    // only ever showed events that arrived after it was first opened — the
+    // preview channel looked permanently empty despite a full ring buffer.
+    assert.ok(
+      src.includes('result?.data?.entries'),
+      'history load must read entries from the data envelope'
+    );
+    assert.ok(
+      !src.includes('if (result?.entries)'),
+      'the broken un-unwrapped read must not come back'
+    );
+  });
+
+  it('loads history for project channels registered before the panel opened', () => {
+    const block = src.split('async function startListening')[1] || '';
+    assert.ok(
+      block.includes('projectChannelList') && block.includes('pc.label'),
+      'project channels registered pre-mount must get their history too'
+    );
+  });
+});

@@ -22,6 +22,20 @@ use voice_mirror_lib::services::output::{self, FileLayer};
 
 #[tokio::main]
 async fn main() {
+    // ── Status-line shim fast path ──────────────────────────────────────────
+    // Claude Code invokes `voice-mirror-mcp statusline` as its `statusLine`
+    // command and pipes a JSON blob (model, context, cost, rate limits) on
+    // stdin. We capture that blob for the app's usage watcher and exit
+    // immediately — no logging, no MCP server, no pipe. This branch MUST stay
+    // first so the heavyweight paths below never run on a status refresh.
+    {
+        let args: Vec<String> = std::env::args().collect();
+        if args.get(1).map(String::as_str) == Some("statusline") {
+            run_statusline_shim(args.get(2).map(String::as_str));
+            return;
+        }
+    }
+
     // Logging goes to TWO sinks:
     // - stderr (stdout is reserved for JSON-RPC; Claude Code captures stderr)
     // - a JSONL file under the shared log dir, so failures/panics are persisted
@@ -85,6 +99,36 @@ async fn main() {
         eprintln!("[MCP] Server error: {}", e);
         std::process::exit(1);
     }
+}
+
+/// Status-line shim: capture Claude Code's stdin JSON and render a terminal line.
+///
+/// - Always writes the raw JSON to `claude-status.json` (best-effort) so the
+///   app's usage watcher can surface it natively in the status bar.
+/// - `--passthrough` mode echoes the JSON verbatim so a downstream renderer
+///   (e.g. the user's existing claude-pulse) can consume it via a shell pipe,
+///   leaving their terminal bar untouched.
+/// - Standalone mode prints our own compact line, so users **without**
+///   claude-pulse still get a terminal status bar.
+fn run_statusline_shim(mode: Option<&str>) {
+    use std::io::{Read, Write};
+
+    let mut raw = String::new();
+    let _ = std::io::stdin().read_to_string(&mut raw);
+
+    // Best-effort capture for the app; never fail the status line over this.
+    let _ = voice_mirror_lib::services::claude_usage::write_status_json(&raw);
+
+    let out = if mode == Some("--passthrough") {
+        raw
+    } else {
+        voice_mirror_lib::services::claude_usage::render_fallback_line(&raw)
+    };
+
+    let stdout = std::io::stdout();
+    let mut lock = stdout.lock();
+    let _ = lock.write_all(out.as_bytes());
+    let _ = lock.flush();
 }
 
 /// Default data directory (matches the Tauri app's data directory).

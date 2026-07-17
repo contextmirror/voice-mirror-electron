@@ -15,12 +15,16 @@ const SRC_PATH = path.join(__dirname, '../../src/lib/stores/toast.svelte.js');
 const src = fs.readFileSync(SRC_PATH, 'utf-8');
 
 describe('toast.svelte.js -- constants', () => {
-  it('defines MAX_TOASTS constant', () => {
-    assert.ok(src.includes('const MAX_TOASTS'), 'Should define MAX_TOASTS');
+  it('defines MAX_VISIBLE_TOASTS constant', () => {
+    assert.ok(src.includes('const MAX_VISIBLE_TOASTS'), 'Should define MAX_VISIBLE_TOASTS');
   });
 
-  it('sets MAX_TOASTS to 5', () => {
-    assert.ok(src.includes('MAX_TOASTS = 5'), 'MAX_TOASTS should be 5');
+  it('sets MAX_VISIBLE_TOASTS to 5', () => {
+    assert.ok(src.includes('MAX_VISIBLE_TOASTS = 5'), 'MAX_VISIBLE_TOASTS should be 5');
+  });
+
+  it('caps the notification center at 100 items', () => {
+    assert.ok(src.includes('MAX_ITEMS = 100'), 'MAX_ITEMS should be 100');
   });
 
   it('defines DEFAULT_DURATION constant', () => {
@@ -111,8 +115,8 @@ describe('toast.svelte.js -- reactivity', () => {
 });
 
 describe('toast.svelte.js -- auto-dismiss behavior', () => {
-  it('has scheduleDismiss function', () => {
-    assert.ok(src.includes('function scheduleDismiss'), 'Should have scheduleDismiss');
+  it('has scheduleHide function', () => {
+    assert.ok(src.includes('function scheduleHide'), 'Should have scheduleHide');
   });
 
   it('uses window.setTimeout for auto-dismiss', () => {
@@ -129,17 +133,17 @@ describe('toast.svelte.js -- auto-dismiss behavior', () => {
 });
 
 describe('toast.svelte.js -- max toast enforcement', () => {
-  it('checks toasts.length against MAX_TOASTS before adding', () => {
+  it('caps the floating stack by visible peeks, not center size', () => {
     assert.ok(
-      src.includes('toasts.length >= MAX_TOASTS'),
-      'Should enforce MAX_TOASTS limit'
+      src.includes('visible.length >= MAX_VISIBLE_TOASTS'),
+      'Should enforce the cap on visible toasts only'
     );
   });
 
-  it('dismisses oldest toast when over limit', () => {
+  it('hides the oldest visible peek when over limit (item stays in center)', () => {
     assert.ok(
-      src.includes('toasts[0]'),
-      'Should reference oldest toast (index 0) for dismissal'
+      src.includes('dismissToast(visible[0].id)'),
+      'Should hide the oldest visible toast'
     );
   });
 });
@@ -201,26 +205,43 @@ describe('toast.svelte.js -- key-based deduplication', () => {
     assert.ok(src.includes('key = null'), 'addToast should accept key param with null default');
   });
 
-  it('includes key in toast object', () => {
-    // The toast object literal should include key
-    const toastObj = src.split('const toast = {')[1]?.split('};')[0] || '';
-    assert.ok(toastObj.includes('key'), 'Toast object should include key field');
+  it('includes key in the item object', () => {
+    const itemObj = src.split('const item = {')[1]?.split('};')[0] || '';
+    assert.ok(itemObj.includes('key'), 'Item object should include key field');
   });
 
-  it('deduplicates by key — dismisses existing toast with same key', () => {
+  it('deduplicates by key — the new item replaces the old one entirely', () => {
     assert.ok(
-      src.includes("toasts.find(t => t.key === key)"),
-      'Should find existing toast by key'
+      src.includes("items.find(t => t.key === key)"),
+      'Should find existing item by key'
     );
   });
 
-  it('calls dismissToast on existing toast with same key', () => {
-    // After finding existing, should dismiss it
-    const dedupBlock = src.split('if (key)')[1]?.split('}')[0] || '';
+  it('refreshes a still-visible same-key toast in place (no re-pop churn)', () => {
+    // Re-raising sources (dev-server detection re-runs) must not churn a
+    // visible sticky prompt into a "new" toast that re-animates.
     assert.ok(
-      dedupBlock.includes('dismissToast(existing.id)'),
-      'Should dismiss existing toast with same key'
+      src.includes('existing && existing.toastVisible'),
+      'Should detect a still-visible same-key toast'
     );
+    assert.ok(
+      src.includes('scheduleHide(existing.id, effectiveDuration)'),
+      'In-place refresh should reset the hide timer on the SAME id'
+    );
+  });
+
+  it('replaces a no-longer-visible same-key item entirely (no center pile-up)', () => {
+    assert.ok(
+      src.includes('removeItem(existing.id)'),
+      'Should remove the existing item (toast AND center row) on replace'
+    );
+  });
+
+  it('respects user dismissal: a ✕-closed key never re-floats this session', () => {
+    assert.ok(src.includes('const dismissedKeys = new Set()'), 'Should track user-dismissed keys');
+    assert.ok(src.includes('byUser = false'), 'dismissToast should distinguish user vs programmatic hides');
+    assert.ok(src.includes('dismissedKeys.has(key)'), 'Re-raises of dismissed keys should stay quiet');
+    assert.ok(src.includes('dismissedKeys.delete(item.key)'), 'Acting on the item should lift the suppression');
   });
 
   it('key dedup only runs when key is provided', () => {
@@ -243,9 +264,9 @@ describe('toast.svelte.js -- progress support', () => {
     assert.ok(src.includes('progress = null'), 'addToast should accept progress param with null default');
   });
 
-  it('includes progress in toast object', () => {
-    const toastObj = src.split('const toast = {')[1]?.split('};')[0] || '';
-    assert.ok(toastObj.includes('progress'), 'Toast object should include progress field');
+  it('includes progress in the item object', () => {
+    const itemObj = src.split('const item = {')[1]?.split('};')[0] || '';
+    assert.ok(itemObj.includes('progress'), 'Item object should include progress field');
   });
 
   it('has updateToast method', () => {
@@ -264,10 +285,22 @@ describe('toast.svelte.js -- progress support', () => {
   });
 });
 
-describe('toast.svelte.js -- suppressed toast returns null', () => {
-  it('returns null (not empty string) when toasts are suppressed', () => {
-    assert.ok(src.includes('return null'), 'Should return null when suppressed');
-    assert.ok(!src.includes("return ''"), 'Should NOT return empty string when suppressed');
+describe('toast.svelte.js -- center-first: floating is opt-in', () => {
+  it('floating requires behavior.floatingToasts === true (errors always float)', () => {
+    // Source-of-truth model: without opt-in, only the FLOATING peek is
+    // skipped; the notification center still records everything.
+    assert.ok(
+      src.includes("configStore.value?.behavior?.floatingToasts !== true"),
+      'Floating should be opt-in via behavior.floatingToasts'
+    );
+    assert.ok(
+      src.includes("severity !== 'error'"),
+      'Errors must float regardless so failures cannot go unnoticed'
+    );
+    assert.ok(
+      src.includes('!panelOpen && !toastsDisabled'),
+      'Non-floating items are still added to the center'
+    );
   });
 });
 
@@ -286,5 +319,30 @@ describe('toast.svelte.js -- severity levels documented', () => {
 
   it('documents error severity', () => {
     assert.ok(src.includes('error'), 'Should document error severity');
+  });
+});
+
+describe('toast.svelte.js -- effect-safety (regression: stuck-recording toast froze the UI)', () => {
+  // addToast both reads and writes the reactive `toasts` array. Called from an
+  // $effect (e.g. App.svelte's voice-stuck toast), an untracked implementation
+  // is the only thing preventing an infinite effect loop
+  // (effect_update_depth_exceeded) that aborts Svelte's reactivity graph.
+  it('imports untrack from svelte', () => {
+    assert.ok(
+      src.includes("import { untrack } from 'svelte'"),
+      'Store must import untrack'
+    );
+  });
+
+  it('addToast body runs inside untrack', () => {
+    assert.ok(
+      src.includes('untrack(() => addToastInner(options))'),
+      'addToast must wrap its read/write body in untrack'
+    );
+  });
+
+  it('dismissToast, updateToast and dismissAll are untracked', () => {
+    const count = (src.match(/untrack\(\(\) =>/g) || []).length;
+    assert.ok(count >= 4, `All four mutators should use untrack (found ${count})`);
   });
 });

@@ -76,6 +76,18 @@ static DICTATION_BINDING: KeyBinding = KeyBinding::new();
 #[cfg(target_os = "windows")]
 static HOOK_APP_HANDLE: std::sync::OnceLock<AppHandle> = std::sync::OnceLock::new();
 
+/// Channel from the low-level hook callbacks to the emit worker thread.
+///
+/// WH_KEYBOARD_LL / WH_MOUSE_LL callbacks run on the hook thread while
+/// Windows WAITS on them: if a callback exceeds LowLevelHooksTimeout (often
+/// a few hundred ms) — e.g. because `app.emit` or tracing file I/O stalls
+/// while the main thread is busy — Windows silently UNHOOKS us and PTT dies
+/// until restart. So the callbacks only push the event name here and return;
+/// a dedicated worker thread does the emit + logging.
+#[cfg(target_os = "windows")]
+static HOOK_EVENT_TX: std::sync::OnceLock<std::sync::mpsc::Sender<&'static str>> =
+    std::sync::OnceLock::new();
+
 // ---- Public API ----
 
 /// Parse a key spec string and configure the PTT binding.
@@ -245,27 +257,29 @@ fn modifiers_held() -> bool {
     }
 }
 
-/// Handle a press/release for a key binding. Emits Tauri events and
-/// suppresses key repeats (only emits on first press, not held repeats).
+/// Handle a press/release for a key binding. Queues Tauri events for the emit
+/// worker thread and suppresses key repeats (only queues on first press, not
+/// held repeats).
 #[cfg(target_os = "windows")]
 /// Returns `true` if the key event should be SUPPRESSED (swallowed so it doesn't
 /// reach the focused app). A press of the bound key is always suppressed; a release
 /// is suppressed only if we captured the matching press (otherwise we'd eat an
 /// unrelated key-up and leave the app thinking the key is still down).
+///
+/// This runs INSIDE the low-level hook callback: no emit, no logging, no
+/// blocking — only the atomic active-flag swap and a non-blocking channel
+/// send (see `HOOK_EVENT_TX`).
 fn handle_binding_event(
     binding: &KeyBinding,
-    event_pressed: &str,
-    event_released: &str,
+    event_pressed: &'static str,
+    event_released: &'static str,
     is_press: bool,
 ) -> bool {
     if is_press {
         // Only emit on first press (not auto-repeat).
         if !binding.active.swap(true, Ordering::Relaxed) {
-            info!("Input hook: emitting {}", event_pressed);
-            if let Some(app) = HOOK_APP_HANDLE.get() {
-                if let Err(e) = app.emit(event_pressed, ()) {
-                    warn!("Input hook: failed to emit {}: {}", event_pressed, e);
-                }
+            if let Some(tx) = HOOK_EVENT_TX.get() {
+                let _ = tx.send(event_pressed);
             }
         }
         true
@@ -273,11 +287,8 @@ fn handle_binding_event(
         // Release of a key whose press we captured → emit + suppress. The callback
         // routes releases here even when a modifier is held, so a modifier-during-
         // release can't leave `active` stuck true and permanently wedge the binding.
-        info!("Input hook: emitting {}", event_released);
-        if let Some(app) = HOOK_APP_HANDLE.get() {
-            if let Err(e) = app.emit(event_released, ()) {
-                warn!("Input hook: failed to emit {}: {}", event_released, e);
-            }
+        if let Some(tx) = HOOK_EVENT_TX.get() {
+            let _ = tx.send(event_released);
         }
         true
     } else {
@@ -365,25 +376,30 @@ unsafe extern "system" fn low_level_mouse_proc(
         };
 
         if let Some(id) = button_id {
-            // Check PTT binding — suppress the mouse button at OS level
-            if PTT_BINDING.matches_mouse(id) {
-                handle_binding_event(
+            // Check PTT binding — suppress only when the event was actually
+            // captured (mirrors the keyboard path). Unconditionally returning 1
+            // ate button-ups we never captured (e.g. binding reconfigured while
+            // the button was held), leaving the focused app with a stuck button.
+            if PTT_BINDING.matches_mouse(id)
+                && handle_binding_event(
                     &PTT_BINDING,
                     "ptt-key-pressed",
                     "ptt-key-released",
                     is_press,
-                );
+                )
+            {
                 return 1;
             }
 
-            // Check dictation binding — suppress the mouse button at OS level
-            if DICTATION_BINDING.matches_mouse(id) {
-                handle_binding_event(
+            // Check dictation binding — same capture-gated suppression
+            if DICTATION_BINDING.matches_mouse(id)
+                && handle_binding_event(
                     &DICTATION_BINDING,
                     "dictation-key-pressed",
                     "dictation-key-released",
                     is_press,
-                );
+                )
+            {
                 return 1;
             }
         }
@@ -402,9 +418,31 @@ unsafe extern "system" fn low_level_mouse_proc(
 /// OS level to prevent them from reaching other applications.
 #[cfg(target_os = "windows")]
 pub fn start_input_hook(app_handle: AppHandle) {
+    let emit_app = app_handle.clone();
     HOOK_APP_HANDLE
         .set(app_handle)
         .expect("Input hook AppHandle already set");
+
+    // Emit worker: the hook callbacks only push event names into this channel
+    // (see HOOK_EVENT_TX) — the Tauri emit + logging happen here, OFF the
+    // low-level hook thread, so a busy main thread can never stall the
+    // callback past LowLevelHooksTimeout and get us silently unhooked.
+    let (tx, rx) = std::sync::mpsc::channel::<&'static str>();
+    HOOK_EVENT_TX
+        .set(tx)
+        .expect("Input hook event channel already set");
+    std::thread::Builder::new()
+        .name("input-hook-emit".into())
+        .spawn(move || {
+            while let Ok(event) = rx.recv() {
+                info!("Input hook: emitting {}", event);
+                if let Err(e) = emit_app.emit(event, ()) {
+                    warn!("Input hook: failed to emit {}: {}", event, e);
+                }
+            }
+            info!("Input hook emit worker exiting (channel closed)");
+        })
+        .expect("Failed to spawn input hook emit thread");
 
     std::thread::Builder::new()
         .name("input-hook".into())

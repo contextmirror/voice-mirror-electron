@@ -7,8 +7,8 @@
  */
 
 import { listen } from '@tauri-apps/api/event';
-import { uriToRelativePath as _uriToRelativePath } from '../editor-lsp.svelte.js';
-import { severityName } from '../lsp-severity.js';
+import { uriToRelativePath as _uriToRelativePath } from '../editor/editor-lsp.svelte.js';
+import { severityName } from '../editor/lsp-severity.js';
 
 /** Convert a file:// URI to a project-relative path (string or null).
  *  Wraps the shared uriToRelativePath which returns { path, external }. */

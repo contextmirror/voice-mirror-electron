@@ -251,9 +251,12 @@ pub struct BehaviorConfig {
     pub dictation_key: String,
     #[serde(default = "default_stats_hotkey")]
     pub stats_hotkey: String,
-    /// Whether to show toast notifications (default: true).
-    #[serde(default = "default_true")]
-    pub show_toasts: bool,
+    /// Float notifications as toasts over the workspace (opt-in). Renamed
+    /// from `show_toasts` when notifications went center-first — the old key
+    /// held the old default (`true`) in every existing config, not a user
+    /// choice, so it is deliberately ignored and dropped on next save.
+    #[serde(default)]
+    pub floating_toasts: bool,
 }
 
 impl Default for BehaviorConfig {
@@ -266,7 +269,9 @@ impl Default for BehaviorConfig {
             ptt_key: "MouseButton4".into(),
             dictation_key: "MouseButton5".into(),
             stats_hotkey: "CommandOrControl+Shift+M".into(),
-            show_toasts: true,
+            // Center-first notifications: floating toasts are opt-in; items
+            // land in the status-bar notification center (errors still float).
+            floating_toasts: false,
         }
     }
 }
@@ -507,6 +512,13 @@ pub struct ProjectsConfig {
 }
 
 /// A single project entry (path + display name + color tag).
+///
+/// GOTCHA: this config is strongly typed — serde silently DROPS any field
+/// the frontend persists that isn't declared here. That once ate
+/// `autoStartServer`/`preferredServerUrl`/`lastBrowserUrl` on every save,
+/// so "Always start" never survived a restart and the dev-server consent
+/// prompt re-appeared on every launch. When the frontend adds a per-project
+/// field, it MUST be added here too.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectEntry {
@@ -517,6 +529,23 @@ pub struct ProjectEntry {
     pub icon: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp_servers: Option<HashMap<String, McpServerPref>>,
+    /// Dev server URL the user prefers the browser to open for this project.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_server_url: Option<String>,
+    /// Last URL the in-app browser showed for this project.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_browser_url: Option<String>,
+    /// Dev-server consent: true = always start, false = never/don't ask,
+    /// absent = ask.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_start_server: Option<bool>,
+    /// Auto-open the App Preview when this project's app launches.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_start_preview: Option<bool>,
+    /// Epoch ms until which the dev-server consent prompt is snoozed
+    /// ("Not now" persists a 24h snooze).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub consent_snoozed_until: Option<f64>,
 }
 
 /// Per-server enable/disable preference for a project workspace.
@@ -526,7 +555,7 @@ pub struct McpServerPref {
     pub enabled: bool,
 }
 
-/// Browser settings (download behavior).
+/// Browser settings (download behavior + privacy).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserConfig {
@@ -534,6 +563,16 @@ pub struct BrowserConfig {
     pub download_ask_location: bool,
     #[serde(default)]
     pub download_path: Option<String>,
+    /// WebView2 tracking-prevention level: "off" | "basic" | "balanced" | "strict".
+    /// Defaults to "balanced" (the WebView2 default).
+    #[serde(default = "default_tracking_prevention")]
+    pub tracking_prevention: String,
+    /// Offer to save passwords (WebView2 IsPasswordAutosaveEnabled). Default off.
+    #[serde(default)]
+    pub password_autosave: bool,
+    /// General autofill of forms (WebView2 IsGeneralAutofillEnabled). Default on.
+    #[serde(default = "default_true")]
+    pub general_autofill: bool,
 }
 
 impl Default for BrowserConfig {
@@ -541,6 +580,9 @@ impl Default for BrowserConfig {
         Self {
             download_ask_location: false,
             download_path: None,
+            tracking_prevention: default_tracking_prevention(),
+            password_autosave: false,
+            general_autofill: true,
         }
     }
 }
@@ -548,6 +590,7 @@ impl Default for BrowserConfig {
 // ============ Default value functions ============
 
 fn default_true() -> bool { true }
+fn default_tracking_prevention() -> String { "balanced".into() }
 fn default_wake_phrase() -> String { "hey_claude".into() }
 fn default_sensitivity() -> f64 { 0.5 }
 fn default_one() -> f64 { 1.0 }

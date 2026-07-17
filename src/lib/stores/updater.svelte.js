@@ -26,10 +26,11 @@
 // NAG_INTERVAL_MS after first learning of a version; reset when version changes.
 const LS_LAST_NOTIFIED_VERSION = 'vm-update-last-notified-version';
 const LS_NOTIFIED_AT = 'vm-update-notified-at';
-// Release channel: 'stable' | 'beta'. Stable endpoint is wired on the Rust side;
-// 'beta' maps to a `latest-beta.json` endpoint (documented hook — the Rust
-// updater config selects the endpoint based on this value once wired).
-const LS_CHANNEL = 'vm-update-channel';
+// Release channel is NOT a runtime toggle: Tauri compiles the updater endpoint
+// into the binary at build time, so the channel is decided by WHICH installer
+// you ran — the stable build checks the stable endpoint, the `-nightly` build
+// checks the nightly endpoint. We DERIVE the channel from the running app
+// version (display-only); to change channel you install the other build.
 
 /** Don't-nag window: 5 days. */
 const NAG_INTERVAL_MS = 5 * 24 * 60 * 60 * 1000;
@@ -78,8 +79,8 @@ function createUpdaterStore() {
   /** Whether the in-flight op was user-initiated (controls error surfacing). */
   let explicit = $state(false);
 
-  // ── Channel ──
-  let channel = $state(lsGet(LS_CHANNEL) === 'beta' ? 'beta' : 'stable');
+  // ── Channel (derived from the running build; display-only, see detectChannel) ──
+  let channel = $state('stable');
 
   // ── Internals ──
   /** The live Tauri `Update` handle from check(); used by downloadAndInstall(). */
@@ -227,20 +228,20 @@ function createUpdaterStore() {
   }
 
   /**
-   * Set the release channel ('stable' | 'beta'), persisted to localStorage.
-   * 'beta' maps to a `latest-beta.json` endpoint (Rust side selects the endpoint
-   * from this value). Re-checks immediately so the new channel takes effect.
+   * Detect the release channel from the running app version. Tauri bakes the
+   * updater endpoint into the binary, so the channel is whichever build was
+   * installed: a `-nightly` (or `-beta`/`-canary`) prerelease version → the
+   * nightly channel, anything else → stable. Display-only — there is no runtime
+   * switch (you change channel by installing the other build).
    */
-  function setChannel(next) {
-    const c = next === 'beta' ? 'beta' : 'stable';
-    channel = c;
-    lsSet(LS_CHANNEL, c);
-    // Channel changed — a previously-known update may no longer apply.
-    if (state === 'available' || state === 'error') {
-      state = 'idle';
-      updateHandle = null;
-      version = null;
-      notes = null;
+  async function detectChannel() {
+    if (!isTauri()) return;
+    try {
+      const { getVersion } = await import('@tauri-apps/api/app');
+      const v = await getVersion();
+      channel = /-(nightly|beta|canary)/i.test(v || '') ? 'nightly' : 'stable';
+    } catch {
+      /* not in Tauri / version unavailable — leave as-is */
     }
   }
 
@@ -255,6 +256,7 @@ function createUpdaterStore() {
     }
     if (autoCheckStarted) return;
     autoCheckStarted = true;
+    detectChannel();
     setTimeout(() => {
       checkForUpdates(false);
       autoCheckTimer = setInterval(() => checkForUpdates(false), RECHECK_INTERVAL_MS);
@@ -297,7 +299,7 @@ function createUpdaterStore() {
     downloadAndInstall,
     restartToApply,
     showReleaseNotes,
-    setChannel,
+    detectChannel,
     startAutoCheck,
     stopAutoCheck,
     clearError,

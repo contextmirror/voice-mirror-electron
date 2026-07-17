@@ -338,7 +338,7 @@ impl ToolRegistry {
             info!(
                 "[MCP] Auto-loaded \"{}\" (intent: \"{}\")",
                 group_name,
-                &text[..text.len().min(60)]
+                crate::util::truncate_utf8(text, 60)
             );
 
             // Load dependencies

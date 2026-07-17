@@ -18,10 +18,6 @@ import { tabsStore } from './tabs.svelte.js';
 // -- Constants --
 const GIT_POLL_INTERVAL = 15000;
 const LSP_POLL_INTERVAL = 10000;
-const MAX_NOTIFICATIONS = 100;
-
-/** Counter for notification IDs */
-let notifIdCounter = 0;
 
 /**
  * Map file extension to human-readable language name.
@@ -85,9 +81,6 @@ function createStatusBarStore() {
   // -- LSP health (polled) --
   let lspHealth = $state('none');
 
-  // -- Notifications --
-  let notifications = $state([]);
-
   // -- Polling timers --
   let gitPollTimer = null;
   let lspPollTimer = null;
@@ -127,39 +120,12 @@ function createStatusBarStore() {
     editorFocused = false;
   }
 
-  // ── Notifications ──────────────────────────────────────────────────────
-
-  function addNotification({ message, severity = 'info', source = null }) {
-    const id = 'notif-' + (++notifIdCounter);
-    const notification = {
-      id,
-      message,
-      severity,
-      source,
-      timestamp: Date.now(),
-      read: false,
-    };
-
-    // Trim oldest if over max
-    let updated = [...notifications, notification];
-    if (updated.length > MAX_NOTIFICATIONS) {
-      updated = updated.slice(updated.length - MAX_NOTIFICATIONS);
-    }
-    notifications = updated;
-    return id;
-  }
-
-  function dismissNotification(id) {
-    notifications = notifications.filter(n => n.id !== id);
-  }
-
-  function markAllRead() {
-    notifications = notifications.map(n => ({ ...n, read: true }));
-  }
-
-  function clearAllNotifications() {
-    notifications = [];
-  }
+  // NOTE: notifications live entirely in the unified toastStore (every toast
+  // IS a notification-center item) — read/mutate them there, not here. The
+  // old delegating addNotification/dismissNotification/markAllRead/
+  // clearAllNotifications wrappers were removed once call-site-free: a
+  // silent add-then-dismiss path here once made items "appear in the center
+  // but never as a toast", masking bugs.
 
   // ── Polling ────────────────────────────────────────────────────────────
 
@@ -275,10 +241,6 @@ function createStatusBarStore() {
     get devServerStatus() { return devServerStatus; },
     get devServerPort() { return devServerPort; },
     get lspHealth() { return lspHealth; },
-    get notifications() { return notifications; },
-    get unreadCount() {
-      return notifications.filter(n => !n.read).length;
-    },
 
     // -- Editor setters --
     setCursor,
@@ -288,12 +250,6 @@ function createStatusBarStore() {
     setLanguage,
     setEditorFocused,
     clearEditorState,
-
-    // -- Notifications --
-    addNotification,
-    dismissNotification,
-    markAllRead,
-    clearAllNotifications,
 
     // -- Polling --
     startPolling,

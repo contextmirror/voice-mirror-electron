@@ -272,7 +272,7 @@ commandRegistry.registerMany([
   },
   {
     id: 'view.toggleBrowser',
-    label: 'Toggle Browser Preview',
+    label: 'Toggle Browser',
     category: 'View',
     execute: () => window.dispatchEvent(new CustomEvent('command:toggle-browser')),
   },
@@ -733,7 +733,8 @@ async function runStartActiveProject() {
     }
     // The dev-server-manager emits the lifecycle toast ("{framework} ready on
     // :{port}" / failure) — don't add a redundant "Starting…" here.
-    devServerManager.startServer(servers[0], projectPath, null);
+    // Monorepo workspace members carry their own spawn dir (`cwd`).
+    devServerManager.startServer(servers[0], servers[0].cwd || projectPath, null);
   } catch (err) {
     console.error('[commands] run.start failed:', err);
     toastStore.addToast({ message: 'Failed to start dev server.', severity: 'error' });

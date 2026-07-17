@@ -31,9 +31,9 @@
       icon: 'mic',
     },
     {
-      title: 'Live preview (Browser / App)',
+      title: 'App Preview & Browser',
       body:
-        'The centre panel previews your work: the Browser tab shows websites and dev servers; the App tab shows your running desktop app live, and the AI can see and drive it. (The live App preview & driving are Windows-only for now.)',
+        'The centre panel previews your work: the Browser tab shows websites and dev servers; the App tab shows your running desktop app live, and the AI can see and drive it. (The App Preview & driving are Windows-only for now.)',
       icon: 'preview',
     },
     {

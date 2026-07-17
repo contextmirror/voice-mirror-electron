@@ -20,17 +20,16 @@
   let startWithSystem = $state(false);
   let autoStartProvider = $state(false);
   let autoVoiceLoop = $state(true);
-  let showToasts = $state(true);
+  let floatingToasts = $state(false);
   let markdownPreview = $state(true);
   let debugMode = $state(false);
   let showDependencies = $state(false);
-  let downloadAskLocation = $state(false);
-  let downloadPath = $state('');
 
   // ---- Updates ----
   let autoCheckUpdates = $state(true);
   let appVersion = $state('');
-  // Derived live update state — drives the channel toggle + status line.
+  // Release channel is derived from the running build (see updater store);
+  // it is read-only here because Tauri bakes the channel into the binary.
   let updateChannel = $derived(updaterStore.channel);
   let updateState = $derived(updaterStore.state);
 
@@ -45,6 +44,8 @@
         const { getVersion } = await import('@tauri-apps/api/app');
         const v = await getVersion();
         if (!cancelled) appVersion = v;
+        // Derive the release channel from the running build (display-only).
+        updaterStore.detectChannel();
       } catch {
         /* not in Tauri — leave blank */
       }
@@ -63,12 +64,10 @@
     startWithSystem = cfg.behavior?.startWithSystem === true;
     autoStartProvider = cfg.ai?.autoStart === true;
     autoVoiceLoop = cfg.ai?.autoVoiceLoop !== false;
-    showToasts = cfg.behavior?.showToasts !== false;
+    floatingToasts = cfg.behavior?.floatingToasts === true;
     markdownPreview = cfg.editor?.markdownPreview !== false;
     debugMode = cfg.advanced?.debugMode === true;
     showDependencies = cfg.advanced?.showDependencies === true;
-    downloadAskLocation = cfg.browser?.downloadAskLocation === true;
-    downloadPath = cfg.browser?.downloadPath || '';
     autoCheckUpdates = cfg.updates?.autoCheck !== false;
   });
 
@@ -77,24 +76,6 @@
   function checkForUpdatesNow() {
     // Explicit check — surfaces errors (unlike silent background checks).
     updaterStore.checkForUpdates(true);
-  }
-
-  function setUpdateChannel(channel) {
-    updaterStore.setChannel(channel);
-  }
-
-  // ---- Folder picker ----
-
-  async function pickDownloadFolder() {
-    try {
-      const { open } = await import('@tauri-apps/plugin-dialog');
-      const selected = await open({ directory: true, title: 'Choose download location' });
-      if (selected) {
-        downloadPath = selected;
-      }
-    } catch (err) {
-      console.error('[BehaviorSettings] Folder picker failed:', err);
-    }
   }
 
   // ---- Save handler ----
@@ -109,7 +90,7 @@
         behavior: {
           startMinimized,
           startWithSystem,
-          showToasts,
+          floatingToasts,
         },
         ai: {
           autoStart: autoStartProvider,
@@ -121,10 +102,6 @@
         advanced: {
           debugMode,
           showDependencies,
-        },
-        browser: {
-          downloadAskLocation,
-          downloadPath: downloadPath || '',
         },
         updates: {
           autoCheck: autoCheckUpdates,
@@ -191,10 +168,10 @@
     <h3>Notifications</h3>
     <div class="settings-group">
       <Toggle
-        label="Toast Notifications"
-        description="Show popup notifications for file operations and other events"
-        checked={showToasts}
-        onChange={(v) => (showToasts = v)}
+        label="Floating toasts"
+        description="Also pop notifications up over the workspace. When off, everything goes quietly to the notification bell in the status bar (errors still pop up)."
+        checked={floatingToasts}
+        onChange={(v) => (floatingToasts = v)}
       />
     </div>
   </section>
@@ -209,28 +186,6 @@
         checked={markdownPreview}
         onChange={(v) => (markdownPreview = v)}
       />
-    </div>
-  </section>
-
-  <!-- Browser -->
-  <section class="settings-section">
-    <h3>Browser</h3>
-    <div class="settings-group">
-      <Toggle
-        label="Always Ask Where to Save"
-        description="Show a Save As dialog for every download instead of auto-saving"
-        checked={downloadAskLocation}
-        onChange={(v) => (downloadAskLocation = v)}
-      />
-      <div class="path-setting">
-        <label class="path-label" for="download-location-btn">Download Location</label>
-        <div class="path-row">
-          <span class="path-display" title={downloadPath || 'System Downloads folder'}>
-            {downloadPath || 'System Downloads folder'}
-          </span>
-          <button id="download-location-btn" class="path-btn" onclick={pickDownloadFolder}>Change</button>
-        </div>
-      </div>
     </div>
   </section>
 
@@ -269,24 +224,20 @@
         onChange={(v) => (autoCheckUpdates = v)}
       />
 
-      <!-- Channel toggle (Stable / Beta) -->
+      <!-- Channel indicator (read-only — the channel is set by which build you installed) -->
       <div class="update-channel-setting">
         <div class="update-channel-text">
           <span class="update-channel-label">Update Channel</span>
-          <span class="update-channel-desc">Beta receives newer, less-tested builds</span>
+          <span class="update-channel-desc">
+            Determined by the build you installed. Nightly gets newer, less-tested builds —
+            switch by installing the other build.
+          </span>
         </div>
-        <div class="update-channel-toggle" role="group" aria-label="Update channel">
-          <button
-            class="channel-btn"
-            class:active={updateChannel === 'stable'}
-            onclick={() => setUpdateChannel('stable')}
-          >Stable</button>
-          <button
-            class="channel-btn"
-            class:active={updateChannel === 'beta'}
-            onclick={() => setUpdateChannel('beta')}
-          >Beta</button>
-        </div>
+        <span
+          class="channel-indicator"
+          class:nightly={updateChannel === 'nightly'}
+          aria-label="Current update channel"
+        >{updateChannel === 'nightly' ? 'Nightly' : 'Stable'}</span>
       </div>
 
       <!-- Check now -->
@@ -355,58 +306,6 @@
     padding: 4px;
   }
 
-  .path-setting {
-    padding: 8px 12px;
-  }
-
-  .path-label {
-    display: block;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text);
-    margin-bottom: 6px;
-  }
-
-  .path-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .path-display {
-    flex: 1;
-    min-width: 0;
-    height: 28px;
-    line-height: 28px;
-    padding: 0 8px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg);
-    color: var(--muted);
-    font-size: 12px;
-    font-family: var(--font-mono);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .path-btn {
-    flex-shrink: 0;
-    height: 28px;
-    padding: 0 12px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg);
-    color: var(--text);
-    font-size: 12px;
-    cursor: pointer;
-    transition: background var(--duration-fast) var(--ease-out);
-  }
-
-  .path-btn:hover {
-    background: var(--bg-elevated);
-  }
-
   .settings-actions {
     display: flex;
     gap: 12px;
@@ -473,32 +372,22 @@
     line-height: 1.3;
   }
 
-  .update-channel-toggle {
-    display: flex;
+  .channel-indicator {
     flex-shrink: 0;
+    padding: 4px 12px;
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm);
-    overflow: hidden;
-  }
-
-  .channel-btn {
-    padding: 5px 12px;
-    border: none;
     background: var(--bg);
     color: var(--muted);
     font-size: 12px;
-    font-family: var(--font-family);
-    cursor: pointer;
-    transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+    font-weight: 500;
+    letter-spacing: 0.02em;
   }
 
-  .channel-btn:hover {
-    color: var(--text);
-  }
-
-  .channel-btn.active {
-    background: var(--accent);
-    color: var(--accent-contrast, #fff);
+  .channel-indicator.nightly {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent);
   }
 
   .update-check-row {

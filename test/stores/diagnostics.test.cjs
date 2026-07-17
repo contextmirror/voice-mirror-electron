@@ -92,3 +92,22 @@ describe('diagnostics.svelte.js -- meta health check', () => {
     );
   });
 });
+
+describe('diagnostics.svelte.js -- startMonitoring guard covers the startup delay', () => {
+  it('tracks the startup timeout handle', () => {
+    assert.ok(src.includes('let startTimeoutId = null'), 'Should track the 5s startup timeout');
+  });
+
+  it('guards double-start on both the interval and the pending timeout', () => {
+    // intervalId is only set once the 5s delay elapses — guarding on it alone
+    // let a second start within the window schedule a duplicate interval.
+    assert.ok(src.includes('if (intervalId || startTimeoutId) return;'), 'Should guard on both handles');
+  });
+
+  it('stopMonitoring clears a pending startup timeout', () => {
+    const start = src.indexOf('function stopMonitoring');
+    const chunk = src.slice(start, start + 400);
+    assert.ok(chunk.includes('clearTimeout(startTimeoutId)'), 'Should clear the timeout');
+    assert.ok(chunk.includes('startTimeoutId = null'), 'Should reset the handle');
+  });
+});

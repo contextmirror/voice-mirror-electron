@@ -56,7 +56,7 @@ impl std::fmt::Debug for TerminalEvent {
         f.debug_struct("TerminalEvent")
             .field("id", &self.id)
             .field("event_type", &self.event_type)
-            .field("text", &self.text.as_deref().map(|t| &t[..t.len().min(64)]))
+            .field("text", &self.text.as_deref().map(|t| crate::util::truncate_utf8(t, 64)))
             .field("code", &self.code)
             .field("output_channel", &self.output_channel)
             .finish_non_exhaustive()
@@ -138,11 +138,26 @@ fn find_git_bash() -> Option<String> {
 /// Deliberately conservative: `5173` (4 digits, a port) and `450ms` (not pure
 /// digits) are rejected so durations/ports don't masquerade as errors.
 fn has_http_error_status(line: &str) -> bool {
-    line.split(char::is_whitespace).any(|tok| {
-        tok.len() == 3
+    // A bare 4xx/5xx number only counts as an HTTP status when the line also
+    // carries an HTTP method BEFORE it (request logs: "GET /api/users 500 12ms").
+    // Without that anchor, ordinary durations/versions false-positive — Vite's
+    // startup banner "VITE v6.4.3 ready in 594 ms" was logged as ERROR.
+    const METHODS: [&str; 7] = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
+    let mut saw_method = false;
+    for tok in line.split(char::is_whitespace) {
+        if METHODS.contains(&tok) {
+            saw_method = true;
+            continue;
+        }
+        if saw_method
+            && tok.len() == 3
             && matches!(tok.as_bytes()[0], b'4' | b'5')
             && tok.bytes().all(|b| b.is_ascii_digit())
-    })
+        {
+            return true;
+        }
+    }
+    false
 }
 
 /// Classify a terminal output line into a log level based on content heuristics.
@@ -480,6 +495,29 @@ impl TerminalManager {
         // (npm -> cargo -> the built app.exe).
         if let Some(env_vars) = &env {
             for (k, v) in env_vars {
+                // VM_PREPEND_PATH is a launcher DIRECTIVE, not a real env var:
+                // prepend its dir to the child's PATH instead of REPLACING PATH
+                // (setting env "PATH" wholesale would strip node/npm/system dirs).
+                // Used for corepack shims so a repo pinning yarn/pnpm launches
+                // without a global install. CommandBuilder inherits the parent
+                // env, so the live PATH read here is what the child would get.
+                if k == "VM_PREPEND_PATH" {
+                    if !v.is_empty() {
+                        let sep = if cfg!(windows) { ';' } else { ':' };
+                        let existing = std::env::var("PATH").unwrap_or_default();
+                        let new_path = format!("{}{}{}", v, sep, existing);
+                        // Diagnostic: prove the shim dir actually lands on the
+                        // child PATH (the corepack bridge kept silently failing
+                        // downstream of a "bridge active" log). Truncated so the
+                        // line stays readable.
+                        let head: String = new_path.chars().take(160).collect();
+                        tracing::info!(target: "preview", "[corepack] PTY PATH prepend `{}` (existing {} chars) → {}…", v, existing.len(), head);
+                        cmd.env("PATH", new_path);
+                    } else {
+                        tracing::warn!(target: "preview", "[corepack] VM_PREPEND_PATH was empty — shim not applied");
+                    }
+                    continue;
+                }
                 cmd.env(k, v);
             }
         }
@@ -544,9 +582,13 @@ impl TerminalManager {
                 }
             }
 
-            // Emit exit event
+            // Emit exit event. Unlike stdout above, the exit event must NOT be
+            // dropped when the channel is momentarily full (a stdout flood right
+            // before exit) — a lost exit leaves a zombie tab in the UI. This
+            // reader thread has nothing left to do, so block until there's room;
+            // blocking_send only errs if the receiver is gone entirely.
             thread_running.store(false, Ordering::SeqCst);
-            if event_tx.try_send(TerminalEvent {
+            if event_tx.blocking_send(TerminalEvent {
                 id: session_id.clone(),
                 event_type: "exit".to_string(),
                 text: None,
@@ -554,7 +596,7 @@ impl TerminalManager {
                 output_channel: None,
                 output_store: None,
             }).is_err() {
-                warn!("Terminal {} channel full, dropping exit event", session_id);
+                warn!("Terminal {} event channel closed, exit event dropped", session_id);
             }
 
             info!("Terminal {} reader thread ended", session_id);
@@ -618,6 +660,16 @@ impl TerminalManager {
     }
 
     /// Kill a terminal session and remove it from the manager.
+    /// The OS process id of a session's PTY root (the shell). Used to find a
+    /// native app's window by walking this PID's process tree (the app is a
+    /// descendant: shell → cargo → app.exe). `None` if unknown/exited.
+    pub fn pid(&self, id: &str) -> Option<u32> {
+        self.sessions
+            .get(id)
+            .and_then(|s| s.child.as_ref())
+            .and_then(|c| c.process_id())
+    }
+
     pub fn kill(&mut self, id: &str) -> Result<(), String> {
         let mut session = self
             .sessions
@@ -736,10 +788,22 @@ mod tests {
     #[test]
     fn http_status_detection_is_conservative() {
         assert!(has_http_error_status("GET / 404"));
-        assert!(has_http_error_status("500 internal"));
+        assert!(has_http_error_status("POST /api/login 503 12ms"));
+        // A bare 4xx/5xx number with no HTTP method is ambiguous — "594 ms" in
+        // Vite's banner looked like a status and cried ERROR. Method required.
+        assert!(!has_http_error_status("500 internal"));
+        assert!(!has_http_error_status("VITE v6.4.3  ready in 594 ms"));
+        // Status must FOLLOW the method — a trailing method doesn't anchor.
+        assert!(!has_http_error_status("404 then GET /"));
         // Ports (4 digits) and durations (not pure digits) must NOT match.
         assert!(!has_http_error_status("listening on 5173"));
         assert!(!has_http_error_status("took 450ms"));
         assert!(!has_http_error_status("200 OK"));
+    }
+
+    #[test]
+    fn dev_server_banners_are_info() {
+        // The exact line from the Yap diagnostic session that was logged ERROR.
+        assert_eq!(classify_terminal_line("VITE v6.4.3  ready in 594 ms"), "INFO");
     }
 }

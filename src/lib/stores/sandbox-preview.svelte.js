@@ -20,6 +20,8 @@ import {
   sandboxStreamStart,
   sandboxStreamStop,
   sandboxListWindows,
+  isWindowAlive,
+  probePort,
 } from '../api.js';
 import { unwrapResult } from '../utils.js';
 import { projectStore } from './project.svelte.js';
@@ -38,6 +40,16 @@ function createSandboxPreviewStore() {
   // Default to maximized so a freshly-opened preview is big, not crammed.
   let maximized = $state(true);
   let cdpPort = $state(null);
+  // NATIVE session: a non-CDP desktop app (egui/iced) mirrored by HWND. No CDP
+  // port, no window-list switcher — liveness is "does the HWND still exist".
+  let native = $state(false);
+  // WEB session: a plain web app (vite/next/CRA — no CDP, no OS window to
+  // mirror). Rendered by EMBEDDING its dev-server URL in an iframe (the Bolt
+  // DIY / Onlook pattern) — the app renders live in-panel, no capture needed.
+  // Liveness is "is the dev port still listening".
+  let web = $state(false);
+  let webUrl = $state('');
+  let webPort = null; // dev-server port backing the web session (liveness probe)
   let streamUrl = $state('');
   let loading = $state(false);
   let error = $state('');
@@ -96,7 +108,7 @@ function createSandboxPreviewStore() {
         noWindow = false;
         listFailCount = 0;
       } else {
-        error = 'Failed to start the live preview.';
+        error = 'Failed to start the App Preview.';
       }
     } catch (err) {
       error = err?.message || String(err);
@@ -169,6 +181,22 @@ function createSandboxPreviewStore() {
     // follow, so we only reconcile a CLOSED followed window here as a backstop.
     if (userPinned) return;
 
+    // RECOVERY: we'd already given up ("The app window was closed.") but the
+    // app is back with a mirrorable window — the CDP port went down and came
+    // back with new windows. Classic case: `tauri dev` restarts the app (new
+    // PID + HWND) right after a fresh build writes its gen/ files, so the
+    // window we first mirrored closes and a replacement appears seconds later.
+    // Auto re-target instead of stranding the user on the empty state needing
+    // an "Open app" click.
+    if (noWindow) {
+      const revive = windows.filter((w) => w.visible);
+      if (revive.length > 0) {
+        noWindow = false;
+        startStream(revive[0].hwnd);
+      }
+      return;
+    }
+
     // The window we're mirroring has CLOSED (e.g. you closed Settings) and the
     // backend close-retarget event hasn't reached us. `windows` is the
     // authoritative LIVE window list for the app's process — if currentHwnd isn't
@@ -190,10 +218,71 @@ function createSandboxPreviewStore() {
     }
   }
 
+  /**
+   * NATIVE-session liveness backstop: no CDP port to probe, no window list — the
+   * mirror is one HWND, so liveness is simply "does that window still exist".
+   * When it's gone (the app closed), surface the empty state.
+   */
+  async function refreshNative() {
+    if (!active || !native || currentHwnd == null) return;
+    let alive = true;
+    try {
+      const res = await isWindowAlive(currentHwnd);
+      alive = unwrapResult(res)?.alive !== false;
+    } catch {
+      // Probe failure — don't tear down on a one-off; keep showing.
+      return;
+    }
+    if (!alive) {
+      noWindow = true;
+      currentHwnd = null;
+      streamUrl = ''; // drop the stale frame → clear "app window closed"
+    }
+  }
+
+  /**
+   * WEB-session liveness backstop: no HWND, no CDP — the embed is an iframe on
+   * the dev-server URL, so liveness is "is the dev port still listening". A few
+   * consecutive misses (not one — a vite restart blips the port) → surface a
+   * clear "server stopped" error with a Try-again instead of a frozen iframe.
+   */
+  async function refreshWeb() {
+    if (!active || !web || webPort == null) return;
+    let listening = true;
+    try {
+      const res = await probePort(webPort);
+      listening = unwrapResult(res)?.listening !== false;
+    } catch {
+      return; // probe transport failure — don't tear down on a one-off
+    }
+    if (!listening) {
+      listFailCount += 1;
+      if (listFailCount >= 3) {
+        // Fully tear the session down (not just an error flag): "Try again"
+        // goes through requestStart(), which no-ops while a session is active —
+        // a zombie active-but-dead web session made that button do nothing
+        // (live repro: stop excalidraw, switch project, click Try again).
+        // Keep the panel visible with the reason; a retry then relaunches the
+        // CURRENT project's app.
+        stopPolling();
+        active = false;
+        web = false;
+        webUrl = '';
+        webPort = null;
+        listFailCount = 0;
+        visible = true;
+        error = 'The dev server stopped.';
+      }
+    } else {
+      listFailCount = 0;
+    }
+  }
+
   function startPolling() {
     stopPolling();
-    pollTimer = setInterval(refreshWindows, POLL_INTERVAL);
-    refreshWindows();
+    const tick = native ? refreshNative : web ? refreshWeb : refreshWindows;
+    pollTimer = setInterval(tick, POLL_INTERVAL);
+    tick();
   }
   function stopPolling() {
     if (pollTimer) {
@@ -214,6 +303,84 @@ function createSandboxPreviewStore() {
     get currentHwnd() { return currentHwnd; },
     get noWindow() { return noWindow; },
     get confirmStart() { return confirmStart; },
+    get native() { return native; },
+    get web() { return web; },
+    get webUrl() { return webUrl; },
+
+    /**
+     * Begin a WEB live preview: embed the dev-server URL in an iframe (a plain
+     * web app has no OS window to mirror — the render surface IS the page).
+     * Idempotent for the same URL: just re-shows the panel.
+     * @param {string} url  - http://localhost:<port> the dev server announced
+     * @param {number} port - the dev port, for the liveness probe
+     */
+    openWeb(url, port) {
+      if (!url) return;
+      if (active && web && webUrl && webUrl.startsWith(url)) {
+        visible = true;
+        return;
+      }
+      userHidden = false;
+      cdpPort = null;
+      native = false;
+      web = true;
+      webPort = port ?? null;
+      active = true;
+      visible = true;
+      confirmStart = false;
+      maximized = true;
+      attached = false;
+      userPinned = false;
+      currentHwnd = null;
+      windows = [];
+      noWindow = false;
+      listFailCount = 0;
+      error = '';
+      loading = false;
+      streamUrl = '';
+      webUrl = url;
+      startPolling();
+    },
+
+    /**
+     * Begin a NATIVE live preview: mirror the OS window `hwnd` directly via WGC
+     * (no CDP port), for a native desktop app (egui/iced) launched by its own
+     * build command. Liveness is the window's existence, not a CDP port.
+     * @param {number} hwnd
+     */
+    async openNative(hwnd) {
+      if (!hwnd) return;
+      userHidden = false;
+      cdpPort = null; // native — no CDP
+      native = true;
+      active = true;
+      visible = true;
+      confirmStart = false;
+      maximized = true;
+      attached = false;
+      userPinned = false;
+      currentHwnd = hwnd;
+      windows = [];
+      noWindow = false;
+      listFailCount = 0;
+      error = '';
+      loading = true;
+      try {
+        // port 0 = no CDP; the backend WGC-mirrors the explicit HWND.
+        const res = await sandboxStreamStart(0, hwnd);
+        const data = unwrapResult(res);
+        if (data?.url) {
+          setStreamUrl(data.url);
+        } else {
+          error = 'Failed to start the App Preview.';
+        }
+      } catch (err) {
+        error = err?.message || String(err);
+      } finally {
+        loading = false;
+      }
+      startPolling();
+    },
 
     /**
      * Begin a live preview for the app on `port` (CDP) and show it. Idempotent:
@@ -264,8 +431,11 @@ function createSandboxPreviewStore() {
         this.open(port);
       } else {
         lastAutoPort = null;
-        // Only close an auto (dev-server) session; an attached external app stays.
-        if (active && !attached) this.close();
+        // Only close an auto (dev-server) session. NEVER close an attached
+        // external app — NOR a NATIVE or WEB session: neither has a CDP port,
+        // so this sync (which tracks the active CDP port) would immediately
+        // tear it down the instant it opened. Each has its own liveness check.
+        if (active && !attached && !native && !web) this.close();
       }
     },
 
@@ -292,7 +462,25 @@ function createSandboxPreviewStore() {
       confirmStart = false;
       visible = true;
       userHidden = false;
+      error = ''; // a retry supersedes a previous launch failure
       await emit('sandbox-start-request', { force: true });
+    },
+
+    /**
+     * A launch this panel may be waiting on was REFUSED or died before any
+     * session opened (no dev server detected, crash loop, spawn failure, port
+     * never bound…). Surface the reason in-panel instead of leaving
+     * "Starting App Preview…" up forever — nothing else would ever resolve it,
+     * because a refused launch never registers a CDP port for syncAuto.
+     * No-op when a session is active (the live stream's own disconnect
+     * detection owns that state).
+     * @param {string} reason
+     */
+    launchFailed(reason) {
+      if (active) return;
+      confirmStart = false;
+      loading = false;
+      error = reason || 'The launch failed.';
     },
 
     /**
@@ -393,12 +581,18 @@ function createSandboxPreviewStore() {
         followUnlisten();
         followUnlisten = null;
       }
+      const wasNative = native;
+      const wasWeb = web;
       active = false;
       visible = false;
       streamUrl = '';
       loading = false;
       error = '';
       cdpPort = null;
+      native = false;
+      web = false;
+      webUrl = '';
+      webPort = null;
       windows = [];
       currentHwnd = null;
       noWindow = false;
@@ -407,8 +601,11 @@ function createSandboxPreviewStore() {
       attached = false;
       userHidden = false;
       confirmStart = false;
-      if (port) {
-        sandboxStreamStop(port).catch(() => {});
+      // Native mirror runs off an MJPEG/WGC capture with no CDP port — stop()
+      // ignores the port and tears down window_stream globally, so pass 0.
+      // A WEB session is just an iframe: nothing to stop on the backend.
+      if ((port || wasNative) && !wasWeb) {
+        sandboxStreamStop(port || 0).catch(() => {});
       }
     },
   };

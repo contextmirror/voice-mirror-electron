@@ -40,135 +40,65 @@ voice-mirror/
 ├── src-tauri/                          # Rust backend
 │   ├── src/
 │   │   ├── main.rs                     # App entry, window creation
-│   │   ├── lib.rs                      # Tauri plugin + command registration, lens-bridge URI scheme
-│   │   ├── commands/                   # Tauri command modules (20+ modules; tree below is illustrative, not exhaustive)
-│   │   │   ├── mod.rs
-│   │   │   ├── config.rs               # get_config, set_config, reset_config, get_platform_info, migrate
-│   │   │   ├── window.rs               # Window management (11 commands)
-│   │   │   ├── voice.rs                # Voice pipeline (17 commands)
-│   │   │   ├── ai.rs                   # AI provider lifecycle (13 commands)
-│   │   │   ├── chat.rs                 # Chat history (6 commands)
-│   │   │   ├── files.rs                # File operations (13 commands)
-│   │   │   ├── screenshot.rs           # Screen/window capture (6 commands)
-│   │   │   ├── shell.rs                # Shell PTY spawning (5 commands)
-│   │   │   ├── lens.rs                 # WebView2 browser preview (14 commands)
-│   │   │   ├── lsp.rs                  # Language server protocol (15 commands)
-│   │   │   ├── dev_server.rs           # Dev server detection (3 commands)
-│   │   │   ├── tools.rs                # CLI tool/dependency management (3 commands)
-│   │   │   ├── shortcuts.rs            # Global shortcut registration (4 commands)
-│   │   │   └── design.rs              # Design tool commands (1 command)
-│   │   ├── config/                     # Config system
-│   │   │   ├── mod.rs
-│   │   │   ├── schema.rs               # Config struct definitions (AppConfig + sub-structs)
-│   │   │   ├── persistence.rs          # File I/O (atomic writes: tmp + rename)
-│   │   │   └── migration.rs            # Electron config migration
-│   │   ├── providers/                  # AI provider implementations
-│   │   │   ├── mod.rs
-│   │   │   ├── manager.rs              # Provider lifecycle management
-│   │   │   ├── cli.rs                  # CLI agent providers (portable-pty)
-│   │   │   ├── api.rs                  # OpenAI-compatible HTTP providers (reqwest)
-│   │   │   ├── dictation.rs            # Dictation mode provider
-│   │   │   └── tool_calling.rs         # Tool calling for API providers
-│   │   ├── voice/                      # Voice pipeline (fully Rust-native)
-│   │   │   ├── mod.rs
-│   │   │   ├── pipeline/               # Pipeline orchestration (mod, ring_buffer, playback)
-│   │   │   ├── stt.rs                  # Speech-to-text (Whisper via whisper-rs / whisper.cpp GGML, optional CUDA)
-│   │   │   ├── tts/                    # Text-to-speech (Kokoro ONNX / Edge TTS; mod, kokoro_impl, edge_tts, ...)
-│   │   │   └── vad.rs                  # Voice activity detection
-│   │   ├── mcp/                        # Native Rust MCP server
-│   │   │   ├── mod.rs
-│   │   │   ├── server.rs               # stdio JSON-RPC server
-│   │   │   ├── tools.rs                # Tool registry (5 groups, dynamic load/unload)
-│   │   │   ├── pipe_router.rs          # Concurrent pipe message routing
-│   │   │   └── handlers/               # 6 tool handler modules (5 tool groups)
-│   │   │       ├── mod.rs
-│   │   │       ├── core.rs             # voice_send, voice_inbox, voice_listen, voice_status
-│   │   │       ├── memory.rs           # search, get, remember, forget, stats, flush
-│   │   │       ├── browser.rs          # Browser automation via named pipe to WebView2
-│   │   │       ├── capture.rs          # Screen/window/sandbox capture
-│   │   │       ├── sandbox.rs          # Sandbox preview (drive external app via CDP)
-│   │   │       └── n8n.rs              # n8n workflow management
-│   │   ├── ipc/                        # Named pipe IPC (MCP binary <-> Tauri app)
-│   │   │   ├── protocol.rs             # McpToApp / AppToMcp message enums
-│   │   │   ├── pipe_server.rs          # Named pipe server (Tauri side)
-│   │   │   └── pipe_client.rs          # Named pipe client (MCP side)
-│   │   ├── services/                   # Platform services (browser bridge, watchers, input hook, CDP, sandbox, crash/hang handlers, ...)
-│   │   │   ├── mod.rs
-│   │   │   ├── browser_bridge.rs       # WebView2 browser bridge (JS eval, screenshot, navigation)
-│   │   │   ├── file_watcher.rs         # Project file change watcher
-│   │   │   ├── inbox_watcher.rs        # MCP inbox file watcher
-│   │   │   ├── input_hook.rs           # Global keyboard/mouse hook (PTT, shortcuts)
-│   │   │   ├── text_injector.rs        # OS-level text injection
-│   │   │   ├── dev_server.rs           # Dev server detection (Vite, Next.js, Parcel, Expo)
-│   │   │   ├── logger.rs               # Structured logging (tracing)
-│   │   │   └── platform.rs             # Platform detection and OS utilities
-│   │   └── bin/
-│   │       └── mcp.rs                  # voice-mirror-mcp binary entry point
+│   │   ├── lib.rs                      # Tauri setup + command registration, event forwarding loops
+│   │   ├── commands/                   # Tauri command modules (~20 modules)
+│   │   │   ├── config / window / voice / ai / chat / tools / shortcuts
+│   │   │   ├── files/                  # File ops + git (submodule tree)
+│   │   │   ├── lens/                   # WebView2 browser preview (submodule tree)
+│   │   │   ├── lsp.rs                  # Language server protocol (45 commands)
+│   │   │   ├── terminal.rs             # Shell PTY spawning
+│   │   │   ├── sandbox.rs              # See-and-drive App Preview (CDP/UIA)
+│   │   │   └── screenshot / dev_server / output / design / project / mcp / onboarding / workspace_state
+│   │   ├── config/                     # Config schema + persistence (atomic writes) + crypto
+│   │   ├── providers/                  # AI providers: cli/ (portable-pty), api.rs (HTTP), manager
+│   │   ├── voice/                      # Rust-native pipeline: pipeline/, stt (whisper-rs), tts/ (Kokoro/Edge), vad
+│   │   ├── terminal/                   # Shell PTY session management
+│   │   ├── lsp/                        # LSP client, server lifecycle, requests (11 modules)
+│   │   ├── mcp/                        # Native Rust MCP server: server, tools, pipe_router, handlers/
+│   │   ├── ipc/                        # Named-pipe IPC (MCP binary <-> Tauri app)
+│   │   ├── services/                   # browser_bridge, cdp, sandbox/uia, window_stream/follow,
+│   │   │                               #   file/inbox watchers, input_hook, crash/hang handlers, logger, ...
+│   │   └── bin/mcp.rs                  # voice-mirror-mcp binary entry point
 │   ├── Cargo.toml                      # Rust dependencies
+│   ├── rustfmt.toml                    # Rust formatting config
 │   └── tauri.conf.json                 # Tauri window, bundle, plugin config
 ├── src/                                # Svelte 5 frontend
 │   ├── App.svelte                      # Root component
-│   ├── main.js                         # Entry point
-│   ├── components/                     # 63 UI components across 7 directories
-│   │   ├── chat/                       # 7 components: ChatPanel, ChatBubble, ChatInput, etc.
-│   │   ├── lens/                       # 23 components: workspace, editor, file tree, preview, etc.
-│   │   ├── settings/                   # 13 components (9 top-level + 4 appearance sub-panels)
-│   │   ├── sidebar/                    # 4 components: Sidebar, ChatList, SessionPanel, ProjectStrip
-│   │   ├── overlay/                    # 2 components: Orb, OverlayPanel
-│   │   ├── terminal/                   # 3 components: Terminal, ShellTerminal, TerminalTabs
-│   │   └── shared/                     # 11 components: Button, SplitPanel, ResizeEdges, etc.
+│   ├── main.js                         # Entry point + browser-behavior suppression
+│   ├── components/                     # ~105 components across 8 directories
+│   │   ├── lens/                       # IDE workspace (48): LensWorkspace/LensToolbar/CommandPalette
+│   │   │   ├── editor/                 #   CodeMirror editor, tabs, diff viewer, LSP UI
+│   │   │   ├── tree/                   #   File tree + context menu
+│   │   │   ├── browser/                #   Browser chrome: tab bar, find, history, downloads, device preview
+│   │   │   ├── viewers/                #   PDF / Office / image / binary viewers
+│   │   │   ├── panels/                 #   Output, Problems, References, Outline, Search
+│   │   │   ├── status/                 #   Status bar dropdown, LSP/MCP/server tabs
+│   │   │   ├── preview/                #   App Preview (see-and-drive) + Lens webview host
+│   │   │   └── git/                    #   Changes + commit panels
+│   │   ├── terminal/                   # xterm.js terminals (10): AI terminal, shells, tabs, splits
+│   │   ├── chat/                       # Chat panel (9)
+│   │   ├── settings/                   # Settings panels (17, incl. appearance/)
+│   │   ├── shared/                     # Reusable primitives (16): Button, SplitPanel, ...
+│   │   ├── sidebar/ overlay/ onboarding/
 │   ├── lib/
-│   │   ├── api.js                      # 102+ invoke() wrappers for all Tauri commands
-│   │   ├── utils.js                    # deepMerge, formatTime, uid
-│   │   ├── markdown.js                 # marked + DOMPurify
-│   │   ├── orb-presets.js              # Orb animation presets
-│   │   ├── avatar-presets.js           # Avatar preset system
-│   │   ├── voice-greeting.js           # Voice greeting text
-│   │   ├── voice-adapters.js           # Voice engine adapters
-│   │   ├── providers.js                # AI provider definitions
-│   │   ├── file-icons.js               # File type icon mapping
-│   │   ├── editor-theme.js             # CodeMirror theme (Voice Mirror custom)
-│   │   ├── editor-lsp.svelte.js        # LSP integration for CodeMirror editor
-│   │   ├── local-llm-instructions.js   # System prompt for API providers
-│   │   └── stores/                     # Reactive stores (Svelte 5 runes; 30+ stores -- list below is a subset)
-│   │       ├── config.svelte.js        # DEFAULT_CONFIG, config state
-│   │       ├── theme.svelte.js         # PRESETS, deriveTheme(), theme state
-│   │       ├── ai-status.svelte.js     # AI provider status
-│   │       ├── chat.svelte.js          # Chat messages + history
-│   │       ├── voice.svelte.js         # Voice pipeline state
-│   │       ├── navigation.svelte.js    # Page navigation
-│   │       ├── shortcuts.svelte.js     # Keyboard shortcuts
-│   │       ├── overlay.svelte.js       # Overlay state
-│   │       ├── toast.svelte.js         # Toast notifications
-│   │       ├── tabs.svelte.js          # Editor tab management
-│   │       ├── lens.svelte.js          # Lens navigation state
-│   │       ├── project.svelte.js       # Project path + file tree
-│   │       ├── terminal-tabs.svelte.js # Terminal tab management
-│   │       ├── browser-tabs.svelte.js  # Browser tab management
-│   │       ├── layout.svelte.js        # Panel layout state
-│   │       ├── attachments.svelte.js   # Chat attachment management
-│   │       ├── lsp-diagnostics.svelte.js # LSP diagnostic state
-│   │       └── dev-server-manager.svelte.js # Dev server detection
-│   └── styles/                         # 9 CSS files
-│       ├── tokens.css                  # Design tokens (CSS custom properties)
-│       ├── base.css                    # Base/reset styles
-│       ├── settings.css                # Settings panel styles
-│       ├── panel.css                   # Panel layout
-│       ├── sidebar.css                 # Sidebar styles
-│       ├── terminal.css                # Terminal styles
-│       ├── orb.css                     # Orb animation styles
-│       ├── notifications.css           # Toast notification styles
-│       └── animations.css              # Shared animations
-├── test/                               # Frontend tests (6700+)
-│   ├── unit/                           # Direct-import tests (.mjs)
-│   ├── stores/                         # Source-inspection tests for stores
-│   ├── api/                            # API wrapper tests
-│   ├── components/                     # Component source-inspection tests
-│   └── lib/                            # Library utility tests
-├── docs/                               # Documentation
-├── .github/workflows/                  # CI, release, CodeQL, Scorecard
+│   │   ├── api.js                      # invoke() wrappers for the Tauri command surface
+│   │   ├── editor/                     # CodeMirror/LSP modules: extensions, theme, git gutter,
+│   │   │                               #   languages, editor-lsp, hover-markdown, lsp-severity
+│   │   ├── terminal/                   # terminal-links, link overlay, scrollback search
+│   │   ├── stores/                     # 32 reactive stores (Svelte 5 runes)
+│   │   └── ...                         # utils, providers, file-icons, commands registry, etc.
+│   ├── styles/                         # 11 CSS files (tokens, base, terminal, panel, ...)
+│   └── assets/                         # Icons (file-type sprite, provider logos)
+├── test/                               # ~6850 JS tests (node:test), tree mirrors src/
+│   ├── components/                     # Source-inspection tests (subfolders match src/components/)
+│   ├── lib/ stores/ api/ editor/       # Library / store / API-surface tests
+│   ├── rust/                           # Source-inspection tests for src-tauri (commands/, lsp/)
+│   └── integration/ diagnostics/ styles/
+├── docs/                               # Documentation (guides/, source-of-truth/, archive/)
+├── scripts/                            # Release staging (make-release, release-nightly) + CDP harness
+├── .github/                            # CI, release, CodeQL, Scorecard, dependabot, templates
 ├── index.html                          # HTML entry point
-├── vite.config.js                      # Vite + Svelte + ghostty WASM plugin
+├── vite.config.js                      # Vite + Svelte config
 └── package.json                        # Frontend deps + npm scripts
 ```
 
@@ -228,8 +158,7 @@ Additional commands via Cargo:
 | svelte (v5) | UI framework with runes |
 | @sveltejs/vite-plugin-svelte | Svelte Vite integration |
 | vite | Build tool + dev server |
-| ghostty-web | WASM terminal emulator (WebGL) -- user-shell terminal |
-| @xterm/xterm + addons | Terminal emulator (WebGL) -- AI agent (Voice Agent) terminal |
+| @xterm/xterm + addons | Terminal emulator (WebGL) -- AI agent (Voice Agent) + user-shell terminals |
 | codemirror + @codemirror/* | Code editor (Lens file editor) |
 | highlight.js + marked-highlight | Syntax highlighting in chat markdown |
 | marked | Markdown rendering |

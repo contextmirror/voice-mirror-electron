@@ -34,7 +34,7 @@ What's missing is everything that makes a "real IDE" feel seamless — the gaps 
 | Feature | VS Code | Zed | Voice Mirror | Status |
 |---------|---------|-----|-------------|--------|
 | Editor (syntax, save) | Full | Full | Full | **Feature Compete** |
-| LSP (diagnostics, hover, completion) | Full | Full | 37/37 feature matrix | **Feature Compete** — see [`LSP-GAP.md`](LSP-GAP.md) |
+| LSP (diagnostics, hover, completion) | Full | Full | 37/37 feature matrix | **Feature Compete** — see [`LSP.md`](LSP.md) |
 | Go-to-definition | Full | Full | Full | **Feature Compete** |
 | Find references | Full | Full | Full | **Feature Compete** |
 | Rename symbol | Full | Full | Full | **Feature Compete** |
@@ -60,7 +60,7 @@ What's missing is everything that makes a "real IDE" feel seamless — the gaps 
 
 ## LSP Feature Comparison
 
-> Full LSP gap analysis lives in [`docs/source-of-truth/LSP-GAP.md`](LSP-GAP.md) — configuration alignment, 37-feature matrix, behavior differences, and implementation priorities.
+> The full LSP architecture + 37-feature matrix lives in [`docs/source-of-truth/LSP.md`](LSP.md); the original gap analysis is archived as `docs/archive/2026-03-05-lsp-gap.md`.
 
 **Current:** 37/37 features. All 5 waves + frontend CodeMirror wiring complete — core editing, navigation (Tier 1 + 2), inline assistance, formatting/editing, visual enhancements, and infrastructure all implemented.
 
@@ -239,7 +239,7 @@ Voice Mirror's extension story is: "Add an MCP server" — not "install a VS Cod
 
 ### 9. Terminal — SEE §14 FOR FULL ANALYSIS
 
-**Status:** Rich terminal system with split panes, sidebar tree, tab coloring/icons, dev-server integration, AI terminal (xterm.js+WebGL) + user shells (ghostty-web), shell profiles, and drag-to-reorder. See §14 below for the gap summary. (The standalone `docs/archive/TERMINAL-GAP-ANALYSIS.md` referenced here is no longer present.)
+**Status:** Rich terminal system with split panes, sidebar tree, tab coloring/icons, dev-server integration, AI terminal + user shells (both xterm.js+WebGL), shell profiles, and drag-to-reorder. See §14 below for the gap summary. (The standalone `docs/archive/TERMINAL-GAP-ANALYSIS.md` referenced here is no longer present.)
 
 ---
 
@@ -409,7 +409,7 @@ Voice Mirror's extension story is: "Add an MCP server" — not "install a VS Cod
 | Tab renaming, context menus | ✅ |
 | Dev server integration (framework detection, crash protection) | ✅ |
 | AI terminal (dedicated Claude Code PTY) | ✅ |
-| Engine split: AI terminal = xterm.js+WebGL, user shells = ghostty-web WASM | ✅ |
+| Unified engine: AI terminal and user shells both xterm.js+WebGL | ✅ |
 | 5000-line scrollback | ✅ |
 
 #### Recently Closed Terminal Gaps (2026-02-27)
@@ -545,8 +545,8 @@ The top 5 high-priority terminal gaps are now closed. Remaining gaps are medium/
 | ~~10~~ | ~~**Indent guides**~~ | ~~Editor~~ | ~~Medium~~ | ~~Small~~ | ✅ Done — `@replit/codemirror-indentation-markers` + status bar toggle. §15 |
 | ~~11~~ | ~~**Navigate to next/prev diff file**~~ | ~~Diff~~ | ~~Medium~~ | ~~Small~~ | ✅ Done — Alt+F5/Shift+Alt+F5, toolbar buttons, command palette. §12 |
 | 12 | **Interactive diff minimap** | Diff | Low | Small | Click minimap to jump to chunk. §12 |
-| ~~13~~ | ~~**Workspace symbols**~~ | ~~LSP~~ | ~~Medium~~ | ~~Medium~~ | ✅ Backend + API complete (no dedicated UI panel yet). LSP-GAP §2 |
-| ~~14~~ | ~~**Inlay hints**~~ | ~~LSP~~ | ~~Medium~~ | ~~Medium~~ | ✅ Done — CM ViewPlugin extension. LSP-GAP §2 |
+| ~~13~~ | ~~**Workspace symbols**~~ | ~~LSP~~ | ~~Medium~~ | ~~Medium~~ | ✅ Backend + API complete (no dedicated UI panel yet). See LSP.md |
+| ~~14~~ | ~~**Inlay hints**~~ | ~~LSP~~ | ~~Medium~~ | ~~Medium~~ | ✅ Done — CM ViewPlugin extension. See LSP.md |
 | 15 | **Breadcrumbs** | Editor | Low | Small | File path segments above editor |
 | ~~16~~ | ~~**Code minimap**~~ | ~~Editor~~ | ~~Low~~ | ~~Large~~ | ✅ Done — `@replit/codemirror-minimap` in file editor + `DiffMinimap.svelte` |
 | ~~17~~ | ~~**Window capture (universal app vision)**~~ | ~~Vision~~ | ~~Medium-High~~ | ~~Medium~~ | ✅ Done — shipped as the see-and-drive App Preview / sandbox (WGC + CDP/UIA + window-follow + `sandbox_*`), Windows-only. §17 |
@@ -571,7 +571,7 @@ The strategy: close the top gaps so Lens is **comfortable enough** for real codi
 
 **Done:** find/replace ✓, multi-cursor ✓, global search ✓, git stage+commit+push ✓, branch management ✓, dynamic sync ✓, document formatting ✓, signature help ✓, split editor ✓, command palette ✓, file tree git decorations ✓, LSP diagnostics in tree ✓, code minimap ✓, terminal tab close ✓, terminal grid splits (H+V) ✓, terminal find (Ctrl+F) ✓, terminal clickable links (Ctrl+click) ✓, terminal persistence ✓, inline gutter change indicators ✓, closed tab history + Ctrl+Shift+T ✓, mouse wheel scroll on tab bar ✓, back/forward navigation (Alt+Left/Right) ✓, Ctrl+hover definition underline ✓, Ctrl+PageUp/PageDown tab cycling ✓, tab drag to split zones ✓, Problems panel (Ctrl+Shift+M) ✓, code actions lightbulb gutter ✓, font zoom (Ctrl+=/−/0) ✓, LSP server management Phase 1 ✓, LSP crash recovery + health monitoring + idle shutdown (Phase 2) ✓, LSP project scanning + multi-server routing + native binary support (Phase 3) ✓, project output channels (build logs + browser console → MCP) ✓, keyboard tree navigation (arrow keys) ✓, drag-to-move files in tree ✓.
 
-**Next wave:** hunk-level staging (stage individual diff chunks from the gutter). This is the remaining high-impact gap that separates "usable" from "daily driver." The file tree is now feature-compete for navigation (keyboard + drag-to-move). The terminal is feature-compete with VS Code for core workflows. LSP is now feature-compete across the full 37-feature matrix (inlay hints, workspace symbols, semantic tokens, code lens, document colors, etc. all shipped) — the only remaining LSP work is surfacing a few backend-only features (workspace symbols, call/type hierarchy) in dedicated UI panels. See [`LSP-GAP.md`](LSP-GAP.md).
+**Next wave:** hunk-level staging (stage individual diff chunks from the gutter). This is the remaining high-impact gap that separates "usable" from "daily driver." The file tree is now feature-compete for navigation (keyboard + drag-to-move). The terminal is feature-compete with VS Code for core workflows. LSP is now feature-compete across the full 37-feature matrix (inlay hints, workspace symbols, semantic tokens, code lens, document colors, etc. all shipped) — the only remaining LSP work is surfacing a few backend-only features (workspace symbols, call/type hierarchy) in dedicated UI panels. See [`LSP.md`](LSP.md).
 
 ---
 

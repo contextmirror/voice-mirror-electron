@@ -107,6 +107,18 @@ describe('api.js -- critical Tauri command names', () => {
     'lens_set_visible',
     'lens_hard_refresh',
     'lens_clear_cache',
+    'lens_print',
+    'lens_toggle_tab_mute',
+    'lens_permission_response',
+    'lens_get_permissions',
+    'lens_clear_permission',
+    // Browser Extensions
+    'lens_extensions_list',
+    'lens_extension_add',
+    'lens_extension_install_crx',
+    'lens_extension_set_enabled',
+    'lens_extension_remove',
+    'lens_apply_privacy',
     // DevTools
     'lens_find_devtools_url',
     'lens_open_devtools',
@@ -169,8 +181,6 @@ describe('api.js -- critical Tauri command names', () => {
     // Project Output Channels
     'register_project_channel',
     'unregister_project_channel',
-    'push_project_log',
-    'list_project_channels',
     // LSP
     'lsp_request_formatting',
     'lsp_request_range_formatting',
@@ -214,21 +224,17 @@ describe('api.js -- exported async functions', () => {
   const expectedExports = [
     // Config
     'getConfig',
-    'getApiKey',
     'setConfig',
     'resetConfig',
-    'getPlatformInfo',
     // Window
     'getWindowPosition',
     'setWindowPosition',
     'minimizeWindow',
-    'maximizeWindow',
-    'saveWindowBounds',
-    'quitApp',
     'setWindowSize',
     'setAlwaysOnTop',
     'setResizable',
     'showWindow',
+    'takeStartupOpenPaths',
     // Voice
     'startVoice',
     'stopVoice',
@@ -239,7 +245,6 @@ describe('api.js -- exported async functions', () => {
     'setVoiceMode',
     'listAudioDevices',
     'speakText',
-    'stopSpeaking',
     'pttPress',
     'pttRelease',
     'cancelRecording',
@@ -250,8 +255,6 @@ describe('api.js -- exported async functions', () => {
     // AI
     'startAI',
     'stopAI',
-    'interruptAI',
-    'getProvider',
     'getAIStatus',
     'aiPtyInput',
     'aiRawInput',
@@ -270,7 +273,6 @@ describe('api.js -- exported async functions', () => {
     'chatRename',
     'exportChatToFile',
     // Screenshot
-    'takeScreenshot',
     'saveImageToTemp',
     'listMonitors',
     'listWindows',
@@ -278,20 +280,16 @@ describe('api.js -- exported async functions', () => {
     'captureWindow',
     'lensCapturePreview',
     // Tools
-    'scanCliTools',
     'checkNpmVersions',
     'updateNpmPackage',
     // Shortcuts
     'registerShortcut',
     'unregisterShortcut',
     'unregisterAllShortcuts',
-    'listShortcuts',
     // Performance Stats
     'getProcessStats',
     // Migration
     // Lens
-    'lensCreateWebview',
-    'lensCloseWebview',
     'lensNavigate',
     'lensGoBack',
     'lensGoForward',
@@ -300,16 +298,17 @@ describe('api.js -- exported async functions', () => {
     'lensSetVisible',
     'lensHardRefresh',
     'lensClearCache',
-    'sandboxSnapshot',
-    'sandboxClick',
-    'sandboxType',
-    'sandboxScreenshot',
     'sandboxSetActivePort',
     'sandboxClearActivePort',
     'sandboxStreamStart',
     'sandboxStreamStop',
     'sandboxListWindows',
-    'sandboxActiveHwnd',
+    'sandboxStartAck',
+    'findFreeCdpPort',
+    'ensureCorepackShims',
+    'findNativeWindow',
+    'isWindowAlive',
+    'logPreview',
     // Design Overlay
     'designCommand',
     'designExpandTreeNode',
@@ -322,6 +321,17 @@ describe('api.js -- exported async functions', () => {
     'lensCloseAllTabs',
     'lensSetZoom',
     'lensGetZoom',
+    'lensPrint',
+    'lensToggleTabMute',
+    'lensPermissionResponse',
+    'lensGetPermissions',
+    'lensClearPermission',
+    'lensExtensionsList',
+    'lensExtensionAdd',
+    'lensExtensionInstallCrx',
+    'lensExtensionSetEnabled',
+    'lensExtensionRemove',
+    'lensApplyPrivacy',
     'lensOpenDevtools',
     'findDevtoolsUrl',
     'lensCloseDevtools',
@@ -349,7 +359,6 @@ describe('api.js -- exported async functions', () => {
     'probePort',
     'killPortProcess',
     // Files
-    'getProjectRoot',
     'listDirectory',
     'getGitChanges',
     'readFile',
@@ -392,7 +401,6 @@ describe('api.js -- exported async functions', () => {
     'terminalResize',
     'terminalKill',
     'terminalDetectProfiles',
-    'terminalList',
     // LSP
     'lspOpenFile',
     'lspCloseFile',
@@ -442,8 +450,6 @@ describe('api.js -- exported async functions', () => {
     // Project Output Channels
     'registerProjectChannel',
     'unregisterProjectChannel',
-    'pushProjectLog',
-    'listProjectChannels',
     'getOutputLogs',
     'exportDiagnostics',
     'detectProviders',
@@ -456,6 +462,10 @@ describe('api.js -- exported async functions', () => {
     'lensGetHistory',
     'lensClearHistory',
     'lensDeleteHistoryEntry',
+    // Browser Bookmarks
+    'lensAddBookmark',
+    'lensRemoveBookmark',
+    'lensGetBookmarks',
     // Downloads
     'lensGetDownloads',
     'lensClearDownloads',
@@ -500,7 +510,7 @@ describe('api.js -- exported async functions', () => {
 });
 
 describe('api.js -- section organization', () => {
-  const sections = ['Config', 'Window', 'Voice', 'AI', 'Inbox', 'Chat', 'Screenshot', 'Tools', 'Shortcuts', 'Performance Stats', 'Config Migration', 'Design Overlay', 'Lens', 'Browser Tabs', 'Browser History', 'Downloads', 'Dev Server', 'GPU / Model Management', 'Files', 'Terminal', 'LSP', 'Project Output Channels', 'Output / Diagnostics', 'Workspace State'];
+  const sections = ['Config', 'Window', 'Voice', 'AI', 'Inbox', 'Chat', 'Screenshot', 'Tools', 'Shortcuts', 'Performance Stats', 'Config Migration', 'Design Overlay', 'Lens', 'Browser Tabs', 'Browser Extensions', 'Browser History', 'Downloads', 'Dev Server', 'GPU / Model Management', 'Files', 'Terminal', 'LSP', 'Project Output Channels', 'Output / Diagnostics', 'Workspace State'];
 
   for (const section of sections) {
     it(`has "${section}" section comment`, () => {

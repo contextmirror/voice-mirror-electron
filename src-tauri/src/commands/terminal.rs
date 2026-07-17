@@ -28,7 +28,9 @@ macro_rules! lock_terminal {
 /// Returns `{ "id": "terminal-1" }` on success.
 /// If `profile_id` is provided, spawns using the matching shell profile.
 /// If `output_channel` is provided, PTY stdout is also mirrored to that project output channel.
-#[tauri::command]
+// `(async)` runs this on a worker thread instead of the main/UI thread —
+// spawning a PTY + shell is blocking work that would freeze the window.
+#[tauri::command(async)]
 pub fn terminal_spawn(
     state: State<'_, TerminalManagerState>,
     output_state: State<'_, std::sync::Arc<crate::services::output::OutputStore>>,
@@ -103,8 +105,35 @@ pub fn terminal_resize(
     }
 }
 
-/// Kill a terminal session.
+/// Find the OS window of a NATIVE app launched in terminal session `id` (e.g.
+/// `cargo run -p egui_demo_app`). Walks the PTY's process tree for a presentable
+/// window. Returns `{ hwnd }` (null while the app hasn't shown a window yet — a
+/// `cargo run` compiles first, so the frontend polls this). The native-app
+/// counterpart to CDP-port window matching.
+#[tauri::command(async)]
+pub fn find_native_window(state: State<'_, TerminalManagerState>, id: String) -> IpcResponse {
+    let pid = {
+        let manager = lock_terminal!(state);
+        manager.pid(&id)
+    };
+    let Some(pid) = pid else {
+        return IpcResponse::ok(serde_json::json!({ "hwnd": serde_json::Value::Null }));
+    };
+    let hwnd = crate::services::sandbox::find_window_in_process_tree(pid);
+    IpcResponse::ok(serde_json::json!({ "hwnd": hwnd }))
+}
+
+/// Whether an OS window still exists — native-app liveness (no CDP port to
+/// probe). Returns `{ alive }`.
 #[tauri::command]
+pub fn is_window_alive(hwnd: i64) -> IpcResponse {
+    IpcResponse::ok(serde_json::json!({ "alive": crate::services::sandbox::is_window_alive(hwnd) }))
+}
+
+/// Kill a terminal session.
+// `(async)`: TerminalManager::kill runs taskkill and then waits up to 3s for
+// the child to exit — far too long to block the main/UI thread.
+#[tauri::command(async)]
 pub fn terminal_kill(
     state: State<'_, TerminalManagerState>,
     id: String,
@@ -114,14 +143,4 @@ pub fn terminal_kill(
         Ok(()) => IpcResponse::ok_empty(),
         Err(e) => IpcResponse::err(e),
     }
-}
-
-/// List all active terminal session IDs.
-#[tauri::command]
-pub fn terminal_list(
-    state: State<'_, TerminalManagerState>,
-) -> IpcResponse {
-    let manager = lock_terminal!(state);
-    let sessions = manager.list();
-    IpcResponse::ok(json!({ "sessions": sessions }))
 }

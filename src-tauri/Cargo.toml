@@ -1,6 +1,6 @@
 [package]
 name = "voice-mirror"
-version = "0.12.16"
+version = "0.13.0-nightly.6"
 description = "Voice-controlled AI agent overlay for your desktop"
 license = "MIT"
 authors = [""]
@@ -54,7 +54,8 @@ whisper-rs = { version = "0.15", optional = true }
 
 # TTS: ONNX Runtime for Kokoro local inference
 ort = { version = "2.0.0-rc.11", optional = true }
-zip = { version = "2", default-features = false, features = ["deflate"], optional = true }
+# Also used to unpack CRX3 extension archives for the browser extensions manager.
+zip = { version = "2", default-features = false, features = ["deflate"] }
 byteorder = { version = "1", optional = true }
 
 # TTS: MP3 decode for Edge TTS cloud audio
@@ -145,5 +146,5 @@ path = "src/bin/mcp.rs"
 default = []
 whisper = ["whisper-rs"]
 cuda = ["whisper-rs/cuda"]
-onnx = ["ort", "zip", "byteorder"]
+onnx = ["ort", "byteorder"]
 native-ml = ["whisper", "onnx"]

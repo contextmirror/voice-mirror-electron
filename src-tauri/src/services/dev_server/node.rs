@@ -3,10 +3,91 @@
 //! Scans package.json scripts, vite.config.*, tauri.conf.json, and .env files
 //! for known framework patterns and port configurations.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::DetectedDevServer;
 use super::util::{make_start_command, extract_port_from_url, extract_vite_port, extract_port_from_env, extract_port_flag};
+
+/// Find a `tauri.conf.json` anywhere in the usual (mono)repo spots — not just
+/// the standard `<root>/src-tauri`. Real complex Tauri apps put it elsewhere
+/// (yaak: `crates-tauri/yaak-app-client/tauri.conf.json`). Scans the root, its
+/// `src-tauri/`, and one level into `apps/*`, `crates-tauri/*`, `src-tauri/*`,
+/// `packages/*`. Returns `(conf_path, devUrl_port)` for the first real Tauri
+/// config found (`port` is `None` for a static-frontend app).
+fn find_tauri_conf_anywhere(root: &Path) -> Option<(PathBuf, Option<u16>)> {
+    let mut candidates: Vec<PathBuf> = vec![
+        root.join("tauri.conf.json"),
+        root.join("src-tauri").join("tauri.conf.json"),
+    ];
+    for parent in ["apps", "crates-tauri", "src-tauri", "packages"] {
+        if let Ok(entries) = std::fs::read_dir(root.join(parent)) {
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    candidates.push(p.join("tauri.conf.json"));
+                    candidates.push(p.join("src-tauri").join("tauri.conf.json"));
+                }
+            }
+        }
+    }
+    for conf in candidates {
+        if let Ok(content) = std::fs::read_to_string(&conf) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                // Confirm it's really a Tauri config, not some other tauri.conf.
+                let looks_tauri = json.get("identifier").is_some()
+                    || json.get("build").is_some()
+                    || json.get("app").is_some();
+                if looks_tauri {
+                    let port = json
+                        .get("build")
+                        .and_then(|b| b.get("devUrl"))
+                        .and_then(|v| v.as_str())
+                        .and_then(extract_port_from_url);
+                    return Some((conf, port));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Detect a Tauri app that is launched by the project's OWN root `dev`/`start`
+/// script rather than a standard `tauri dev` — bespoke monorepos where a custom
+/// node launcher orchestrates the build (yaak: `npm start` →
+/// `node scripts/run-dev.mjs client` → `tauri dev` in `crates-tauri/...`). The
+/// author's script is the source of truth; we run it from the repo root (env,
+/// incl. our injected CDP debug port, inherits down the process tree), using the
+/// devUrl port from the discovered config. A FALLBACK — only used when standard
+/// Tauri detection found nothing.
+pub(super) fn detect_tauri_via_custom_launcher(
+    root: &Path,
+    pkg_manager: &str,
+) -> Option<DetectedDevServer> {
+    let (conf_path, port) = find_tauri_conf_anywhere(root)?;
+    let pkg = std::fs::read_to_string(root.join("package.json")).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&pkg).ok()?;
+    let scripts = json.get("scripts").and_then(|s| s.as_object())?;
+    // The project's canonical run entrypoint, in preference order.
+    let script_key = ["dev", "start", "tauri:dev", "app:dev"]
+        .into_iter()
+        .find(|k| scripts.contains_key(*k))?;
+    let rel_conf = conf_path
+        .strip_prefix(root)
+        .unwrap_or(&conf_path)
+        .to_string_lossy()
+        .replace('\\', "/");
+    Some(DetectedDevServer {
+        framework: "Tauri".to_string(),
+        port: port.unwrap_or(0),
+        url: port
+            .map(|p| format!("http://localhost:{}", p))
+            .unwrap_or_default(),
+        start_command: make_start_command(pkg_manager, script_key),
+        source: format!("package.json `{}` script → {}", script_key, rel_conf),
+        running: false,
+        ..Default::default()
+    })
+}
 
 /// Try to read a Bun entry file (e.g. `index.ts`) and extract the `port` value.
 fn extract_bun_port_from_script(cmd: &str, root: &Path) -> Option<u16> {
@@ -22,28 +103,51 @@ fn extract_bun_port_from_script(cmd: &str, root: &Path) -> Option<u16> {
     caps.get(1)?.as_str().parse::<u16>().ok()
 }
 
-/// Detect a dev server from `src-tauri/tauri.conf.json`'s `build.devUrl`.
+/// Detect a Tauri app from `src-tauri/tauri.conf.json`.
+///
+/// With `build.devUrl` the frontend runs on a dev server at that port. WITHOUT
+/// it the app serves a static `frontendDist` directly (the vanilla
+/// `create-tauri-app` template) — still perfectly launchable via `tauri dev`,
+/// just with NO dev port to poll: `port` is 0 ("no dev server"), and readiness
+/// is judged by the CDP debug port instead (the launcher allocates one for
+/// every Tauri app).
 pub(super) fn detect_from_tauri_conf(root: &Path, pkg_manager: &str) -> Option<DetectedDevServer> {
     let conf_path = root.join("src-tauri").join("tauri.conf.json");
     let content = std::fs::read_to_string(&conf_path).ok()?;
     let json: serde_json::Value = serde_json::from_str(&content).ok()?;
-    let dev_url = json.get("build")?.get("devUrl")?.as_str()?;
-    let port = extract_port_from_url(dev_url)?;
-    Some(DetectedDevServer {
-        framework: "Tauri".to_string(),
-        port,
-        url: dev_url.to_string(),
-        // Run the actual Tauri app (`tauri dev`), not just the web frontend.
-        // `tauri dev` runs the `beforeDevCommand` (the frontend) itself AND
-        // compiles + launches the native app window — the window that exposes
-        // CDP for the sandbox live preview. Running only the frontend (the old
-        // `npm run dev`) served the web part but never started the app, so its
-        // CDP port had nothing to connect to. One command = no port clash.
-        start_command: make_start_command(pkg_manager, "tauri dev"),
-        source: "tauri.conf.json".to_string(),
-        running: false,
-        ..Default::default()
-    })
+
+    // Run the actual Tauri app (`tauri dev`), not just the web frontend.
+    // `tauri dev` runs the `beforeDevCommand` (the frontend) itself AND
+    // compiles + launches the native app window — the window that exposes
+    // CDP for the sandbox live preview. Running only the frontend (the old
+    // `npm run dev`) served the web part but never started the app, so its
+    // CDP port had nothing to connect to. One command = no port clash.
+    let start_command = make_start_command(pkg_manager, "tauri dev");
+
+    let dev_url = json
+        .get("build")
+        .and_then(|b| b.get("devUrl"))
+        .and_then(|u| u.as_str());
+    match dev_url.and_then(extract_port_from_url) {
+        Some(port) => Some(DetectedDevServer {
+            framework: "Tauri".to_string(),
+            port,
+            url: dev_url.unwrap_or_default().to_string(),
+            start_command,
+            source: "tauri.conf.json".to_string(),
+            running: false,
+            ..Default::default()
+        }),
+        None => Some(DetectedDevServer {
+            framework: "Tauri".to_string(),
+            port: 0, // no dev server — static frontendDist
+            url: String::new(),
+            start_command,
+            source: "tauri.conf.json (static frontend, no dev server)".to_string(),
+            running: false,
+            ..Default::default()
+        }),
+    }
 }
 
 /// Detect a dev server from `vite.config.{js,ts,mjs,mts}` server.port.
@@ -146,6 +250,15 @@ pub(super) fn detect_from_package_json(root: &Path, pkg_manager: &str) -> Vec<De
                 // when it's actually on e.g. :1430.
                 if server.framework == "Vite" && extract_port_flag(cmd).is_none() {
                     if let Some(port) = configured_port {
+                        server.port = port;
+                        server.url = format!("http://localhost:{}", port);
+                    }
+                }
+                // A plain Node server's port usually lives in its entry file
+                // (`process.env.PORT || 5006`, `app.listen(8080)`) — read it so
+                // readiness doesn't poll a wrong default for 30s.
+                if server.framework == "Node" && extract_port_flag(cmd).is_none() {
+                    if let Some(port) = node_entry_port(root, cmd) {
                         server.port = port;
                         server.url = format!("http://localhost:{}", port);
                     }
@@ -374,12 +487,79 @@ pub(super) fn match_script_pattern(cmd: &str, script_key: &str, pkg_manager: &st
         });
     }
 
+    // Generic Node server (Express & friends): `node index.js`, `node --watch
+    // server.js`, `nodemon app.js`. No framework banner, no config file — the
+    // long tail of plain HTTP servers (live repro: the Heroku Express starter,
+    // start = `node index.js`, which detection refused with "no dev server").
+    // Matched LAST so every framework-specific pattern above wins first.
+    {
+        let tokens: Vec<&str> = cmd.split_whitespace().collect();
+        let is_node = matches!(tokens.first(), Some(&"node") | Some(&"nodemon"));
+        let entry_is_js = tokens
+            .last()
+            .map(|t| t.ends_with(".js") || t.ends_with(".mjs") || t.ends_with(".cjs"))
+            .unwrap_or(false);
+        if is_node && entry_is_js {
+            let port = port_override.unwrap_or(3000);
+            return Some(DetectedDevServer {
+                framework: "Node".to_string(),
+                port,
+                url: format!("http://localhost:{}", port),
+                start_command: make_start_command(pkg_manager, script_key),
+                source: "package.json".to_string(),
+                running: false,
+                ..Default::default()
+            });
+        }
+    }
+
     None
+}
+
+/// Best-effort port for a plain Node server, read from its entry file. Covers
+/// the two dominant idioms — `process.env.PORT || 5006` (env with a literal
+/// fallback) and `.listen(8080` — so readiness starts polling near the truth.
+/// The runtime stdout sniffer still corrects the final answer.
+pub(super) fn node_entry_port(root: &Path, cmd: &str) -> Option<u16> {
+    let entry = cmd.split_whitespace().last()?;
+    let content = std::fs::read_to_string(root.join(entry)).ok()?;
+    static NODE_PORT_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"(?:PORT\s*(?:\|\||\?\?)\s*|\.listen\(\s*)(\d{2,5})").unwrap()
+    });
+    NODE_PORT_RE.captures(&content)?.get(1)?.as_str().parse().ok()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_match_script_plain_node_server() {
+        // The Heroku Express starter: start = `node index.js` — previously no
+        // pattern matched and detection refused with "no dev server detected".
+        let server = match_script_pattern("node index.js", "start", "npm").unwrap();
+        assert_eq!(server.framework, "Node");
+        assert_eq!(server.port, 3000);
+        let watch = match_script_pattern("node --watch server.mjs", "dev", "npm").unwrap();
+        assert_eq!(watch.framework, "Node");
+        // But NOT arbitrary node invocations of non-JS things.
+        assert!(match_script_pattern("node --test", "start", "npm").is_none());
+    }
+
+    #[test]
+    fn test_node_entry_port_reads_the_entry_file() {
+        let dir = std::env::temp_dir().join(format!("vm_nodeport_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("index.js"),
+            "const port = process.env.PORT || 5006\napp.listen(port)\n",
+        )
+        .unwrap();
+        assert_eq!(node_entry_port(&dir, "node index.js"), Some(5006));
+        std::fs::write(dir.join("srv.js"), "app.listen(8123)\n").unwrap();
+        assert_eq!(node_entry_port(&dir, "node srv.js"), Some(8123));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn test_match_script_vite() {
@@ -502,6 +682,58 @@ mod tests {
     }
 
     #[test]
+    fn test_custom_launcher_tauri_yaak_shape() {
+        // A yaak-style bespoke monorepo: tauri.conf.json under crates-tauri/<app>
+        // (NOT <root>/src-tauri), and the app is launched by the root `start`
+        // script (a custom node launcher we don't statically recognize). Standard
+        // detection finds nothing; the custom-launcher fallback must still run it.
+        let dir = std::env::temp_dir().join(format!("vm_test_custom_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let app = dir.join("crates-tauri").join("app-client");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(
+            app.join("tauri.conf.json"),
+            r#"{ "identifier": "com.x.app", "build": { "devUrl": "http://localhost:1420" } }"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("package.json"),
+            r#"{ "scripts": { "start": "node scripts/run-dev.mjs client" } }"#,
+        )
+        .unwrap();
+
+        // Standard root Tauri detection must MISS it (no <root>/src-tauri).
+        assert!(detect_from_tauri_conf(&dir, "npm").is_none());
+
+        // The custom-launcher fallback finds it and runs the ROOT `start` script.
+        let s = detect_tauri_via_custom_launcher(&dir, "npm").unwrap();
+        assert_eq!(s.framework, "Tauri");
+        assert_eq!(s.port, 1420);
+        assert_eq!(s.start_command, "npm run start");
+        assert!(s.source.contains("crates-tauri/app-client/tauri.conf.json"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_custom_launcher_ignored_without_launch_script() {
+        // A Tauri conf but no runnable root dev/start script → can't launch → None.
+        let dir = std::env::temp_dir().join(format!("vm_test_custom_none_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let app = dir.join("apps").join("desktop");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(
+            app.join("tauri.conf.json"),
+            r#"{ "build": { "devUrl": "http://localhost:1420" } }"#,
+        )
+        .unwrap();
+        std::fs::write(dir.join("package.json"), r#"{ "scripts": { "build": "x" } }"#).unwrap();
+
+        assert!(detect_tauri_via_custom_launcher(&dir, "npm").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn test_detect_from_tauri_conf_parses_correctly() {
         let dir = std::env::temp_dir().join("vm_test_tauri_conf");
         let tauri_dir = dir.join("src-tauri");
@@ -518,6 +750,32 @@ mod tests {
         assert_eq!(server.port, 1420);
         assert_eq!(server.url, "http://localhost:1420");
         assert_eq!(server.source, "tauri.conf.json");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_detect_tauri_conf_without_dev_url_is_port_zero() {
+        // The vanilla create-tauri-app template: static frontendDist, NO
+        // build.devUrl — still launchable via `tauri dev`. Detection must
+        // report it (port 0 = no dev server) instead of finding nothing
+        // (live repro: preview-testbed/tauri-vanilla, found=0, unlaunchable).
+        let dir = std::env::temp_dir().join("vm_test_tauri_conf_nodev");
+        let tauri_dir = dir.join("src-tauri");
+        let _ = std::fs::create_dir_all(&tauri_dir);
+
+        std::fs::write(
+            tauri_dir.join("tauri.conf.json"),
+            r#"{ "build": { "frontendDist": "../src" } }"#,
+        )
+        .unwrap();
+
+        let server = detect_from_tauri_conf(&dir, "npm").unwrap();
+        assert_eq!(server.framework, "Tauri");
+        assert_eq!(server.port, 0);
+        assert!(server.url.is_empty());
+        assert!(server.start_command.contains("tauri dev"));
+        assert!(server.source.contains("no dev server"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }

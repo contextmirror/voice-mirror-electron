@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tracing::{debug, error, info, warn};
 
 /// Inbox JSON structure matching the MCP server format.
@@ -90,6 +90,22 @@ impl WatcherState {
     }
 }
 
+/// Shared handle to the watcher's seen-ids set, registered in Tauri managed
+/// state by `start_inbox_watcher`.
+///
+/// Lets the pipe server mark a pipe-delivered `VoiceSend` message id as
+/// already emitted, so the file watcher doesn't emit a duplicate
+/// `mcp-inbox-message` for the same id when inbox.json changes (~100ms later).
+pub struct InboxSeenIds(Arc<Mutex<WatcherState>>);
+
+impl InboxSeenIds {
+    /// Record a message id as already emitted to the frontend.
+    pub fn mark_seen(&self, id: &str) {
+        let mut state = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        state.mark_seen(id.to_string());
+    }
+}
+
 /// Get the MCP server data directory.
 ///
 /// Uses `voice-mirror` as the app name under the platform config directory.
@@ -118,6 +134,10 @@ pub fn get_inbox_path() -> PathBuf {
 pub fn clear_inbox() {
     let inbox_path = get_inbox_path();
     if inbox_path.exists() {
+        // Cross-process lock: the MCP binary may be mid read-modify-write on
+        // this file (voice_send); clearing during its cycle would be undone
+        // or corrupt the store.
+        let _lock = crate::util::acquire_file_lock(&inbox_path.with_extension("lock"));
         match std::fs::write(&inbox_path, r#"{"messages":[]}"#) {
             Ok(()) => info!("Cleared inbox.json for new session"),
             Err(e) => warn!("Failed to clear inbox.json: {}", e),
@@ -198,7 +218,7 @@ fn process_inbox(
             kind,
             msg.from,
             msg.id,
-            &msg.message[..msg.message.len().min(50)]
+            crate::util::truncate_utf8(&msg.message, 50)
         );
 
         if let Err(e) = app_handle.emit("mcp-inbox-message", &event) {
@@ -254,6 +274,11 @@ pub fn write_inbox_message_with_image(
     // Ensure data directory exists
     std::fs::create_dir_all(&data_dir)
         .map_err(|e| format!("Failed to create data dir: {}", e))?;
+
+    // Cross-process lock around the read→append→rename cycle: the MCP binary
+    // (voice_send) does the same cycle on this file from another process, and
+    // unserialized concurrent writes lose messages. Released on drop.
+    let _lock = crate::util::acquire_file_lock(&inbox_path.with_extension("lock"));
 
     // Read existing inbox or create empty
     let mut data = read_inbox(&inbox_path).unwrap_or_default();
@@ -319,7 +344,7 @@ pub fn write_inbox_message_with_image(
     info!(
         "Wrote inbox message from '{}': {}...",
         from,
-        &message[..message.len().min(50)]
+        crate::util::truncate_utf8(message, 50)
     );
     Ok(())
 }
@@ -341,6 +366,10 @@ pub fn start_inbox_watcher(app_handle: AppHandle) -> Result<InboxWatcherHandle, 
 
     // Initialize state and seed with existing messages
     let state = Arc::new(Mutex::new(WatcherState::new()));
+
+    // Share the seen-set with the pipe server: a VoiceSend dispatched over the
+    // pipe is marked seen there so this watcher won't re-emit the same id.
+    app_handle.manage(InboxSeenIds(Arc::clone(&state)));
 
     if let Some(data) = read_inbox(&inbox_path) {
         let mut s = state.lock().unwrap_or_else(|e| e.into_inner());

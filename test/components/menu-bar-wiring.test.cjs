@@ -13,7 +13,7 @@ function read(rel) {
 }
 
 const commands = read('src/lib/commands.svelte.js');
-const fileEditor = read('src/components/lens/FileEditor.svelte');
+const fileEditor = read('src/components/lens/editor/FileEditor.svelte');
 const terminalTabs = read('src/components/terminal/TerminalTabs.svelte');
 const terminalPanel = read('src/components/terminal/TerminalPanel.svelte');
 const app = read('src/App.svelte');

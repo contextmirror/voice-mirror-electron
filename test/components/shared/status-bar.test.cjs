@@ -1,0 +1,868 @@
+/**
+ * status-bar.test.cjs -- Source-inspection tests for StatusBar.svelte
+ *
+ * Validates layout, imports, theme CSS variables, each status bar item (L1-L4, R1-R6),
+ * conditional visibility, CSS properties, and notification bell + panel.
+ */
+const { describe, it } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+
+const src = fs.readFileSync(
+  path.join(__dirname, '../../../src/components/shared/StatusBar.svelte'),
+  'utf-8'
+);
+
+describe('StatusBar.svelte: imports', () => {
+  it('imports statusBarStore', () => {
+    assert.ok(src.includes("from '../../lib/stores/status-bar.svelte.js'"), 'Should import statusBarStore');
+  });
+
+  it('imports navigationStore', () => {
+    assert.ok(src.includes("from '../../lib/stores/navigation.svelte.js'"), 'Should import navigationStore');
+  });
+
+  it('imports projectStore', () => {
+    assert.ok(src.includes("from '../../lib/stores/project.svelte.js'"), 'Should import projectStore');
+  });
+
+  it('imports lspDiagnosticsStore', () => {
+    assert.ok(src.includes("from '../../lib/stores/lsp-diagnostics.svelte.js'"), 'Should import lspDiagnosticsStore');
+  });
+
+  it('imports devServerManager', () => {
+    assert.ok(src.includes("from '../../lib/stores/dev-server-manager.svelte.js'"), 'Should import devServerManager');
+  });
+});
+
+describe('StatusBar.svelte: layout', () => {
+  it('uses footer element with status-bar class', () => {
+    assert.ok(src.includes('<footer class="status-bar"'), 'Should use <footer class="status-bar">');
+  });
+
+  it('has left section', () => {
+    assert.ok(src.includes('status-bar-left'), 'Should have left section class');
+  });
+
+  it('has right section', () => {
+    assert.ok(src.includes('status-bar-right'), 'Should have right section class');
+  });
+
+  it('has center section', () => {
+    assert.ok(src.includes('status-bar-center'), 'Should have center section class');
+  });
+});
+
+describe('StatusBar.svelte: AI provider pill (relocated from titlebar)', () => {
+  it('imports aiStatusStore', () => {
+    assert.ok(src.includes("from '../../lib/stores/ai-status.svelte.js'"), 'Should import aiStatusStore');
+  });
+
+  it('imports PROVIDER_ICONS from providers.js', () => {
+    assert.ok(src.includes("from '../../lib/providers.js'"), 'Should import PROVIDER_ICONS');
+  });
+
+  it('derives providerIcon from the provider type', () => {
+    assert.ok(src.includes('PROVIDER_ICONS[aiStatusStore.providerType'), 'Should derive providerIcon');
+  });
+
+  it('has sb-provider container', () => {
+    assert.ok(src.includes('sb-provider'), 'Should have provider pill container');
+  });
+
+  it('has sb-provider-dot status dot', () => {
+    assert.ok(src.includes('sb-provider-dot'), 'Should have status dot');
+  });
+
+  it('binds running/starting classes to the dot and state', () => {
+    assert.ok(src.includes('class:running={aiStatusStore.running}'), 'Should bind running class');
+    assert.ok(src.includes('class:starting={aiStatusStore.starting}'), 'Should bind starting class');
+  });
+
+  it('displays provider name from aiStatusStore', () => {
+    assert.ok(src.includes('aiStatusStore.displayName'), 'Should display provider name');
+  });
+
+  it('supports cover-type provider icons', () => {
+    assert.ok(src.includes("providerIcon?.type === 'cover'"), 'Should handle cover icons');
+  });
+
+  it('has placeholder for missing provider icon', () => {
+    assert.ok(src.includes('sb-provider-icon placeholder'), 'Should have placeholder class');
+  });
+
+  it('has pulse animation for starting state', () => {
+    assert.ok(src.includes('sb-provider-pulse'), 'Should have pulse animation');
+  });
+});
+
+describe('StatusBar.svelte: CSS properties', () => {
+  it('has 22px height', () => {
+    assert.ok(src.includes('22px'), 'Should have 22px height');
+  });
+
+  it('has 12px font-size', () => {
+    assert.ok(src.includes('12px'), 'Should have 12px font-size');
+  });
+
+  it('uses flex-shrink: 0', () => {
+    assert.ok(src.includes('flex-shrink: 0'), 'Should have flex-shrink: 0');
+  });
+
+  it('uses display: flex', () => {
+    assert.ok(src.includes('display: flex'), 'Should use display: flex');
+  });
+
+  it('uses justify-content: space-between', () => {
+    assert.ok(src.includes('justify-content: space-between'), 'Should use space-between');
+  });
+
+  it('uses user-select: none', () => {
+    assert.ok(src.includes('user-select: none'), 'Should have user-select: none');
+  });
+
+  it('uses -webkit-app-region: no-drag', () => {
+    assert.ok(src.includes('-webkit-app-region: no-drag'), 'Should have no-drag for Tauri frameless');
+  });
+
+  it('uses var(--bg-elevated) for background', () => {
+    assert.ok(src.includes('var(--bg-elevated)'), 'Should use --bg-elevated for background');
+  });
+
+  it('uses var(--border) for top border', () => {
+    assert.ok(src.includes('var(--border)'), 'Should use --border for top border');
+  });
+
+  it('uses var(--muted) for default text color', () => {
+    assert.ok(src.includes('var(--muted)'), 'Should use --muted as default text color');
+  });
+
+  it('uses var(--font-family) for font', () => {
+    assert.ok(src.includes('var(--font-family)'), 'Should use --font-family');
+  });
+});
+
+describe('StatusBar.svelte: L1 - Git branch', () => {
+  it('displays git branch name', () => {
+    assert.ok(src.includes('statusBarStore.gitBranch'), 'Should read gitBranch from store');
+  });
+
+  it('shows dirty indicator when gitDirty', () => {
+    assert.ok(src.includes('statusBarStore.gitDirty'), 'Should read gitDirty from store');
+  });
+
+  it('has branch icon symbol', () => {
+    // Uses the fork/branch symbol
+    assert.ok(src.includes('git-branch') || src.includes('\u2387') || src.includes('svg'), 'Should have branch icon');
+  });
+});
+
+describe('StatusBar.svelte: L2 - Diagnostics', () => {
+  it('displays error count from store', () => {
+    assert.ok(src.includes('statusBarStore.diagErrors'), 'Should read diagErrors from store');
+  });
+
+  it('displays warning count from store', () => {
+    assert.ok(src.includes('statusBarStore.diagWarnings'), 'Should read diagWarnings from store');
+  });
+
+  it('uses --danger color for errors > 0', () => {
+    assert.ok(src.includes('var(--danger)'), 'Should use --danger for error styling');
+  });
+
+  it('uses --warn color for warnings > 0', () => {
+    assert.ok(src.includes('var(--warn)'), 'Should use --warn for warning styling');
+  });
+});
+
+describe('StatusBar.svelte: L3 - Dev server', () => {
+  it('reads devServerStatus from store', () => {
+    assert.ok(src.includes('statusBarStore.devServerStatus'), 'Should read devServerStatus');
+  });
+
+  it('reads devServerPort from store', () => {
+    assert.ok(src.includes('statusBarStore.devServerPort'), 'Should read devServerPort');
+  });
+
+  it('uses --ok color for running server', () => {
+    assert.ok(src.includes('var(--ok)'), 'Should use --ok for healthy/running state');
+  });
+
+  it('shows different states (running, starting, crashed)', () => {
+    assert.ok(src.includes('starting'), 'Should handle starting state');
+    assert.ok(src.includes('crashed'), 'Should handle crashed state');
+  });
+});
+
+describe('StatusBar.svelte: L4 - LSP health', () => {
+  it('reads lspHealth from store', () => {
+    assert.ok(src.includes('statusBarStore.lspHealth'), 'Should read lspHealth from store');
+  });
+
+  it('shows colored health dot', () => {
+    assert.ok(src.includes('lsp-dot') || src.includes('health-dot'), 'Should have colored LSP health dot');
+  });
+
+  it('hides when lspHealth is none', () => {
+    assert.ok(src.includes("'none'"), 'Should handle none state for LSP health');
+  });
+});
+
+describe('StatusBar.svelte: R1 - Cursor position', () => {
+  it('displays line and column from store', () => {
+    assert.ok(src.includes('statusBarStore.cursor'), 'Should read cursor from store');
+  });
+
+  it('shows "Ln" and "Col" labels', () => {
+    assert.ok(src.includes('Ln'), 'Should show Ln label');
+    assert.ok(src.includes('Col'), 'Should show Col label');
+  });
+
+  it('has "Go to Line" title attribute', () => {
+    assert.ok(src.includes('Go to Line'), 'Should have Go to Line title');
+  });
+});
+
+describe('StatusBar.svelte: R2 - Indentation', () => {
+  it('reads indent from store', () => {
+    assert.ok(src.includes('statusBarStore.indent'), 'Should read indent from store');
+  });
+
+  it('shows Spaces or Tabs label', () => {
+    assert.ok(src.includes('Spaces') || src.includes('spaces'), 'Should show Spaces label');
+    assert.ok(src.includes('Tabs') || src.includes('tabs'), 'Should show Tabs label');
+  });
+});
+
+describe('StatusBar.svelte: R3 - Encoding', () => {
+  it('reads encoding from store', () => {
+    assert.ok(src.includes('statusBarStore.encoding'), 'Should read encoding from store');
+  });
+});
+
+describe('StatusBar.svelte: R4 - EOL', () => {
+  it('reads eol from store', () => {
+    assert.ok(src.includes('statusBarStore.eol'), 'Should read eol from store');
+  });
+});
+
+describe('StatusBar.svelte: R5 - Language', () => {
+  it('reads language from store', () => {
+    assert.ok(src.includes('statusBarStore.language'), 'Should read language from store');
+  });
+});
+
+describe('StatusBar.svelte: R6 - Notification bell', () => {
+  it('has a bell button', () => {
+    assert.ok(src.includes('bell') || src.includes('notification'), 'Should have notification bell');
+  });
+
+  it('reads unreadCount from the unified toastStore', () => {
+    assert.ok(src.includes('toastStore.unreadCount'), 'Should read unreadCount from toastStore');
+  });
+
+  it('shows badge when unread > 0', () => {
+    assert.ok(src.includes('badge'), 'Should have badge for unread count');
+  });
+
+  it('bell is a button element', () => {
+    assert.ok(src.includes('bell-btn') || src.includes('notification-btn'), 'Should use button for bell');
+  });
+
+  it('has SVG bell icon', () => {
+    assert.ok(src.includes('<svg') && src.includes('bell'), 'Should have SVG bell icon');
+  });
+});
+
+describe('StatusBar.svelte: Notification panel', () => {
+  it('has notification panel/dropdown', () => {
+    assert.ok(src.includes('notification-panel') || src.includes('notif-panel'), 'Should have notification panel');
+  });
+
+  it('has header with Notifications title', () => {
+    assert.ok(src.includes('Notifications'), 'Should have Notifications header');
+  });
+
+  it('has Clear All button', () => {
+    assert.ok(src.includes('Clear All') || src.includes('clearAll'), 'Should have Clear All button');
+  });
+
+  it('calls toastStore.clearAll on Clear all', () => {
+    assert.ok(src.includes('toastStore.clearAll()'), 'Should clear the unified store');
+  });
+
+  it('calls toastStore.removeItem for individual dismiss', () => {
+    assert.ok(src.includes('toastStore.removeItem'), 'Should remove from the unified store');
+  });
+
+  it('has empty state text', () => {
+    assert.ok(src.includes("You're all caught up."), 'Should have empty state');
+  });
+
+  it('renders notifications list from the unified store', () => {
+    assert.ok(src.includes('toastStore.notifications'), 'Should read notifications from toastStore');
+  });
+
+  it('panel open state lives in toastStore (suppresses floating toasts)', () => {
+    assert.ok(src.includes('toastStore.setPanelOpen'), 'Should toggle panel via the store');
+    assert.ok(src.includes('toastStore.panelOpen'), 'Should read panel state from the store');
+  });
+
+  it('renders severity chips and actionable pills in the panel', () => {
+    assert.ok(src.includes('notif-chip'), 'Rows should carry severity chips');
+    assert.ok(src.includes('runNotifAction'), 'Actions should be clickable from history');
+    assert.ok(src.includes('toastStore.resolveItem'), 'Acting on a row should resolve the item');
+  });
+
+  it('panel grows out of the bell with reduced-motion fallback', () => {
+    assert.ok(src.includes('in:panelIn'), 'Panel should use the grow-in transition');
+    assert.ok(src.includes('out:panelOut'), 'Panel should use the tuck-out transition');
+    assert.ok(src.includes('transform-origin: bottom right'), 'Motion should originate from the bell');
+    assert.ok(src.includes('prefersReducedMotion'), 'Should respect reduced motion');
+  });
+
+  it('notification panel positioned absolute', () => {
+    const panelMatch = src.match(/\.notif-panel\s*\{[^}]*position:\s*absolute/) ||
+                       src.match(/\.notification-panel\s*\{[^}]*position:\s*absolute/);
+    assert.ok(panelMatch, 'Notification panel should be positioned absolute');
+  });
+});
+
+describe('StatusBar.svelte: conditional visibility', () => {
+  it('has hasProject derived state', () => {
+    assert.ok(src.includes('hasProject') || src.includes('projectStore.activeProject'), 'Should check project state');
+  });
+
+  it('checks editorFocused for right side items', () => {
+    assert.ok(src.includes('statusBarStore.editorFocused') || src.includes('editorFocused'), 'Should check editorFocused');
+  });
+
+  it('checks activeView for lens mode', () => {
+    assert.ok(src.includes("'lens'") || src.includes('activeView'), 'Should check for lens view');
+  });
+});
+
+describe('StatusBar.svelte: reactive sync', () => {
+  it('uses $effect for reactive side effects', () => {
+    assert.ok(src.includes('$effect'), 'Should use $effect for reactive sync');
+  });
+
+  it('calls updateDiagnostics sync', () => {
+    assert.ok(src.includes('updateDiagnostics'), 'Should call updateDiagnostics');
+  });
+
+  it('calls updateDevServer sync', () => {
+    assert.ok(src.includes('updateDevServer'), 'Should call updateDevServer');
+  });
+
+  it('calls startPolling and stopPolling', () => {
+    assert.ok(src.includes('startPolling'), 'Should call startPolling');
+    assert.ok(src.includes('stopPolling'), 'Should call stopPolling');
+  });
+});
+
+describe('StatusBar.svelte: click-outside for notification panel', () => {
+  it('has svelte:document or click-outside handler', () => {
+    assert.ok(
+      src.includes('svelte:document') || src.includes('svelte:window') || src.includes('clickOutside'),
+      'Should have click-outside handler for notification panel'
+    );
+  });
+});
+
+// ---- FileEditor wiring tests ----
+const FE_SRC_PATH = path.join(__dirname, '../../../src/components/lens/editor/FileEditor.svelte');
+const feSrc = fs.readFileSync(FE_SRC_PATH, 'utf-8');
+
+describe('FileEditor.svelte: status bar wiring', () => {
+  it('imports statusBarStore', () => {
+    assert.ok(feSrc.includes('statusBarStore'), 'Should import statusBarStore');
+  });
+
+  it('imports getLanguageName', () => {
+    assert.ok(feSrc.includes('getLanguageName'), 'Should import getLanguageName');
+  });
+
+  it('calls setCursor', () => {
+    assert.ok(feSrc.includes('statusBarStore.setCursor'), 'Should call setCursor');
+  });
+
+  it('calls setLanguage', () => {
+    assert.ok(feSrc.includes('statusBarStore.setLanguage'), 'Should call setLanguage');
+  });
+
+  it('calls setEditorFocused', () => {
+    assert.ok(feSrc.includes('statusBarStore.setEditorFocused'), 'Should call setEditorFocused');
+  });
+
+  it('calls setEol', () => {
+    assert.ok(feSrc.includes('statusBarStore.setEol'), 'Should call setEol');
+  });
+
+  it('calls setEncoding', () => {
+    assert.ok(feSrc.includes('statusBarStore.setEncoding'), 'Should call setEncoding');
+  });
+
+  it('calls clearEditorState on destroy', () => {
+    assert.ok(feSrc.includes('statusBarStore.clearEditorState'), 'Should clear on destroy');
+  });
+});
+
+// ---- editor-extensions.js wiring tests ----
+const EXT_SRC_PATH = path.join(__dirname, '../../../src/lib/editor/editor-extensions.js');
+const extSrc = fs.readFileSync(EXT_SRC_PATH, 'utf-8');
+
+describe('editor-extensions.js: cursor activity callback', () => {
+  it('accepts onCursorActivity option', () => {
+    assert.ok(extSrc.includes('onCursorActivity'), 'Should accept onCursorActivity');
+  });
+
+  it('calls onCursorActivity on selection change', () => {
+    assert.ok(extSrc.includes('onCursorActivity(update)') || extSrc.includes('onCursorActivity('), 'Should call onCursorActivity');
+  });
+});
+
+describe('StatusBar.svelte: theme integration', () => {
+  it('uses var(--accent) for notification badge', () => {
+    assert.ok(src.includes('var(--accent)'), 'Should use --accent for badge');
+  });
+
+  it('uses var(--text) for hover state', () => {
+    assert.ok(src.includes('var(--text)'), 'Should use --text for hover');
+  });
+
+  it('uses var(--shadow) for notification panel', () => {
+    assert.ok(
+      src.includes('--shadow-md') || src.includes('--shadow-lg') || src.includes('--shadow-sm'),
+      'Should use shadow variable for panel'
+    );
+  });
+});
+
+// ──────────────────────────────────────────────────
+// Task 5: R1 click → Go to Line
+// ──────────────────────────────────────────────────
+
+describe('StatusBar.svelte: R1 click action', () => {
+  it('dispatches status-bar-go-to-line event', () => {
+    assert.ok(src.includes('status-bar-go-to-line'), 'Should dispatch go-to-line event');
+  });
+
+  it('R1 has clickable class', () => {
+    assert.ok(src.includes('sb-clickable'), 'Should have clickable class');
+  });
+
+  it('R1 uses CustomEvent', () => {
+    assert.ok(src.includes('CustomEvent'), 'Should use CustomEvent');
+  });
+});
+
+const APP_SRC = fs.readFileSync(path.join(__dirname, '../../../src/App.svelte'), 'utf-8');
+
+describe('App.svelte: status-bar-go-to-line listener', () => {
+  it('listens for status-bar-go-to-line event', () => {
+    assert.ok(APP_SRC.includes('status-bar-go-to-line'), 'Should listen for go-to-line event');
+  });
+
+  it('sets commandPaletteMode to goto-line', () => {
+    assert.ok(APP_SRC.includes("'goto-line'"), 'Should set goto-line mode');
+  });
+
+  it('has cleanup for event listener', () => {
+    assert.ok(APP_SRC.includes('removeEventListener'), 'Should clean up listener');
+  });
+});
+
+// ──────────────────────────────────────────────────
+// Task 6: Unified notifications — toastStore IS the notification center
+// ──────────────────────────────────────────────────
+
+const TOAST_SRC = fs.readFileSync(path.join(__dirname, '../../../src/lib/stores/toast.svelte.js'), 'utf-8');
+const SB_STORE_SRC = fs.readFileSync(path.join(__dirname, '../../../src/lib/stores/status-bar.svelte.js'), 'utf-8');
+
+describe('toast.svelte.js: unified notification center', () => {
+  it('does NOT import statusBarStore (dependency direction flipped)', () => {
+    assert.ok(!TOAST_SRC.includes('status-bar.svelte.js'), 'toastStore is the source of truth; statusBarStore delegates to IT');
+  });
+
+  it('every item carries a toastVisible peek flag', () => {
+    assert.ok(TOAST_SRC.includes('toastVisible'), 'Items should track their floating-peek state');
+  });
+
+  it('dismissing a toast keeps the item in the center', () => {
+    assert.ok(TOAST_SRC.includes("{ ...t, toastVisible: false }"), 'dismissToast should only hide the peek');
+  });
+
+  it('exposes notifications, unreadCount, and panelOpen', () => {
+    assert.ok(TOAST_SRC.includes('get notifications()'), 'Should expose center contents');
+    assert.ok(TOAST_SRC.includes('get unreadCount()'), 'Should expose unread count');
+    assert.ok(TOAST_SRC.includes('get panelOpen()'), 'Should expose panel state');
+  });
+
+  it('statusBarStore has NO notification API — toastStore is the only surface', () => {
+    // A dead delegating addNotification here once created "center-only"
+    // entries that never floated as toasts, masking bugs. Keep it deleted.
+    assert.ok(!SB_STORE_SRC.includes('function addNotification'), 'addNotification must not exist');
+    assert.ok(!SB_STORE_SRC.includes('function dismissNotification'), 'dismissNotification must not exist');
+    assert.ok(!SB_STORE_SRC.includes('function clearAllNotifications'), 'clearAllNotifications must not exist');
+    assert.ok(!SB_STORE_SRC.includes('get notifications()'), 'notifications getter must not exist');
+  });
+});
+
+// ──────────────────────────────────────────────────
+// Task 4: FileEditor → statusBarStore wiring
+// ──────────────────────────────────────────────────
+
+const FE_SRC = fs.readFileSync(path.join(__dirname, '../../../src/components/lens/editor/FileEditor.svelte'), 'utf-8');
+
+describe('FileEditor.svelte: status bar wiring', () => {
+  it('imports statusBarStore', () => {
+    assert.ok(FE_SRC.includes('statusBarStore'), 'Should import statusBarStore');
+  });
+
+  it('imports getLanguageName', () => {
+    assert.ok(FE_SRC.includes('getLanguageName'), 'Should import getLanguageName');
+  });
+
+  it('calls setCursor', () => {
+    assert.ok(FE_SRC.includes('statusBarStore.setCursor'), 'Should call setCursor');
+  });
+
+  it('calls setLanguage', () => {
+    assert.ok(FE_SRC.includes('statusBarStore.setLanguage'), 'Should call setLanguage');
+  });
+
+  it('calls setEditorFocused', () => {
+    assert.ok(FE_SRC.includes('statusBarStore.setEditorFocused'), 'Should call setEditorFocused');
+  });
+
+  it('calls setEol', () => {
+    assert.ok(FE_SRC.includes('statusBarStore.setEol'), 'Should call setEol');
+  });
+
+  it('calls setEncoding', () => {
+    assert.ok(FE_SRC.includes('statusBarStore.setEncoding'), 'Should call setEncoding');
+  });
+
+  it('calls clearEditorState on destroy', () => {
+    assert.ok(FE_SRC.includes('statusBarStore.clearEditorState'), 'Should clear on destroy');
+  });
+});
+
+// ──────────────────────────────────────────────────
+// Task 6: Diagnostics click → Problems panel
+// ──────────────────────────────────────────────────
+
+describe('StatusBar.svelte: problems panel link', () => {
+  it('dispatches status-bar-show-problems event on diagnostics click', () => {
+    assert.ok(
+      src.includes('status-bar-show-problems'),
+      'Should dispatch event to open problems panel'
+    );
+  });
+});
+
+// ──────────────────────────────────────────────────
+// Task 10: LSP install status indicator
+// ──────────────────────────────────────────────────
+
+describe('StatusBar.svelte: LSP install status', () => {
+  it('imports listen from Tauri events', () => {
+    assert.ok(src.includes("from '@tauri-apps/api/event'"), 'Should import listen from Tauri');
+  });
+
+  it('listens for lsp-install-status events', () => {
+    assert.ok(src.includes('lsp-install-status'), 'Should listen for install status events');
+  });
+
+  it('has lspInstall state', () => {
+    assert.ok(src.includes('lspInstall'), 'Should have lspInstall reactive state');
+  });
+
+  it('shows installing state with spinner', () => {
+    assert.ok(src.includes('installing'), 'Should show installing state');
+  });
+
+  it('shows install_failed state', () => {
+    assert.ok(src.includes('install_failed') || src.includes('install-failed'), 'Should show install_failed state');
+  });
+
+  it('shows server name during install', () => {
+    assert.ok(src.includes('lspInstall.server') || src.includes('lspInstall?.server'), 'Should display server name');
+  });
+
+  it('has spinner animation for installing state', () => {
+    assert.ok(src.includes('lsp-spinner') || src.includes('spin'), 'Should have spinner animation');
+  });
+
+  it('clears install state after timeout or on installed', () => {
+    assert.ok(src.includes("'installed'") || src.includes('"installed"'), 'Should handle installed status');
+  });
+
+  it('uses $effect for event listener lifecycle', () => {
+    // The lsp-install-status listener should be inside a $effect with cleanup
+    const effectCount = (src.match(/\$effect/g) || []).length;
+    assert.ok(effectCount >= 4, 'Should have at least 4 $effect blocks (existing 3 + install listener)');
+  });
+});
+
+const EXT_SRC = fs.readFileSync(path.join(__dirname, '../../../src/lib/editor/editor-extensions.js'), 'utf-8');
+
+describe('editor-extensions.js: cursor activity callback', () => {
+  it('accepts onCursorActivity option', () => {
+    assert.ok(EXT_SRC.includes('onCursorActivity'), 'Should accept onCursorActivity');
+  });
+
+  it('calls onCursorActivity on updates', () => {
+    assert.ok(EXT_SRC.includes('onCursorActivity('), 'Should call onCursorActivity');
+  });
+});
+
+// ──────────────────────────────────────────────────
+// Task 11: Toast notifications for install lifecycle
+// ──────────────────────────────────────────────────
+
+describe('StatusBar.svelte: install lifecycle toast notifications', () => {
+  it('imports toastStore', () => {
+    assert.ok(src.includes('toastStore'), 'Should import toastStore');
+  });
+
+  it('imports from toast.svelte.js', () => {
+    assert.ok(src.includes('toast.svelte.js'), 'Should import from toast.svelte.js');
+  });
+
+  it('calls addToast for installing status', () => {
+    // Should show an info toast when installing starts
+    assert.ok(src.includes('addToast'), 'Should call addToast for toast notifications');
+  });
+
+  it('uses info severity for installing toast', () => {
+    // The installing toast should use info severity
+    assert.ok(
+      src.includes("'info'") || src.includes('"info"'),
+      'Should use info severity for installing toast'
+    );
+  });
+
+  it('uses success severity for installed toast', () => {
+    assert.ok(
+      src.includes("'success'") || src.includes('"success"'),
+      'Should use success severity for installed toast'
+    );
+  });
+
+  it('uses error severity for install_failed toast', () => {
+    assert.ok(
+      src.includes("'error'") || src.includes('"error"'),
+      'Should use error severity for install_failed toast'
+    );
+  });
+
+  it('toast messages include server name', () => {
+    // At least one addToast call should reference the server name from payload
+    assert.ok(
+      src.includes('payload.server') || src.includes('payload.message'),
+      'Toast messages should reference payload server or message'
+    );
+  });
+});
+
+// ──────────────────────────────────────────────────
+// Task 12: Node.js not-found notification
+// ──────────────────────────────────────────────────
+
+describe('StatusBar.svelte: Node.js not-found listener', () => {
+  it('listens for lsp-node-not-found event', () => {
+    assert.ok(src.includes('lsp-node-not-found'), 'Should listen for lsp-node-not-found event');
+  });
+
+  it('shows error toast for Node.js not found', () => {
+    // The listener should show a toast with error severity about Node.js
+    assert.ok(
+      src.includes('Node.js') || src.includes('nodejs'),
+      'Should mention Node.js in the notification'
+    );
+  });
+});
+
+const { modSrc: MOD_RS_SRC } = require('../../rust/lsp/_read-lsp-sources.cjs');
+
+describe('mod.rs: Node.js not-found event emission', () => {
+  it('uses AtomicBool for once-per-session guard', () => {
+    assert.ok(
+      MOD_RS_SRC.includes('AtomicBool'),
+      'Should use AtomicBool for once-per-session guard'
+    );
+  });
+
+  it('emits lsp-node-not-found event', () => {
+    assert.ok(
+      MOD_RS_SRC.includes('lsp-node-not-found'),
+      'Should emit lsp-node-not-found Tauri event'
+    );
+  });
+
+  it('only emits once per session using compare_exchange or similar', () => {
+    assert.ok(
+      MOD_RS_SRC.includes('compare_exchange') || MOD_RS_SRC.includes('swap'),
+      'Should use atomic operation to emit only once per session'
+    );
+  });
+});
+
+// ──────────────────────────────────────────────────
+// Indent guides dropdown
+// ──────────────────────────────────────────────────
+
+describe('StatusBar.svelte: indent guides dropdown', () => {
+  it('imports configStore from config store', () => {
+    assert.ok(src.includes('configStore'), 'Should import configStore');
+    assert.ok(src.includes('config.svelte.js'), 'Should import from config.svelte.js');
+  });
+
+  it('imports updateConfig from config store', () => {
+    assert.ok(src.includes('updateConfig'), 'Should import updateConfig');
+  });
+
+  it('has indent-anchor wrapper for dropdown positioning', () => {
+    assert.ok(src.includes('indent-anchor'), 'Should have indent-anchor class');
+  });
+
+  it('has indent-dropdown element', () => {
+    assert.ok(src.includes('indent-dropdown'), 'Should have indent-dropdown class');
+  });
+
+  it('has indent-item for dropdown rows', () => {
+    assert.ok(src.includes('indent-item'), 'Should have indent-item class');
+  });
+
+  it('derives indentGuides state from configStore', () => {
+    assert.ok(src.includes('indentGuides'), 'Should have indentGuides derived state');
+  });
+
+  it('has toggleIndentGuides handler', () => {
+    assert.ok(src.includes('toggleIndentGuides'), 'Should have toggleIndentGuides handler');
+  });
+
+  it('calls updateConfig to persist indent guide toggle', () => {
+    assert.ok(
+      src.includes("updateConfig({ editor:") || src.includes('updateConfig({editor:'),
+      'Should call updateConfig with editor patch'
+    );
+  });
+
+  it('has indentDropdownOpen state for show/hide', () => {
+    assert.ok(src.includes('indentDropdownOpen'), 'Should have indentDropdownOpen state');
+  });
+
+  it('shows Indent Guides label in dropdown', () => {
+    assert.ok(src.includes('Indent Guides'), 'Should show Indent Guides label');
+  });
+
+  it('has checkmark indicator for toggle state', () => {
+    assert.ok(src.includes('indent-check') || src.includes('✓'), 'Should have checkmark indicator');
+  });
+});
+
+describe('StatusBar.svelte: VS Code-style indent dropdown', () => {
+  it('has "Indent Using Spaces" section label', () => {
+    assert.ok(src.includes('Indent Using Spaces'), 'Should show Indent Using Spaces label');
+  });
+
+  it('has "Indent Using Tabs" section label', () => {
+    assert.ok(src.includes('Indent Using Tabs'), 'Should show Indent Using Tabs label');
+  });
+
+  it('has size buttons (2, 4, 8)', () => {
+    assert.ok(src.includes('indent-size-btn'), 'Should have size buttons');
+    assert.ok(src.includes('indent-size-row'), 'Should have size row container');
+  });
+
+  it('highlights active size with .active class', () => {
+    assert.ok(src.includes('.indent-size-btn.active'), 'Should have active class styling');
+  });
+
+  it('dispatches status-bar-indent-change event for spaces', () => {
+    assert.ok(src.includes('setIndentSpaces'), 'Should have setIndentSpaces handler');
+    assert.ok(src.includes('status-bar-indent-change'), 'Should dispatch indent-change event');
+  });
+
+  it('dispatches status-bar-indent-change event for tabs', () => {
+    assert.ok(src.includes('setIndentTabs'), 'Should have setIndentTabs handler');
+  });
+
+  it('has "Convert Indentation to Spaces" option', () => {
+    assert.ok(src.includes('Convert Indentation to Spaces'), 'Should have convert to spaces option');
+  });
+
+  it('has "Convert Indentation to Tabs" option', () => {
+    assert.ok(src.includes('Convert Indentation to Tabs'), 'Should have convert to tabs option');
+  });
+
+  it('dispatches status-bar-indent-convert event', () => {
+    assert.ok(src.includes('status-bar-indent-convert'), 'Should dispatch convert event');
+    assert.ok(src.includes('convertTo'), 'Should have convertTo handler');
+  });
+
+  it('has "Detect Indentation from Content" option', () => {
+    assert.ok(src.includes('Detect Indentation from Content'), 'Should have detect indentation option');
+  });
+
+  it('dispatches status-bar-indent-detect event', () => {
+    assert.ok(src.includes('status-bar-indent-detect'), 'Should dispatch detect event');
+    assert.ok(src.includes('detectIndent'), 'Should have detectIndent handler');
+  });
+
+  it('has dividers between sections', () => {
+    assert.ok(src.includes('indent-divider'), 'Should have divider elements');
+  });
+});
+
+describe('FileEditor.svelte: indent event handling', () => {
+  it('imports createIndentCompartments from editor-extensions', () => {
+    assert.ok(feSrc.includes('createIndentCompartments'), 'Should import createIndentCompartments');
+  });
+
+  it('imports detectIndentation from editor-extensions', () => {
+    assert.ok(feSrc.includes('detectIndentation'), 'Should import detectIndentation');
+  });
+
+  it('imports convertIndentation from editor-extensions', () => {
+    assert.ok(feSrc.includes('convertIndentation'), 'Should import convertIndentation');
+  });
+
+  it('creates indent compartments', () => {
+    assert.ok(feSrc.includes('createIndentCompartments()'), 'Should create indent compartments');
+  });
+
+  it('tracks currentIndent state', () => {
+    assert.ok(feSrc.includes('currentIndent'), 'Should have currentIndent state');
+  });
+
+  it('calls statusBarStore.setIndent on init', () => {
+    assert.ok(feSrc.includes('statusBarStore.setIndent'), 'Should call setIndent');
+  });
+
+  it('listens for status-bar-indent-change event', () => {
+    assert.ok(feSrc.includes('status-bar-indent-change'), 'Should listen for indent-change');
+  });
+
+  it('listens for status-bar-indent-convert event', () => {
+    assert.ok(feSrc.includes('status-bar-indent-convert'), 'Should listen for indent-convert');
+  });
+
+  it('listens for status-bar-indent-detect event', () => {
+    assert.ok(feSrc.includes('status-bar-indent-detect'), 'Should listen for indent-detect');
+  });
+
+  it('has reconfigureIndent function', () => {
+    assert.ok(feSrc.includes('reconfigureIndent'), 'Should have reconfigureIndent function');
+  });
+
+  it('passes indentCompartments to buildEditorExtensions', () => {
+    assert.ok(feSrc.includes('indentCompartments,'), 'Should pass compartments to extensions');
+    assert.ok(feSrc.includes('indentType:'), 'Should pass indentType');
+    assert.ok(feSrc.includes('indentSize:'), 'Should pass indentSize');
+  });
+});

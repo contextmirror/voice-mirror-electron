@@ -92,8 +92,8 @@ describe('status-bar.svelte.js: reactive state', () => {
     assert.ok(/let\s+gitDirty\s*=\s*\$state\(/.test(src), 'Should use $state for gitDirty');
   });
 
-  it('uses $state for notifications', () => {
-    assert.ok(/let\s+notifications\s*=\s*\$state\(/.test(src), 'Should use $state for notifications');
+  it('does NOT hold its own notifications state (unified into toastStore)', () => {
+    assert.ok(!/let\s+notifications\s*=\s*\$state\(/.test(src), 'Notification state lives in toastStore now');
   });
 
   it('uses $state for lspHealth', () => {
@@ -156,12 +156,12 @@ describe('status-bar.svelte.js: getters', () => {
     assert.ok(src.includes('get lspHealth()'), 'Should have lspHealth getter');
   });
 
-  it('has notifications getter', () => {
-    assert.ok(src.includes('get notifications()'), 'Should have notifications getter');
+  it('has no notifications getter (lives in toastStore)', () => {
+    assert.ok(!src.includes('get notifications()'), 'Notifications moved to the unified toastStore');
   });
 
-  it('has unreadCount getter', () => {
-    assert.ok(src.includes('get unreadCount()'), 'Should have unreadCount getter');
+  it('has no unreadCount getter (lives in toastStore)', () => {
+    assert.ok(!src.includes('get unreadCount()'), 'unreadCount moved to the unified toastStore');
   });
 });
 
@@ -305,42 +305,21 @@ describe('status-bar.svelte.js: polling lifecycle', () => {
 
 // ── Notifications ────────────────────────────────────────────────────────────
 
-describe('status-bar.svelte.js: notifications', () => {
-  it('has addNotification method', () => {
-    assert.ok(src.includes('addNotification'), 'Should have addNotification');
+describe('status-bar.svelte.js: notifications removed (unified into toastStore)', () => {
+  // The old notification API here (and later a delegating shim) created
+  // silent center-only entries that never floated — masking bugs. The
+  // unified toastStore is the ONLY notification surface now.
+  it('has no notification methods or getters', () => {
+    assert.ok(!src.includes('function addNotification'), 'addNotification must not exist');
+    assert.ok(!src.includes('function dismissNotification'), 'dismissNotification must not exist');
+    assert.ok(!src.includes('function markAllRead'), 'markAllRead must not exist');
+    assert.ok(!src.includes('function clearAllNotifications'), 'clearAllNotifications must not exist');
+    assert.ok(!src.includes('get notifications()'), 'notifications getter must not exist');
+    assert.ok(!src.includes('get unreadCount()'), 'unreadCount getter must not exist');
   });
 
-  it('addNotification accepts message, severity, source', () => {
-    const idx = src.indexOf('addNotification');
-    const body = src.slice(idx, idx + 300);
-    assert.ok(body.includes('message'), 'addNotification should accept message');
-    assert.ok(body.includes('severity'), 'addNotification should accept severity');
-    assert.ok(body.includes('source'), 'addNotification should accept source');
-  });
-
-  it('notification shape includes id, message, severity, source, timestamp, read', () => {
-    assert.ok(src.includes('timestamp'), 'Notification should have timestamp');
-    assert.ok(src.includes('read'), 'Notification should have read flag');
-  });
-
-  it('enforces max 100 notifications', () => {
-    assert.ok(src.includes('100'), 'Should enforce max 100 notifications');
-  });
-
-  it('has dismissNotification method', () => {
-    assert.ok(src.includes('dismissNotification'), 'Should have dismissNotification');
-  });
-
-  it('has markAllRead method', () => {
-    assert.ok(src.includes('markAllRead'), 'Should have markAllRead');
-  });
-
-  it('has clearAllNotifications method', () => {
-    assert.ok(src.includes('clearAllNotifications'), 'Should have clearAllNotifications');
-  });
-
-  it('unreadCount counts notifications where read is false', () => {
-    assert.ok(src.includes('!n.read') || src.includes('n.read === false') || src.includes('!item.read'), 'Should count unread notifications');
+  it('documents where notifications live now', () => {
+    assert.ok(src.includes('toastStore'), 'Should point readers at the unified store');
   });
 });
 

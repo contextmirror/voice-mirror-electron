@@ -16,6 +16,11 @@ function createLayoutStore() {
   let previewRatio = $state(0.78);
   let devicePreviewRatio = $state(0.5);
 
+  // Incremented on every restore() so consumers holding local copies of the
+  // ratios (LensWorkspace) know to re-read them — restore() runs after mount,
+  // so a one-shot onMount read misses the persisted values.
+  let restoreCount = $state(0);
+
   return {
     get showChat() { return showChat; },
     get showTerminal() { return showTerminal; },
@@ -24,6 +29,7 @@ function createLayoutStore() {
     get centerRatio() { return centerRatio; },
     get previewRatio() { return previewRatio; },
     get devicePreviewRatio() { return devicePreviewRatio; },
+    get restoreCount() { return restoreCount; },
 
     setShowChat(v) { showChat = v; },
     setShowTerminal(v) { showTerminal = v; },
@@ -66,6 +72,7 @@ function createLayoutStore() {
       if (typeof data.centerRatio === 'number') centerRatio = data.centerRatio;
       if (typeof data.previewRatio === 'number') previewRatio = data.previewRatio;
       if (typeof data.devicePreviewRatio === 'number') devicePreviewRatio = data.devicePreviewRatio;
+      restoreCount += 1;
     },
   };
 }

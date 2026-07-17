@@ -87,3 +87,16 @@ describe('layout.svelte.js — workspace state persistence', () => {
     assert.ok(src.includes('setDevicePreviewRatio('), 'Should export setDevicePreviewRatio');
   });
 });
+
+describe('layout.svelte.js: restore counter (restore runs after LensWorkspace mounts)', () => {
+  it('has restoreCount state and getter', () => {
+    assert.ok(src.includes('let restoreCount = $state(0)'), 'Should track a restore counter');
+    assert.ok(src.includes('get restoreCount()'), 'Should expose restoreCount getter');
+  });
+
+  it('increments restoreCount in restore() so consumers re-read the ratios', () => {
+    const start = src.indexOf('restore(data)');
+    const chunk = src.slice(start, start + 900);
+    assert.ok(chunk.includes('restoreCount += 1'), 'restore() must bump the counter');
+  });
+});

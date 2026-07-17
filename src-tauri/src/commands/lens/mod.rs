@@ -13,10 +13,18 @@
 //! - `downloads` — download manager queries
 
 mod webview_setup;
+// The origin-scoped IPC guard for the MAIN webview + its iframes — registered
+// as a plugin init script in lib.rs (see MAIN_IFRAME_IPC_GUARD_SCRIPT docs).
+pub(crate) use webview_setup::MAIN_IFRAME_IPC_GUARD_SCRIPT;
 pub mod devtools;
 pub mod device_preview;
 pub mod find;
+pub mod audio;
+pub mod extensions;
+pub mod privacy;
+pub mod permissions;
 pub mod history;
+pub mod bookmarks;
 pub mod downloads;
 pub mod zoom;
 
@@ -32,7 +40,7 @@ use super::IpcResponse;
 
 // ── Types & State ────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DownloadEntry {
     pub id: String,
@@ -95,17 +103,6 @@ fn get_lens_webview(
         .ok_or_else(|| IpcResponse::err("Lens webview not found"))
 }
 
-/// Get the current active tab ID (cloned out of the lock).
-fn get_active_tab_id(
-    state: &tauri::State<'_, LensState>,
-) -> Result<Option<String>, String> {
-    state
-        .active_tab_id
-        .lock()
-        .map(|g| g.clone())
-        .map_err(|e| format!("Lock error: {}", e))
-}
-
 // ── Re-exports ───────────────────────────────────────────────────────────────
 // All pub commands are re-exported so `lib.rs` can use `lens_cmds::lens_*`.
 
@@ -128,6 +125,7 @@ pub use navigation::{
     lens_set_visible,
     lens_hard_refresh,
     lens_clear_cache,
+    lens_print,
 };
 
 pub use devtools::{
@@ -149,6 +147,20 @@ pub use device_preview::{
 
 pub use zoom::{lens_set_zoom, lens_get_zoom};
 
+pub use audio::lens_toggle_tab_mute;
+
+pub use extensions::{
+    lens_extensions_list,
+    lens_extension_add,
+    lens_extension_install_crx,
+    lens_extension_set_enabled,
+    lens_extension_remove,
+};
+
+pub use privacy::lens_apply_privacy;
+
+pub use permissions::{lens_permission_response, lens_get_permissions, lens_clear_permission};
+
 pub use find::{
     lens_find_on_page,
     lens_eval_tab_js,
@@ -162,6 +174,12 @@ pub use history::{
     lens_get_history,
     lens_clear_history,
     lens_delete_history_entry,
+};
+
+pub use bookmarks::{
+    lens_add_bookmark,
+    lens_remove_bookmark,
+    lens_get_bookmarks,
 };
 
 pub use downloads::{

@@ -11,6 +11,7 @@
 
 import { listen } from '@tauri-apps/api/event';
 import { getOutputLogs, registerProjectChannel as apiRegister, unregisterProjectChannel as apiUnregister } from '../api.js';
+import { projectStore } from './project.svelte.js';
 
 const MAX_ENTRIES = 2000;
 const SYSTEM_CHANNELS = ['app', 'cli', 'voice', 'mcp', 'browser', 'frontend', 'preview'];
@@ -51,6 +52,22 @@ let autoScroll = $state(true);
 let filterText = $state('');
 let wordWrap = $state(true);
 let listening = false;
+
+/**
+ * Append one or more entries to a project channel, capping at MAX_ENTRIES and
+ * reassigning once (a single reactive update for the whole batch).
+ * @param {string} channel
+ * @param {Array} newEntries
+ */
+function appendProjectEntries(channel, newEntries) {
+  if (!projectChannelEntries[channel]) {
+    projectChannelEntries[channel] = [];
+  }
+  const arr = projectChannelEntries[channel];
+  arr.push(...newEntries);
+  projectChannelEntries[channel] =
+    arr.length > MAX_ENTRIES ? arr.slice(arr.length - MAX_ENTRIES) : [...arr];
+}
 
 /** Level priority for filtering */
 function levelPriority(level) {
@@ -105,12 +122,30 @@ async function startListening() {
   if (listening) return;
   listening = true;
 
-  // Load initial entries from backend
+  // Load initial entries from backend. get_output_logs returns the IpcResponse
+  // envelope { success, data: { entries } } — reading `result.entries` (the old
+  // code) silently loaded NOTHING, so the panel only ever showed events that
+  // arrived after it was first opened (the App-Preview-looks-empty bug).
   for (const ch of SYSTEM_CHANNELS) {
     try {
       const result = await getOutputLogs({ channel: ch, last: MAX_ENTRIES });
-      if (result?.entries) {
-        entries[ch] = result.entries;
+      const history = result?.data?.entries;
+      if (Array.isArray(history) && history.length > 0) {
+        entries[ch] = history;
+      }
+    } catch {
+      // Backend may not be ready yet — that's fine
+    }
+  }
+
+  // Same for project channels registered before the panel first opened
+  // (the dev-server manager registers them at spawn time, panel or no panel).
+  for (const pc of projectChannelList) {
+    try {
+      const result = await getOutputLogs({ channel: pc.label, last: MAX_ENTRIES });
+      const history = result?.data?.entries;
+      if (Array.isArray(history) && history.length > 0) {
+        projectChannelEntries[pc.label] = history;
       }
     } catch {
       // Backend may not be ready yet — that's fine
@@ -143,8 +178,15 @@ async function startListening() {
     // but store the canonical uppercase level for consistency + counts).
     const normLevel = String(level).toUpperCase();
 
-    // Route to the active project channel (first one, or based on current project)
-    const activeProject = projectChannelList[0]; // TODO: route based on URL/port
+    // Route to the ACTIVE project's channel. The lens preview shows the active
+    // project's dev server, and the `lens-console-message` payload carries no
+    // URL/port metadata (see lib.rs / webview_setup.rs — it emits only
+    // { level, message }), so the active project is the best available match.
+    // Fall back to the first registered channel if the active project has none.
+    const activeRoot = projectStore.root;
+    const activeProject =
+      (activeRoot && projectChannelList.find(c => c.projectPath === activeRoot))
+      || projectChannelList[0];
     if (activeProject) {
       const entry = {
         id: Date.now() + Math.random(),
@@ -167,21 +209,22 @@ async function startListening() {
     }
   });
 
-  // Listen for project-output-log events (terminal mirroring from Rust)
+  // Listen for project-output-log events (terminal mirroring from Rust).
+  // Single-entry path (browser console capture, one-off pushes).
   await listen('project-output-log', (event) => {
     const { channel, entry } = event.payload;
     if (!channel || !entry) return;
+    appendProjectEntries(channel, [entry]);
+  });
 
-    if (!projectChannelEntries[channel]) {
-      projectChannelEntries[channel] = [];
-    }
-    const arr = projectChannelEntries[channel];
-    arr.push(entry);
-    if (arr.length > MAX_ENTRIES) {
-      projectChannelEntries[channel] = arr.slice(arr.length - MAX_ENTRIES);
-    } else {
-      projectChannelEntries[channel] = [...arr];
-    }
+  // Batched path (dev-server terminal output): one event carries a whole drain
+  // of lines, so a noisy server is a single reactive update, not hundreds — and
+  // a single main-thread Tauri event, which is the point (see the Rust side:
+  // hundreds of emits/sec fed the "Not Responding" WndProc stall, tauri#14750).
+  await listen('project-output-log-batch', (event) => {
+    const { channel, entries } = event.payload;
+    if (!channel || !Array.isArray(entries) || entries.length === 0) return;
+    appendProjectEntries(channel, entries);
   });
 }
 

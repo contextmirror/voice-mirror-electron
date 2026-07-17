@@ -50,6 +50,12 @@ pub(super) fn build_shortcut_script() -> String {
                 try {{
                     (new Image()).src = '{}' + 'find' + '?t=' + Date.now();
                 }} catch(err) {{}}
+            }} else if ((e.ctrlKey || e.metaKey) && lower === 'p') {{
+                e.preventDefault();
+                e.stopPropagation();
+                try {{
+                    (new Image()).src = '{}' + 'print' + '?t=' + Date.now();
+                }} catch(err) {{}}
             }} else if ((e.ctrlKey || e.metaKey) && (key === '+' || key === '=')) {{
                 e.preventDefault();
                 e.stopPropagation();
@@ -70,7 +76,7 @@ pub(super) fn build_shortcut_script() -> String {
                 }} catch(err) {{}}
             }}
         }}, true);"#,
-        shortcut_base, shortcut_base, shortcut_base, shortcut_base, shortcut_base, shortcut_base, shortcut_base
+        shortcut_base, shortcut_base, shortcut_base, shortcut_base, shortcut_base, shortcut_base, shortcut_base, shortcut_base
     )
 }
 
@@ -222,6 +228,60 @@ pub(super) const IPC_CRASH_GUARD_SCRIPT: &str = r#"
         } catch (e) {
             try { wv.postMessage = noop; } catch (e2) {}
         }
+    } catch (e) {}
+})();
+"#;
+
+/// ORIGIN-SCOPED variant of the guard above, for the MAIN webview and every
+/// frame inside it. Registered as a plugin `js_init_script` in lib.rs, which
+/// reaches every webview — and, because Windows/WebView2 injects init scripts
+/// into ALL subframes regardless of `for_main_frame_only` (wry 0.55.1
+/// webview2/mod.rs ignores the flag), it also reaches every IFRAME.
+///
+/// Why: the App Preview embeds a web app's dev-server URL in an iframe
+/// (SandboxPreview.svelte). That cross-origin frame ALSO receives Tauri's IPC
+/// bootstrap (same all-subframes behavior), wiring a live bridge from the
+/// embedded app into the host's wry handler. When a frame with a non-http(s)
+/// origin posts to it — VS Code web's nested about:srcdoc/blob:/opaque frames
+/// do — wry's `Request::builder().uri(url).unwrap()` (webview2/mod.rs:910)
+/// panics inside an `extern "system"` COM callback: on Windows that's a
+/// `__fastfail` abort — no unwind, no panic hook, no SEH handler, no dump
+/// (live repro 2026-07-04: embedding `code serve-web` killed VM with zero
+/// crash-log traces).
+///
+/// Unlike the child-webview guard (which neutralises IPC on EVERY origin —
+/// Lens tabs never use it), this one must LEAVE Voice Mirror's own frontend
+/// alone or the whole app's invoke()/listen() dies. So it early-returns on
+/// VM's own origins (the vite dev origin + the packaged-app origins) and
+/// neutralises the transport everywhere else. Both entry points are stubbed:
+/// `chrome.webview.postMessage` (the transport) and the `window.ipc` façade
+/// wry's bootstrap may already have defined, so injection order doesn't
+/// matter. The embedded app degrades gracefully (its IPC calls no-op).
+pub(crate) const MAIN_IFRAME_IPC_GUARD_SCRIPT: &str = r#"
+(function() {
+    try {
+        var o = '';
+        try { o = String(location.origin || ''); } catch (e) { o = ''; }
+        if (o === 'http://localhost:31420'
+            || o === 'tauri://localhost'
+            || o === 'https://tauri.localhost'
+            || o === 'http://tauri.localhost') return;
+        var noop = function() {};
+        try {
+            var wv = window.chrome && window.chrome.webview;
+            if (wv && typeof wv.postMessage === 'function') {
+                try {
+                    Object.defineProperty(wv, 'postMessage', { value: noop, writable: true, configurable: true });
+                } catch (e) {
+                    try { wv.postMessage = noop; } catch (e2) {}
+                }
+            }
+        } catch (e) {}
+        try {
+            if (window.ipc && typeof window.ipc.postMessage === 'function') {
+                window.ipc.postMessage = noop;
+            }
+        } catch (e) {}
     } catch (e) {}
 })();
 "#;
@@ -501,6 +561,431 @@ pub(super) fn register_new_window_handler(app: &AppHandle, webview: &tauri::Webv
     });
 }
 
+/// Register FaviconChanged + HistoryChanged handlers on a child webview.
+///
+/// - `HistoryChanged` → `lens-history-changed {tabId, canGoBack, canGoForward}`
+///   so the toolbar's back/forward buttons reflect real navigation state
+///   (previously they were `history.back()` evals that never disabled).
+/// - `FaviconChanged` (ICoreWebView2_15+) → `lens-favicon-changed {tabId,
+///   faviconUri}` so the tab strip can show real site icons. Degrades to
+///   no favicons on an old runtime.
+pub(super) fn register_navigation_state_handlers(
+    app: &AppHandle,
+    webview: &tauri::Webview,
+    tab_id: &str,
+) {
+    let app_handle = app.clone();
+    let tab_id = tab_id.to_string();
+    let _ = webview.with_webview(move |platform_webview| {
+        #[cfg(windows)]
+        {
+            use webview2_com::{FaviconChangedEventHandler, HistoryChangedEventHandler, take_pwstr};
+            use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_15;
+            use windows_core::Interface;
+
+            unsafe {
+                let controller = platform_webview.controller();
+                let core_webview = match controller.CoreWebView2() {
+                    Ok(wv) => wv,
+                    Err(e) => {
+                        warn!("[lens] Failed to get CoreWebView2 for nav-state handlers: {:?}", e);
+                        return;
+                    }
+                };
+
+                // HistoryChanged → real can-go-back/forward state
+                {
+                    let app_for_history = app_handle.clone();
+                    let tab_for_history = tab_id.clone();
+                    let handler = HistoryChangedEventHandler::create(Box::new(
+                        move |sender, _args| {
+                            if let Some(wv) = sender {
+                                let mut can_back = windows_core::BOOL::from(false);
+                                let mut can_fwd = windows_core::BOOL::from(false);
+                                let _ = wv.CanGoBack(&mut can_back);
+                                let _ = wv.CanGoForward(&mut can_fwd);
+                                let _ = app_for_history.emit(
+                                    "lens-history-changed",
+                                    serde_json::json!({
+                                        "tabId": tab_for_history,
+                                        "canGoBack": can_back.as_bool(),
+                                        "canGoForward": can_fwd.as_bool(),
+                                    }),
+                                );
+                            }
+                            Ok(())
+                        },
+                    ));
+                    let mut token: i64 = 0;
+                    if let Err(e) = core_webview.add_HistoryChanged(&handler, &mut token) {
+                        warn!("[lens] Failed to register HistoryChanged handler: {:?}", e);
+                    }
+                }
+
+                // FaviconChanged → tab favicon (needs ICoreWebView2_15+)
+                match core_webview.cast::<ICoreWebView2_15>() {
+                    Ok(_) => {
+                        let app_for_favicon = app_handle.clone();
+                        let tab_for_favicon = tab_id.clone();
+                        let handler = FaviconChangedEventHandler::create(Box::new(
+                            move |sender, _args| {
+                                if let Some(wv) = sender {
+                                    if let Ok(wv15) = wv.cast::<ICoreWebView2_15>() {
+                                        let mut uri_pwstr = windows_core::PWSTR::null();
+                                        if wv15.FaviconUri(&mut uri_pwstr).is_ok() {
+                                            let uri = take_pwstr(uri_pwstr);
+                                            let _ = app_for_favicon.emit(
+                                                "lens-favicon-changed",
+                                                serde_json::json!({
+                                                    "tabId": tab_for_favicon,
+                                                    "faviconUri": uri,
+                                                }),
+                                            );
+                                        }
+                                    }
+                                }
+                                Ok(())
+                            },
+                        ));
+                        // add_FaviconChanged lives on ICoreWebView2_15
+                        if let Ok(wv15) = core_webview.cast::<ICoreWebView2_15>() {
+                            let mut token: i64 = 0;
+                            if let Err(e) = wv15.add_FaviconChanged(&handler, &mut token) {
+                                warn!("[lens] Failed to register FaviconChanged handler: {:?}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("[lens] ICoreWebView2_15 unavailable — tabs get no favicons: {:?}", e);
+                    }
+                }
+            }
+        }
+    });
+}
+
+/// Register a `ServerCertificateErrorDetected` handler (ICoreWebView2_14+) so a
+/// TLS certificate error emits `lens-cert-error {tabId, uri, errorStatus}`.
+///
+/// The frontend uses this to flip the address-bar security chip to an error
+/// state. We deliberately DON'T override the action: leaving it at the WebView2
+/// default renders WebView2's own built-in interstitial (which includes the
+/// "proceed anyway" affordance). A custom DOM interstitial was skipped — it
+/// would need webview-freeze airspace handling plus deferral/proceed plumbing
+/// to re-drive the navigation, duplicating a page WebView2 already renders well.
+/// Degrades to WebView2 defaults on a runtime older than ICoreWebView2_14.
+pub(super) fn register_cert_error_handler(
+    app: &AppHandle,
+    webview: &tauri::Webview,
+    tab_id: &str,
+) {
+    let app_handle = app.clone();
+    let tab_id = tab_id.to_string();
+    let _ = webview.with_webview(move |platform_webview| {
+        #[cfg(windows)]
+        {
+            use webview2_com::{ServerCertificateErrorDetectedEventHandler, take_pwstr};
+            use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_14;
+            use windows_core::Interface;
+
+            unsafe {
+                let controller = platform_webview.controller();
+                let core_webview = match controller.CoreWebView2() {
+                    Ok(wv) => wv,
+                    Err(e) => {
+                        warn!("[lens] Failed to get CoreWebView2 for cert-error handler: {:?}", e);
+                        return;
+                    }
+                };
+
+                let wv14: ICoreWebView2_14 = match core_webview.cast() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!("[lens] ICoreWebView2_14 unavailable — no cert-error events: {:?}", e);
+                        return;
+                    }
+                };
+
+                let app_for_cert = app_handle.clone();
+                let tab_for_cert = tab_id.clone();
+                let handler = ServerCertificateErrorDetectedEventHandler::create(Box::new(
+                    move |_sender, args| {
+                        if let Some(args) = args {
+                            let mut status = Default::default();
+                            let _ = args.ErrorStatus(&mut status);
+                            let mut uri_pwstr = windows_core::PWSTR::null();
+                            let _ = args.RequestUri(&mut uri_pwstr);
+                            let uri = take_pwstr(uri_pwstr);
+                            let _ = app_for_cert.emit(
+                                "lens-cert-error",
+                                serde_json::json!({
+                                    "tabId": tab_for_cert,
+                                    "uri": uri,
+                                    "errorStatus": status.0,
+                                }),
+                            );
+                        }
+                        // Leave the action at its default → WebView2's built-in
+                        // interstitial (with proceed-anyway) renders in the tab.
+                        Ok(())
+                    },
+                ));
+
+                let mut token: i64 = 0;
+                if let Err(e) = wv14.add_ServerCertificateErrorDetected(&handler, &mut token) {
+                    warn!("[lens] Failed to register ServerCertificateErrorDetected: {:?}", e);
+                } else {
+                    info!("[lens] Cert-error handler registered (token={})", token);
+                }
+            }
+        }
+    });
+}
+
+/// Register a `ContainsFullScreenElementChanged` handler (base ICoreWebView2) so
+/// a page entering/exiting HTML5 fullscreen (e.g. a `<video>` fullscreen button)
+/// emits `lens-fullscreen-changed {tabId, fullscreen}`. The frontend then
+/// resizes the child webview to fill the whole window while fullscreen and
+/// restores the pane bounds on exit.
+pub(super) fn register_fullscreen_handler(
+    app: &AppHandle,
+    webview: &tauri::Webview,
+    tab_id: &str,
+) {
+    let app_handle = app.clone();
+    let tab_id = tab_id.to_string();
+    let _ = webview.with_webview(move |platform_webview| {
+        #[cfg(windows)]
+        {
+            use webview2_com::ContainsFullScreenElementChangedEventHandler;
+
+            unsafe {
+                let controller = platform_webview.controller();
+                let core_webview = match controller.CoreWebView2() {
+                    Ok(wv) => wv,
+                    Err(e) => {
+                        warn!("[lens] Failed to get CoreWebView2 for fullscreen handler: {:?}", e);
+                        return;
+                    }
+                };
+
+                let app_for_fs = app_handle.clone();
+                let tab_for_fs = tab_id.clone();
+                let handler = ContainsFullScreenElementChangedEventHandler::create(Box::new(
+                    move |sender, _args| {
+                        if let Some(wv) = sender {
+                            let mut is_fs = windows_core::BOOL::from(false);
+                            let _ = wv.ContainsFullScreenElement(&mut is_fs);
+                            let _ = app_for_fs.emit(
+                                "lens-fullscreen-changed",
+                                serde_json::json!({
+                                    "tabId": tab_for_fs,
+                                    "fullscreen": is_fs.as_bool(),
+                                }),
+                            );
+                        }
+                        Ok(())
+                    },
+                ));
+
+                let mut token: i64 = 0;
+                if let Err(e) = core_webview.add_ContainsFullScreenElementChanged(&handler, &mut token) {
+                    warn!("[lens] Failed to register ContainsFullScreenElementChanged: {:?}", e);
+                }
+            }
+        }
+    });
+}
+
+/// Register audio-state handlers (ICoreWebView2_8) so a tab that starts/stops
+/// playing audio, or is muted/unmuted, emits `lens-audio-state {tabId, audible?,
+/// muted?}`. Drives the speaker icon in the tab strip. Degrades to no audio
+/// indicator on a runtime older than ICoreWebView2_8.
+pub(super) fn register_audio_handlers(
+    app: &AppHandle,
+    webview: &tauri::Webview,
+    tab_id: &str,
+) {
+    let app_handle = app.clone();
+    let tab_id = tab_id.to_string();
+    let _ = webview.with_webview(move |platform_webview| {
+        #[cfg(windows)]
+        {
+            use webview2_com::{IsDocumentPlayingAudioChangedEventHandler, IsMutedChangedEventHandler};
+            use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_8;
+            use windows_core::Interface;
+
+            unsafe {
+                let controller = platform_webview.controller();
+                let core_webview = match controller.CoreWebView2() {
+                    Ok(wv) => wv,
+                    Err(e) => {
+                        warn!("[lens] Failed to get CoreWebView2 for audio handlers: {:?}", e);
+                        return;
+                    }
+                };
+
+                let wv8: ICoreWebView2_8 = match core_webview.cast() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!("[lens] ICoreWebView2_8 unavailable — no tab audio indicator: {:?}", e);
+                        return;
+                    }
+                };
+
+                // IsDocumentPlayingAudioChanged → audible state
+                {
+                    let app_for_audio = app_handle.clone();
+                    let tab_for_audio = tab_id.clone();
+                    let handler = IsDocumentPlayingAudioChangedEventHandler::create(Box::new(
+                        move |sender, _args| {
+                            if let Some(wv) = sender {
+                                if let Ok(wv8) = wv.cast::<ICoreWebView2_8>() {
+                                    let mut playing = windows_core::BOOL::from(false);
+                                    let _ = wv8.IsDocumentPlayingAudio(&mut playing);
+                                    let _ = app_for_audio.emit(
+                                        "lens-audio-state",
+                                        serde_json::json!({
+                                            "tabId": tab_for_audio,
+                                            "audible": playing.as_bool(),
+                                        }),
+                                    );
+                                }
+                            }
+                            Ok(())
+                        },
+                    ));
+                    let mut token: i64 = 0;
+                    if let Err(e) = wv8.add_IsDocumentPlayingAudioChanged(&handler, &mut token) {
+                        warn!("[lens] Failed to register IsDocumentPlayingAudioChanged: {:?}", e);
+                    }
+                }
+
+                // IsMutedChanged → muted state
+                {
+                    let app_for_mute = app_handle.clone();
+                    let tab_for_mute = tab_id.clone();
+                    let handler = IsMutedChangedEventHandler::create(Box::new(
+                        move |sender, _args| {
+                            if let Some(wv) = sender {
+                                if let Ok(wv8) = wv.cast::<ICoreWebView2_8>() {
+                                    let mut muted = windows_core::BOOL::from(false);
+                                    let _ = wv8.IsMuted(&mut muted);
+                                    let _ = app_for_mute.emit(
+                                        "lens-audio-state",
+                                        serde_json::json!({
+                                            "tabId": tab_for_mute,
+                                            "muted": muted.as_bool(),
+                                        }),
+                                    );
+                                }
+                            }
+                            Ok(())
+                        },
+                    ));
+                    let mut token: i64 = 0;
+                    if let Err(e) = wv8.add_IsMutedChanged(&handler, &mut token) {
+                        warn!("[lens] Failed to register IsMutedChanged: {:?}", e);
+                    }
+                }
+            }
+        }
+    });
+}
+
+/// Register a `PermissionRequested` handler (base ICoreWebView2) so camera /
+/// mic / geolocation / notification prompts run through a VM-styled bar and
+/// persist per-site. See `permissions.rs` for the deferral flow. A remembered
+/// decision is applied synchronously (no prompt); an unremembered one is
+/// deferred and surfaced via `lens-permission-request`.
+pub(super) fn register_permission_handler(
+    app: &AppHandle,
+    webview: &tauri::Webview,
+    tab_id: &str,
+) {
+    let app_handle = app.clone();
+    let tab_id = tab_id.to_string();
+    let _ = webview.with_webview(move |platform_webview| {
+        #[cfg(windows)]
+        {
+            use webview2_com::{PermissionRequestedEventHandler, take_pwstr};
+            use webview2_com::Microsoft::Web::WebView2::Win32::{
+                COREWEBVIEW2_PERMISSION_STATE_ALLOW, COREWEBVIEW2_PERMISSION_STATE_DENY,
+            };
+            use super::permissions;
+
+            unsafe {
+                let controller = platform_webview.controller();
+                let core_webview = match controller.CoreWebView2() {
+                    Ok(wv) => wv,
+                    Err(e) => {
+                        warn!("[lens] Failed to get CoreWebView2 for permission handler: {:?}", e);
+                        return;
+                    }
+                };
+
+                let app_for_perm = app_handle.clone();
+                let tab_for_perm = tab_id.clone();
+                let handler = PermissionRequestedEventHandler::create(Box::new(
+                    move |_sender, args| {
+                        let args = match args {
+                            Some(a) => a,
+                            None => return Ok(()),
+                        };
+
+                        let mut kind_val = Default::default();
+                        let _ = args.PermissionKind(&mut kind_val);
+                        let kind = permissions::kind_to_str(kind_val);
+
+                        let mut uri_pwstr = windows_core::PWSTR::null();
+                        let _ = args.Uri(&mut uri_pwstr);
+                        let origin = take_pwstr(uri_pwstr);
+
+                        match permissions::lookup_decision(&origin, kind) {
+                            Some(allow) => {
+                                // Remembered — apply synchronously, no prompt.
+                                let state = if allow {
+                                    COREWEBVIEW2_PERMISSION_STATE_ALLOW
+                                } else {
+                                    COREWEBVIEW2_PERMISSION_STATE_DENY
+                                };
+                                let _ = args.SetState(state);
+                            }
+                            None => {
+                                // Unremembered — defer and ask the user.
+                                match args.GetDeferral() {
+                                    Ok(deferral) => {
+                                        let request_id = permissions::stash_pending(args.clone(), deferral);
+                                        let _ = app_for_perm.emit(
+                                            "lens-permission-request",
+                                            serde_json::json!({
+                                                "tabId": tab_for_perm,
+                                                "requestId": request_id,
+                                                "kind": kind,
+                                                "uri": origin,
+                                            }),
+                                        );
+                                    }
+                                    Err(e) => {
+                                        warn!("[lens] Failed to get permission deferral, denying: {:?}", e);
+                                        let _ = args.SetState(COREWEBVIEW2_PERMISSION_STATE_DENY);
+                                    }
+                                }
+                            }
+                        }
+                        Ok(())
+                    },
+                ));
+
+                let mut token: i64 = 0;
+                if let Err(e) = core_webview.add_PermissionRequested(&handler, &mut token) {
+                    warn!("[lens] Failed to register PermissionRequested: {:?}", e);
+                }
+            }
+        }
+    });
+}
+
 /// Override the child WebView2's user-agent with a current desktop-Chrome UA so
 /// identity providers (notably Google, which 403s embedded webviews) don't
 /// reject OAuth flows.
@@ -669,7 +1154,8 @@ fn register_download_handler(
 
                         info!("[lens] Download started: {} -> {}", filename, result_path);
 
-                        // Let WebView2 use its default Save-As dialog
+                        // Let WebView2's built-in download UI handle the
+                        // download; we only observe for the downloads panel.
                         args.SetHandled(false)?;
 
                         // Register BytesReceivedChanged handler for progress updates
@@ -752,7 +1238,8 @@ fn register_download_handler(
                                         _ => "downloading",
                                     };
 
-                                    // Update in-memory entry
+                                    // Update in-memory entry; persist finished
+                                    // downloads so the panel survives restart
                                     if let Ok(mut guard) = downloads_state.lock() {
                                         if let Some(entry) = guard.iter_mut().find(|e| e.id == dl_id_state) {
                                             entry.state = state_str.to_string();
@@ -763,6 +1250,9 @@ fn register_download_handler(
                                             if !final_path.is_empty() {
                                                 entry.path = final_path.clone();
                                             }
+                                        }
+                                        if state_str != "downloading" {
+                                            super::downloads::persist_finished(&guard);
                                         }
                                     }
 
@@ -818,6 +1308,7 @@ pub(super) async fn create_tab_webview(
     width: f64,
     height: f64,
     downloads: Arc<Mutex<Vec<DownloadEntry>>>,
+    incognito: bool,
 ) -> Result<String, String> {
     let parsed_url = url.parse::<tauri::Url>()
         .map_err(|e| format!("Invalid URL: {}", e))?;
@@ -846,14 +1337,37 @@ pub(super) async fn create_tab_webview(
         let tab_id_for_handler = tab_id_clone.clone();
         let builder =
             WebviewBuilder::new(&label_clone, tauri::WebviewUrl::External(parsed_url))
+                // Must match the main window's `browserExtensionsEnabled` (true).
+                // wry creates one WebView2 environment per webview but they all
+                // share the default user-data folder, and WebView2 rejects a
+                // second environment on that folder with different options
+                // (ERROR_INVALID_STATE / 0x8007139F). Leaving this at the builder
+                // default (false) made EVERY child webview fail to create. The
+                // whole environment (main window + all children) must agree.
+                .browser_extensions_enabled(true)
+                // Private tab → InPrivate/non-persistent WebView2 DataStore
+                // (isolated cookies/storage, cleared when the webview closes).
+                .incognito(incognito)
                 .initialization_script(IPC_CRASH_GUARD_SCRIPT)
                 .initialization_script(&shortcut_script)
                 .initialization_script(CACHE_SCRIPT)
                 .initialization_script(CONSOLE_HOOK_SCRIPT)
                 .on_page_load(move |webview, payload| {
+                    // Started → per-tab loading on (drives the tab spinner + the
+                    // per-nav progress bar). Finished → loading off + url/title.
+                    if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+                        let _ = app_for_handler.emit(
+                            "lens-loading-changed",
+                            serde_json::json!({ "tabId": tab_id_for_handler, "loading": true }),
+                        );
+                    }
                     if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
                         let url_str = payload.url().to_string();
                         info!("[lens] Page load finished (tab {}): {}", tab_id_for_handler, url_str);
+                        let _ = app_for_handler.emit(
+                            "lens-loading-changed",
+                            serde_json::json!({ "tabId": tab_id_for_handler, "loading": false }),
+                        );
                         let _ = app_for_handler.emit(
                             "lens-url-changed",
                             serde_json::json!({ "url": url_str, "tabId": tab_id_for_handler }),
@@ -879,7 +1393,15 @@ pub(super) async fn create_tab_webview(
                 register_custom_scheme_handler(&app_for_download, &webview_ref);
                 register_download_handler(&app_for_download, &webview_ref, downloads);
                 register_new_window_handler(&app_for_download, &webview_ref);
+                register_navigation_state_handlers(&app_for_download, &webview_ref, &tab_id_clone);
+                register_cert_error_handler(&app_for_download, &webview_ref, &tab_id_clone);
+                register_fullscreen_handler(&app_for_download, &webview_ref, &tab_id_clone);
+                register_audio_handlers(&app_for_download, &webview_ref, &tab_id_clone);
+                register_permission_handler(&app_for_download, &webview_ref, &tab_id_clone);
                 set_desktop_user_agent(&webview_ref);
+                // Apply the persisted privacy toggles to this tab's profile
+                // (best-effort — profile settings persist, so this is idempotent).
+                let _ = super::privacy::apply_privacy_to_webview(&webview_ref);
                 Ok(label_clone)
             }
             Err(e) => {

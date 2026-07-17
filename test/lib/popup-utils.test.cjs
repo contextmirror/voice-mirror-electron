@@ -84,10 +84,10 @@ describe('popup-utils.js', () => {
 
 describe('setupClickOutside consumers', () => {
   const consumers = [
-    { file: 'src/components/lens/TabContextMenu.svelte', label: 'TabContextMenu', closeFn: 'close' },
-    { file: 'src/components/lens/FileContextMenu.svelte', label: 'FileContextMenu', closeFn: 'close' },
-    { file: 'src/components/lens/EditorContextMenu.svelte', label: 'EditorContextMenu', closeFn: 'close' },
-    { file: 'src/components/lens/CodeActionsMenu.svelte', label: 'CodeActionsMenu', closeFn: 'onClose' },
+    { file: 'src/components/lens/editor/TabContextMenu.svelte', label: 'TabContextMenu', closeFn: 'close' },
+    { file: 'src/components/lens/tree/FileContextMenu.svelte', label: 'FileContextMenu', closeFn: 'close' },
+    { file: 'src/components/lens/editor/EditorContextMenu.svelte', label: 'EditorContextMenu', closeFn: 'close' },
+    { file: 'src/components/lens/editor/CodeActionsMenu.svelte', label: 'CodeActionsMenu', closeFn: 'onClose' },
   ];
 
   for (const { file, label, closeFn } of consumers) {

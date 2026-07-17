@@ -7,7 +7,6 @@
    * terminalTabsStore for group/instance state management.
    *
    * Sub-components:
-   * - TerminalTabStrip: group tab iteration and switching
    * - TerminalActionBar: action buttons with dropdown menus
    * - TerminalSidebar: instance list with tree characters
    * - TerminalContextMenu: right-click menu for instances
@@ -128,7 +127,7 @@
       {/snippet}
 
       <!-- All groups are always mounted — only the active one is visible.
-           This prevents ghostty-web from losing PTY output on group switch. -->
+           This prevents the terminal from losing PTY output on group switch. -->
       {#each terminalTabsStore.groups as group (group.id)}
         {@const isActive = group.id === activeGroupId}
         <div class="group-container" class:active={isActive}>

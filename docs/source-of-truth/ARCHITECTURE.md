@@ -1,6 +1,6 @@
 # Voice Mirror — Architecture
 
-> Voice Mirror is a **Windows-first** voice-native IDE. The cross-platform basics (chat, editor, terminal, full-screen capture) work everywhere, but the see-and-drive App Preview / native-app driving, push-to-talk/dictation injection, and WebView2 browser bridge are **Windows-only** for v1. Launch gaps are tracked in [`docs/internal/LAUNCH-READINESS.md`](../internal/LAUNCH-READINESS.md).
+> Voice Mirror is a **Windows-first** voice-native IDE. The cross-platform basics (chat, editor, terminal, full-screen capture) work everywhere, but the see-and-drive App Preview / native-app driving, push-to-talk/dictation injection, and WebView2 browser bridge are **Windows-only** for v1. Launch gaps are tracked in the internal launch-readiness notes (`docs/internal/`, local only — not in the public repo).
 >
 > Last verified against code: 2026-06-29.
 
@@ -17,7 +17,7 @@
 |  │  Title-bar menu bar (File/Edit/…/Help) + command reg │ |
 |  │  Lens workspace (editor, preview, file tree, term)   │ |
 |  │  App Preview / sandbox (see-and-drive running apps)  │ |
-|  │  Terminal: AI tab (xterm.js+WebGL) + shells (ghostty)│ |
+|  │  Terminal: AI tab + shells (xterm.js + WebGL)        │ |
 |  │  Settings panel + onboarding wizard + Get-Started    │ |
 |  │  Sidebar (navigation, chat list, project strip)      │ |
 |  │  Theme engine (8 presets + custom themes)            │ |
@@ -251,7 +251,7 @@ Split into `navigation`, `tabs`, `find`, `zoom`, `device_preview`, `downloads`,
 
 ### commands/lsp.rs (45 commands)
 
-The 15 most-used are listed below; the full set (45) covers the entire LSP feature matrix — type/declaration/implementation navigation, document highlight, inlay hints, code lens, semantic tokens, document colors, folding ranges, workspace symbols, call/type hierarchy, selection range, on-type/range formatting, linked editing, server management, etc. See [`LSP-GAP.md`](LSP-GAP.md) and [`LSP-WIRING-AUDIT.md`](LSP-WIRING-AUDIT.md).
+The 15 most-used are listed below; the full set (45) covers the entire LSP feature matrix — type/declaration/implementation navigation, document highlight, inlay hints, code lens, semantic tokens, document colors, folding ranges, workspace symbols, call/type hierarchy, selection range, on-type/range formatting, linked editing, server management, etc. See [`LSP.md`](LSP.md).
 
 | Command | Purpose |
 |---------|---------|
@@ -312,7 +312,7 @@ The frontend is a Svelte 5 application built with Vite. It runs inside the Tauri
 
 ### Components (102 files, 8 directories)
 
-> The tables below are representative, not exhaustive — the component set has grown well past the originals. Notable additions since this doc was first written: terminal split (`AiTerminal.svelte` = xterm.js+WebGL for the AI provider PTY, `Terminal.svelte` = ghostty-web for user shells, plus `TerminalSidebar`/`TerminalTabStrip`/`TerminalPanel`/`TerminalActionBar`/`TerminalSearch`/`TerminalContextMenu`/colour+icon pickers), the App Preview (`SandboxPreview.svelte`), browser polish (`BrowserMenu`, `DownloadsPanel`, `HistoryPanel`, `DevicePreview`, `ElementInspector`, `ConsolePanel`, `FindBar`), LSP panels, `ProblemsPanel`, `StatusBar`, `EditorPane`/`GroupTabBar`, MCP server settings, `onboarding/WelcomeWizard.svelte`, and `shared/GettingStarted.svelte`.
+> The tables below are representative, not exhaustive — the component set has grown well past the originals. Notable additions since this doc was first written: terminal split (`AiTerminal.svelte` = xterm.js+WebGL for the AI provider PTY, `Terminal.svelte` = xterm.js+WebGL for user shells, plus `TerminalSidebar`/`TerminalTabStrip`/`TerminalPanel`/`TerminalActionBar`/`TerminalSearch`/`TerminalContextMenu`/colour+icon pickers), the App Preview (`SandboxPreview.svelte`), browser polish (`BrowserMenu`, `DownloadsPanel`, `HistoryPanel`, `DevicePreview`, `ElementInspector`, `ConsolePanel`, `FindBar`), LSP panels, `ProblemsPanel`, `StatusBar`, `EditorPane`/`GroupTabBar`, MCP server settings, `onboarding/WelcomeWizard.svelte`, and `shared/GettingStarted.svelte`.
 
 **Chat** (7 components):
 | Component | Purpose |
@@ -387,7 +387,7 @@ The frontend is a Svelte 5 application built with Vite. It runs inside the Tauri
 | Component | Purpose |
 |-----------|---------|
 | `AiTerminal.svelte` | **xterm.js + WebGL** terminal for the AI provider PTY (Claude Code, etc.) |
-| `Terminal.svelte` | **ghostty-web** (WASM) terminal for user shell PTY sessions |
+| `Terminal.svelte` | **xterm.js + WebGL** terminal for user shell PTY sessions |
 | `TerminalTabs.svelte` | Tabbed container: AI tab + shell tabs + unified toolbar |
 | `TerminalPanel.svelte` | Shell terminal panel host (grid splits) |
 | `TerminalSidebar.svelte` | Terminal instance tree (drag-to-reorder) |
@@ -515,7 +515,7 @@ These providers:
 - Run in a pseudo-terminal managed by Rust (portable-pty)
 - Stream output to the frontend via Tauri events
 - Accept input via the `ai_pty_input` command
-- Are rendered in the ghostty-web terminal component
+- Are rendered in the xterm.js terminal component
 
 ### HTTP API Providers (`providers/api.rs`)
 
@@ -742,7 +742,7 @@ theme store: deriveTheme() computes 30+ CSS variables
 theme store: applies CSS variables to :root
     │
     ├──→ Orb component (reactive color props)
-    ├──→ Terminal (ghostty-web theme)
+    ├──→ Terminal (xterm.js theme)
     └──→ All Svelte components (CSS variables)
 ```
 
@@ -859,7 +859,7 @@ UI reflects new provider (terminal or chat mode)
 | `svelte` | Frontend framework (v5, with runes) |
 | `@tauri-apps/api` | Tauri invoke() and event APIs |
 | `vite` | Build tool with HMR |
-| `ghostty-web` | WASM terminal emulator for PTY providers |
+| `@xterm/xterm` | Terminal emulator (WebGL renderer) for PTY providers and shells |
 | `@codemirror/*` | Code editor for Lens file editor |
 | `marked` + `dompurify` | Secure markdown rendering in chat |
 

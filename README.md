@@ -90,9 +90,7 @@ Pick a brain by **right-clicking the Voice Agent tab**. Voice Mirror supports:
 |----------|------|-------|
 | **Claude Code** | CLI agent | Anthropic's CLI — MCP tools, vision, full terminal, `CLAUDE.md` ecosystem |
 | **OpenCode** | CLI agent | Universal gateway to many models (GPT, Gemini, Kimi, and more) with MCP support |
-| **Codex / Gemini CLI / Kimi CLI** | CLI agent | Additional first-party CLI agents |
 | **Ollama / LM Studio / Jan** | Local LLM | Auto-detected local servers; run models on your own hardware (vision supported) |
-| **OpenAI / Groq** | Cloud API | Hosted models via API key |
 | **Dictation** | Voice-to-text | No LLM — straight speech-to-text into the focused input |
 
 CLI agents run as real PTY-backed processes inside the app with full MCP tool access. Local servers are auto-detected.

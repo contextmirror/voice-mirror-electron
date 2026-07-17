@@ -45,78 +45,6 @@ pub fn set_window_position(app: AppHandle, x: f64, y: f64) -> IpcResponse {
     }
 }
 
-/// Save current window position and size to config.
-/// Mode-aware: dashboard saves to dashboardX/Y + panelWidth/Height,
-/// orb saves to orbX/Y only (preserving dashboard dimensions).
-#[tauri::command]
-pub fn save_window_bounds(app: AppHandle) -> IpcResponse {
-    let Some(window) = app.get_webview_window("main") else {
-        return IpcResponse::err("Main window not found");
-    };
-
-    let position = match window.outer_position() {
-        Ok(pos) => pos,
-        Err(e) => return IpcResponse::err(format!("Failed to get position: {}", e)),
-    };
-
-    let size = match window.outer_size() {
-        Ok(s) => s,
-        Err(e) => return IpcResponse::err(format!("Failed to get size: {}", e)),
-    };
-
-    use crate::config::persistence;
-    use crate::services::platform;
-
-    let config_dir = platform::get_config_dir();
-    // Use in-memory config (always current) instead of disk read (can be stale)
-    let current_config = super::config::get_config_snapshot();
-    let is_dashboard = current_config.window.expanded;
-
-    // Mode-aware: don't overwrite dashboard size when in orb mode
-    let patch = if is_dashboard {
-        serde_json::json!({
-            "window": {
-                "dashboardX": position.x as f64,
-                "dashboardY": position.y as f64,
-            },
-            "appearance": {
-                "panelWidth": size.width,
-                "panelHeight": size.height,
-            }
-        })
-    } else {
-        serde_json::json!({
-            "window": {
-                "orbX": position.x as f64,
-                "orbY": position.y as f64,
-            }
-        })
-    };
-
-    let current_val = match serde_json::to_value(&current_config) {
-        Ok(v) => v,
-        Err(e) => return IpcResponse::err(format!("Serialize error: {}", e)),
-    };
-
-    let merged = persistence::deep_merge(current_val, patch);
-
-    let updated: crate::config::schema::AppConfig = match serde_json::from_value(merged) {
-        Ok(c) => c,
-        Err(e) => return IpcResponse::err(format!("Invalid config: {}", e)),
-    };
-
-    if let Err(e) = persistence::save_config(&config_dir, &updated) {
-        return IpcResponse::err(e);
-    }
-
-    IpcResponse::ok(serde_json::json!({
-        "x": position.x,
-        "y": position.y,
-        "width": size.width,
-        "height": size.height,
-    }))
-}
-
 /// Minimize the window.
 #[tauri::command]
 pub fn minimize_window(app: AppHandle) -> IpcResponse {
@@ -127,26 +55,6 @@ pub fn minimize_window(app: AppHandle) -> IpcResponse {
     match window.minimize() {
         Ok(()) => IpcResponse::ok_empty(),
         Err(e) => IpcResponse::err(format!("Failed to minimize: {}", e)),
-    }
-}
-
-/// Maximize or unmaximize the window (toggle).
-#[tauri::command]
-pub fn maximize_window(app: AppHandle) -> IpcResponse {
-    let Some(window) = app.get_webview_window("main") else {
-        return IpcResponse::err("Main window not found");
-    };
-
-    let is_max = window.is_maximized().unwrap_or(false);
-    let result = if is_max {
-        window.unmaximize()
-    } else {
-        window.maximize()
-    };
-
-    match result {
-        Ok(()) => IpcResponse::ok_empty(),
-        Err(e) => IpcResponse::err(format!("Failed to toggle maximize: {}", e)),
     }
 }
 
@@ -200,20 +108,6 @@ pub fn show_window(app: AppHandle) -> IpcResponse {
         Ok(()) => IpcResponse::ok_empty(),
         Err(e) => IpcResponse::err(format!("Failed to show window: {}", e)),
     }
-}
-
-/// Quit the application.
-/// Uses window.close() instead of app.exit() so that the CloseRequested
-/// event fires first, allowing the on_window_event handler in lib.rs to
-/// save window bounds before the process exits.
-#[tauri::command]
-pub fn quit_app(app: AppHandle) -> IpcResponse {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.close();
-    } else {
-        app.exit(0);
-    }
-    IpcResponse::ok_empty()
 }
 
 /// Get current process CPU and memory stats.

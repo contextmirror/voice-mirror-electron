@@ -84,11 +84,12 @@ describe('updater.svelte.js -- state machine store', () => {
     assert.ok(src.includes('5 * 24 * 60 * 60 * 1000') || src.includes('NAG_INTERVAL_MS'), 'Should use a 5-day window');
   });
 
-  it('supports stable/beta channels persisted to localStorage', () => {
-    assert.ok(src.includes('vm-update-channel'), 'Should use the channel localStorage key');
-    assert.ok(src.includes("'beta'"), 'Should support beta channel');
-    assert.ok(src.includes('latest-beta.json'), 'Should document the beta endpoint hook');
-    assert.ok(src.includes('setChannel'), 'Should expose setChannel');
+  it('derives the release channel from the running build (no fake runtime toggle)', () => {
+    assert.ok(src.includes('detectChannel'), 'Should expose detectChannel');
+    assert.ok(src.includes('getVersion'), 'Should read the app version to derive the channel');
+    assert.ok(/nightly\|beta\|canary/.test(src), 'Should treat prerelease versions as the nightly channel');
+    assert.ok(!src.includes('setChannel'), 'Should NOT expose a fake runtime channel setter');
+    assert.ok(!src.includes('latest-beta.json'), 'Should not reference a nonexistent beta endpoint');
   });
 
   it('auto-checks 30s after startup then every 6 hours', () => {
@@ -151,9 +152,11 @@ describe('BehaviorSettings.svelte -- Updates section', () => {
     assert.ok(src.includes('checkForUpdates(true)'), 'Explicit check passes true');
   });
 
-  it('has a Stable/Beta channel toggle', () => {
-    assert.ok(src.includes('Stable') && src.includes('Beta'), 'Should offer Stable and Beta');
-    assert.ok(src.includes('setChannel') || src.includes('setUpdateChannel'), 'Should switch channel');
+  it('shows a read-only channel indicator (Stable/Nightly), not a fake toggle', () => {
+    assert.ok(src.includes('channel-indicator'), 'Should render a read-only channel indicator');
+    assert.ok(src.includes('Nightly') && src.includes('Stable'), 'Should label the channel Stable/Nightly');
+    assert.ok(src.includes('detectChannel'), 'Should derive the channel from the build');
+    assert.ok(!src.includes('setChannel'), 'Should not offer a fake runtime channel switch');
   });
 
   it('has an auto-check toggle persisted to config', () => {

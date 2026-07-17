@@ -107,3 +107,29 @@ export function copyFullPath(relativePath, root) {
 export function copyRelativePath(relativePath) {
   navigator.clipboard.writeText(relativePath);
 }
+
+/**
+ * Blend two hex colors into an OPAQUE hex color (overlay mixed into base).
+ *
+ * Used for terminal selection: an alpha color like '#rrggbb4d' over a pure
+ * black background is nearly invisible (and alpha handling in canvas/WebGL
+ * renderers is unreliable), so we pre-blend to a solid color instead.
+ *
+ * @param {string} base - Base hex color (e.g. '#000000')
+ * @param {string} overlay - Overlay hex color (e.g. '#56b4e9')
+ * @param {number} alpha - Overlay strength 0..1
+ * @returns {string} Opaque hex color; returns `overlay` if inputs aren't hex
+ */
+export function blendHex(base, overlay, alpha) {
+  const parse = (h) => {
+    const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(h?.trim() || '');
+    if (!m) return null;
+    const s = m[1].length === 3 ? m[1].split('').map((c) => c + c).join('') : m[1];
+    return [parseInt(s.slice(0, 2), 16), parseInt(s.slice(2, 4), 16), parseInt(s.slice(4, 6), 16)];
+  };
+  const b = parse(base);
+  const o = parse(overlay);
+  if (!b || !o) return overlay;
+  const mix = (i) => Math.round(b[i] + (o[i] - b[i]) * alpha).toString(16).padStart(2, '0');
+  return `#${mix(0)}${mix(1)}${mix(2)}`;
+}

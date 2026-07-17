@@ -131,6 +131,23 @@ fn trigger_path(data_dir: &Path) -> PathBuf {
     data_dir.join("claude_message_trigger.json")
 }
 
+/// Acquire the cross-process inbox.json lock (shared with the Tauri app's
+/// `inbox_watcher::write_inbox_message*` / `clear_inbox`, which use the same
+/// lock file). Serializes read-modify-write cycles so concurrent writes from
+/// the two processes can't lose messages.
+///
+/// The blocking retry loop runs on a blocking thread; if that task fails we
+/// proceed unlocked (rare, and better than wedging voice messaging).
+async fn acquire_inbox_lock(data_dir: &Path) -> crate::util::FileLockGuard {
+    let lock_path = inbox_path(data_dir).with_extension("lock");
+    tokio::task::spawn_blocking(move || crate::util::acquire_file_lock(&lock_path))
+        .await
+        .unwrap_or_else(|e| {
+            warn!("[MCP Core] Inbox lock task failed: {} — proceeding unlocked", e);
+            crate::util::FileLockGuard::unlocked()
+        })
+}
+
 /// Read and parse a JSON file, returning a default value if the file doesn't exist or is corrupt.
 async fn read_json_file<T: serde::de::DeserializeOwned>(path: &Path, default: T) -> T {
     match tokio::fs::read_to_string(path).await {
@@ -341,8 +358,12 @@ pub async fn handle_voice_send(
 
     update_heartbeat(data_dir, instance_id, "active", Some("Sending message")).await;
 
-    // Load existing messages
+    // Load existing messages.
+    // Cross-process lock around the read→append→rename cycle: the Tauri app
+    // writes this file too (inbox_watcher), and unserialized concurrent
+    // writes lose messages. Held until dropped after the atomic write below.
     let path = inbox_path(data_dir);
+    let lock = acquire_inbox_lock(data_dir).await;
     let mut store: InboxStore = read_json_file(&path, InboxStore { messages: vec![] }).await;
 
     // Resolve thread ID
@@ -392,6 +413,7 @@ pub async fn handle_voice_send(
     if let Err(e) = atomic_write_json(&path, &store).await {
         return McpToolResult::error(format!("Error: {}", e));
     }
+    drop(lock);
 
     // Write trigger file for Voice Mirror notification (file-based fallback)
     let trigger = MessageTrigger {
@@ -420,7 +442,7 @@ pub async fn handle_voice_send(
     }
 
     let preview = if message.len() > 100 {
-        format!("{}...", &message[..100])
+        format!("{}...", crate::util::truncate_utf8(message, 100))
     } else {
         message.to_string()
     };
@@ -458,6 +480,13 @@ pub async fn handle_voice_inbox(args: &Value, data_dir: &Path) -> McpToolResult 
         return McpToolResult::text("No messages in inbox.");
     }
 
+    // mark_as_read rewrites inbox.json (read-modify-write) — take the
+    // cross-process lock so a concurrent app-side write isn't lost.
+    let lock = if mark_as_read {
+        Some(acquire_inbox_lock(data_dir).await)
+    } else {
+        None
+    };
     let mut store: InboxStore = read_json_file(&path, InboxStore { messages: vec![] }).await;
 
     // Auto-cleanup old messages (24h cutoff)
@@ -488,6 +517,7 @@ pub async fn handle_voice_inbox(args: &Value, data_dir: &Path) -> McpToolResult 
             warn!("[MCP Core] Failed to mark messages as read: {}", e);
         }
     }
+    drop(lock);
 
     // Filter out own messages
     let mut inbox: Vec<&InboxMessage> = store

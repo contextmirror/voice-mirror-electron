@@ -5,6 +5,52 @@ Format inspired by game dev patch notes — grouped by release, categorized by i
 
 ---
 
+## v0.13.0-nightly — "Clean Terminal" (rolling)
+
+The 0.13 nightly line, dogfooded via the rolling `nightly` GitHub pre-release.
+
+### Changed — Terminal engine unified on xterm.js
+- **ghostty-web removed** — user-shell terminals migrated to @xterm/xterm + WebGL, matching the AI terminal; one engine everywhere
+- **Paste fixed** — Ctrl+V pasted twice (native paste event + custom handler); pastes now go through the bracketed-paste pipeline
+- **Cursor visible in Claude Code** — the terminal cursor was hidden on the assumption Claude Code draws its own; it doesn't
+- **Selection visible** — opaque pre-blended selection color (alpha-over-black was invisible)
+- **Unicode 11 widths** — emoji-heavy TUIs no longer leave stale glyphs on redraw
+- **Resize polish** — no more black box / thin line while resizing (stock xterm.css hard-codes #000 backgrounds); no more canvas-wipe flicker (fit via proposeDimensions + resize); terminal panel has a sane minimum height
+
+### Changed — Codebase deep-clean (nightly.3)
+- **28 audited logic bugs fixed** (14 frontend + 14 Rust), the standouts:
+  - Editor data-loss fixes: discarded "Don't Save" edits no longer resurrect; empty-on-disk files reload; save failures toast; pane sizes actually persist
+  - Voice-loop resilience: `voice_listen` falls back to file polling on a dead pipe, and the MCP binary reconnects with backoff — an app restart no longer silences the AI
+  - No more UI freezes on provider switch / terminal kill (sync commands made async); PTT survives a busy main thread (hook callbacks no longer emit inline); no orphaned node processes on provider switch
+- **Professional layout**: `components/lens/` split into 8 subfolders, `lib/` grouped, `test/` mirrors `src/`, release scripts committed, docs consolidated + de-staled, CHANGELOG backfilled, dead code removed
+
+### Fixed
+- Updater channel indicator is honest (was a fake Stable/Beta toggle)
+- Inactive Lens tab webviews park off-screen — popup tabs no longer cover the panel
+
+---
+
+## v0.12.x — "Launch Line" (2026-05 → 2026-06)
+
+Sixteen patch releases hardening the first auto-updating build (v0.12.0) into a launch-ready app.
+
+### New
+- **Auto-updater** (v0.12.0) — Tauri updater with VS Code-style UX
+- **Onboarding** (v0.12.7–0.12.9) — multi-step setup wizard, provider/STT/GPU/TTS health contracts, Kokoro download + key validation + install progress
+- **Multi-format file viewer** (v0.12.11) — images, PDF, docx, clean fallback
+- **VS Code-parity Output panel** (v0.12.14) — per-channel level filter, classification, `get_logs`
+
+### Fixed
+- Voice Agent freeze + flashing console windows; MCP tools wired in installed builds (v0.12.1–0.12.2)
+- Dictation key fires reliably (v0.12.3)
+- Kokoro TTS in installed builds (bundled espeak-ng, v0.12.4); stuck TTS self-heals instead of locking the app (v0.12.10)
+- Live App Preview: no more hang on a dead/stale app (v0.12.5); localhost images allowed in CSP (v0.12.13)
+- Wizard finish / shortcuts land in the Lens IDE, not the bare chat view (v0.12.12)
+- Dev server "Port already in use" loop (v0.12.15)
+- "Sign in with Google" works in the Lens browser — window.open() popups + desktop UA (v0.12.16)
+
+---
+
 ## v0.11.0 — "Live Wire" (2026-02-18)
 
 Real-time chat streaming, inline tool activity cards, sentence-level TTS, and duplicate message elimination. The chat window now feels as fast as the TUI dashboard.

@@ -7,17 +7,22 @@
 //! Split into sub-modules by ecosystem:
 //! - `node` — Node.js/JS framework detection (package.json, vite config, etc.)
 //! - `python` — Python framework detection (requirements.txt, pyproject.toml, etc.)
+//! - `workspace` — monorepo member scan (workspaces globs, apps/*, pnpm-workspace)
 //! - `util` — Shared helpers (port probing, package manager, parsing)
 
+mod cargo;
 mod node;
 mod python;
+mod workspace;
 pub(crate) mod util;
 
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-pub use util::{detect_package_manager, is_port_listening, kill_port_process};
+pub use util::{
+    detect_package_manager, ensure_corepack_shims, is_port_listening, kill_port_process,
+};
 
 /// A detected dev server configuration from project files.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -41,6 +46,33 @@ pub struct DetectedDevServer {
     /// Commands to run to set up the environment (e.g. ["python -m venv .venv", "pip install -r requirements.txt"])
     #[serde(default)]
     pub setup_commands: Vec<String>,
+    /// Directory to spawn the dev server in when it is NOT the scanned root —
+    /// set for monorepo workspace members (e.g. `<root>/apps/docs`). `None`
+    /// means the scanned project root itself.
+    #[serde(default)]
+    pub cwd: Option<String>,
+    /// A NATIVE desktop app (no web dev server / CDP): launched by its own build
+    /// command (e.g. `cargo run -p egui_demo_app`), previewed by mirroring its OS
+    /// window (found via the launch's process tree, not a CDP port) and driven
+    /// via UI Automation. `false` for web/CDP apps.
+    #[serde(default)]
+    pub native: bool,
+    /// For a native app with several runnable binaries (a Cargo workspace like
+    /// egui), the alternatives the user can switch to. Empty otherwise. The
+    /// chosen one is reflected in `start_command`; this is the picker's menu.
+    #[serde(default)]
+    pub run_targets: Vec<RunTarget>,
+}
+
+/// One runnable binary of a native project (a Cargo `bin` target), for the
+/// App Preview's "Run:" picker.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RunTarget {
+    /// Human label (the bin name, e.g. "egui_demo_app").
+    pub label: String,
+    /// The exact command to launch it (e.g. "cargo run -p egui_demo_app").
+    pub command: String,
 }
 
 /// Scan a project directory and return all detected dev servers.
@@ -59,7 +91,11 @@ pub fn detect_dev_servers(project_root: &str) -> Vec<DetectedDevServer> {
 
     // 1. tauri.conf.json
     if let Some(server) = node::detect_from_tauri_conf(root, &pkg_manager) {
-        seen_ports.insert(server.port);
+        // Port 0 = "no dev server" (static-frontend Tauri app) — it must never
+        // participate in port dedupe (two such apps would shadow each other).
+        if server.port != 0 {
+            seen_ports.insert(server.port);
+        }
         servers.push(server);
     }
 
@@ -91,9 +127,47 @@ pub fn detect_dev_servers(project_root: &str) -> Vec<DetectedDevServer> {
         servers.push(server);
     }
 
-    // Probe all ports
+    // 6. Monorepo workspace members (apps/*, workspaces globs, pnpm-workspace).
+    // Root-level results stay first, so launch-target preference ("Tauri, else
+    // first detected") favors the root app when one exists. The root's package
+    // manager is reused — member dirs don't carry their own lockfiles.
+    for server in workspace::detect_workspace_servers(root, &pkg_manager, &mut seen_ports) {
+        servers.push(server);
+    }
+
+    // 7. Custom-launcher Tauri apps (bespoke monorepos): a tauri.conf.json lives
+    // somewhere non-standard and the app is launched by the project's OWN root
+    // dev/start script (yaak: `npm start` → node run-dev.mjs → tauri dev). Only
+    // when nothing standard already found a Tauri app, so conventional apps are
+    // untouched.
+    if !servers.iter().any(|s| s.framework.eq_ignore_ascii_case("tauri")) {
+        if let Some(server) = node::detect_tauri_via_custom_launcher(root, &pkg_manager) {
+            // This is the app's OWN launcher — the authoritative, preferred way
+            // to run it. Drop any workspace-member frontend entry that already
+            // claimed the same dev port (it's the SAME app's frontend; running
+            // the Tauri launcher runs that frontend natively), so the launch
+            // target isn't the bare frontend on a dedup race.
+            if server.port != 0 {
+                servers.retain(|s| s.port != server.port);
+            }
+            servers.push(server);
+        }
+    }
+
+    // 8. Native Rust (Cargo) desktop apps — a LAST resort, only when nothing
+    // web/CDP was found. A Cargo project (egui, iced, native winit) has no dev
+    // server; we run it via `cargo run` and mirror its OS window. Skipped for
+    // Tauri (already handled above — a Tauri app is also a Cargo project, but
+    // its CDP path is far richer than the native window mirror).
+    if servers.is_empty() {
+        if let Some(server) = cargo::detect_cargo_app(root) {
+            servers.push(server);
+        }
+    }
+
+    // Probe all ports (native apps have port 0 → never "running" by port).
     for server in &mut servers {
-        server.running = is_port_listening(server.port);
+        server.running = server.port != 0 && is_port_listening(server.port);
     }
 
     // Self-detection guard: when scanning our own project root, exclude the

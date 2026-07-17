@@ -103,7 +103,10 @@ pub fn start_ai(
 }
 
 /// Stop the currently active AI provider.
-#[tauri::command]
+// `(async)` for the same reason as start_ai: stopping a CLI provider does
+// kill + wait on the PTY child (up to seconds), which would freeze the UI
+// if run on the main thread.
+#[tauri::command(async)]
 pub fn stop_ai(state: State<'_, AiManagerState>) -> IpcResponse {
     let mut manager = lock_manager!(state);
     let stopped = manager.stop();
@@ -172,17 +175,6 @@ pub fn ai_pty_resize(state: State<'_, AiManagerState>, cols: u16, rows: u16) -> 
     let mut manager = lock_manager!(state);
     manager.resize(cols, rows);
     IpcResponse::ok_empty()
-}
-
-/// Interrupt the current AI operation.
-///
-/// For PTY providers: sends Ctrl+C.
-/// For API providers: aborts the streaming HTTP request.
-#[tauri::command]
-pub fn interrupt_ai(state: State<'_, AiManagerState>) -> IpcResponse {
-    let mut manager = lock_manager!(state);
-    let interrupted = manager.interrupt();
-    IpcResponse::ok(serde_json::json!({ "interrupted": interrupted }))
 }
 
 /// Send the voice listen loop command to CLI agents.
@@ -352,7 +344,11 @@ fn parse_model_list(body: &serde_json::Value) -> Vec<String> {
 ///
 /// Stops the current provider and starts the new one.
 #[allow(clippy::too_many_arguments)]
-#[tauri::command]
+// `(async)` for the same reason as start_ai: switching stops the old provider
+// (kill + wait) and starts the new one (where.exe probes, PTY spawn, MCP
+// config writes) — 1s+ of blocking work that froze the window when run on
+// the main thread.
+#[tauri::command(async)]
 pub fn set_provider(
     state: State<'_, AiManagerState>,
     provider_id: String,
@@ -492,16 +488,4 @@ fn chrono_now_iso() -> String {
     let millis = dur.subsec_millis();
     // Simplified: just return epoch-based timestamp parseable by JS
     format!("{}.{:03}Z", secs, millis)
-}
-
-/// Get information about the current provider.
-#[tauri::command]
-pub fn get_provider(state: State<'_, AiManagerState>) -> IpcResponse {
-    let manager = lock_manager!(state);
-    IpcResponse::ok(serde_json::json!({
-        "running": manager.is_running(),
-        "provider": manager.provider_type(),
-        "displayName": manager.display_name(),
-        "mode": manager.mode(),
-    }))
 }

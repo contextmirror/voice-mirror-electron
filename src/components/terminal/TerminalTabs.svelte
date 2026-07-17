@@ -24,11 +24,11 @@
   import { open as openDialog } from '@tauri-apps/plugin-dialog';
   import { setActionHandler } from '../../lib/stores/shortcuts.svelte.js';
   import TerminalActionBar from './TerminalActionBar.svelte';
-  import OutputPanel from '../lens/OutputPanel.svelte';
+  import OutputPanel from '../lens/panels/OutputPanel.svelte';
   import { outputStore } from '../../lib/stores/output.svelte.js';
-  import ProblemsPanel from '../lens/ProblemsPanel.svelte';
+  import ProblemsPanel from '../lens/panels/ProblemsPanel.svelte';
   import { lspDiagnosticsStore } from '../../lib/stores/lsp-diagnostics.svelte.js';
-  import { severityLabel } from '../../lib/lsp-severity.js';
+  import { severityLabel } from '../../lib/editor/lsp-severity.js';
   import { formatLogTime, unwrapResult } from '../../lib/utils.js';
   import { layoutStore } from '../../lib/stores/layout.svelte.js';
 

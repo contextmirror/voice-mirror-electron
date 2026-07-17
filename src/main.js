@@ -80,8 +80,8 @@ document.addEventListener('contextmenu', (e) => {
   const el = /** @type {HTMLElement} */ (e.target);
   const tag = el?.tagName;
 
-  // Block context menu on ghostty-web's hidden textarea inside terminals.
-  // ghostty-web creates an invisible <textarea> for keyboard input capture —
+  // Block context menu on xterm.js's hidden textarea inside terminals.
+  // xterm.js creates an invisible <textarea> for keyboard input capture —
   // without this check, right-clicking the terminal shows the browser's
   // "Save image as / Copy image / Paste" menu.
   if (tag === 'TEXTAREA' || tag === 'CANVAS') {

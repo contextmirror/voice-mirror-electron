@@ -1,7 +1,39 @@
-//! Download manager query commands.
+//! Download manager query commands + on-disk persistence.
+//!
+//! Finished downloads (completed/interrupted) persist to
+//! `browser-downloads.json` in the data dir, so the Downloads panel
+//! survives an app restart (they were previously in-memory only).
 
 use super::super::IpcResponse;
-use super::LensState;
+use super::{DownloadEntry, LensState};
+
+/// Cap on persisted finished downloads.
+const MAX_PERSISTED_DOWNLOADS: usize = 200;
+
+fn downloads_path() -> std::path::PathBuf {
+    crate::services::platform::get_data_dir().join("browser-downloads.json")
+}
+
+/// Load finished downloads persisted by a previous session.
+pub(crate) fn load_persisted() -> Vec<DownloadEntry> {
+    let path = downloads_path();
+    if let Ok(data) = std::fs::read_to_string(&path) {
+        serde_json::from_str(&data).unwrap_or_default()
+    } else {
+        Vec::new()
+    }
+}
+
+/// Persist the finished (non-in-progress) downloads, newest first.
+pub(super) fn persist_finished(downloads: &[DownloadEntry]) {
+    let mut finished: Vec<&DownloadEntry> =
+        downloads.iter().filter(|d| d.state != "downloading").collect();
+    finished.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    finished.truncate(MAX_PERSISTED_DOWNLOADS);
+    if let Ok(json) = serde_json::to_string_pretty(&finished) {
+        let _ = std::fs::write(downloads_path(), json);
+    }
+}
 
 /// Return all tracked downloads.
 #[tauri::command]
@@ -26,6 +58,7 @@ pub fn lens_clear_downloads(
         Err(e) => return IpcResponse::err(format!("downloads mutex poisoned: {e}")),
     };
     downloads.retain(|d| d.state == "downloading");
+    persist_finished(&downloads);
     IpcResponse::ok_empty()
 }
 

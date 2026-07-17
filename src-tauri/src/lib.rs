@@ -28,6 +28,7 @@ use commands::project as project_cmds;
 use commands::workspace_state as ws_state_cmds;
 use commands::mcp as mcp_cmds;
 use commands::onboarding as onboarding_cmds;
+use commands::open_with as open_with_cmds;
 use commands::sandbox as sandbox_cmds;
 
 use providers::manager::AiManager;
@@ -191,14 +192,49 @@ pub fn run() {
         );
     }
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    // Single-instance: RELEASE builds only. Dev builds must coexist with an
+    // installed Voice Mirror — with the plugin on, a `tauri dev` instance pings
+    // the running installed app and silently exits within seconds, which broke
+    // every "run the dev build beside the app" workflow (mirrors the Yap fix,
+    // nayballs/Yap@e0012a9). On a duplicate release launch, surface the app
+    // instead of doing nothing.
+    #[cfg(not(debug_assertions))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+        use tauri::Manager;
+        info!("Second instance detected, focusing existing window");
+        if let Some(main) = app.get_webview_window("main") {
+            let _ = main.show();
+            let _ = main.unminimize();
+            let _ = main.set_focus();
+        }
+        // "Open with Voice Mirror": the second launch carries a file path
+        // (Explorer runs `voice-mirror.exe "<path>"`). Forward it to the
+        // frontend so the file opens in the editor instead of being dropped.
+        for path in open_with_cmds::extract_open_paths(&argv, std::path::Path::new(&cwd)) {
+            info!("Second-instance open request: {}", path);
+            let _ = app.emit("open-file-request", serde_json::json!({ "path": path }));
+        }
+    }));
+
+    builder
+        // Origin-scoped IPC crash guard, injected into EVERY webview — and,
+        // because Windows/WebView2 applies init scripts to all subframes, into
+        // every IFRAME too. A cross-origin frame in the App Preview web embed
+        // otherwise receives Tauri's IPC bootstrap and can abort the whole
+        // process from inside a COM callback (no panic hook, no SEH, no dump —
+        // live repro: embedding VS Code's `code serve-web`). VM's own origins
+        // early-return so the app's invoke()/listen() is untouched. See
+        // MAIN_IFRAME_IPC_GUARD_SCRIPT in commands/lens/webview_setup.rs.
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry>::new("iframe-ipc-guard")
+                .js_init_script(commands::lens::MAIN_IFRAME_IPC_GUARD_SCRIPT.to_string())
+                .build(),
+        )
         .plugin(tauri_plugin_decorum::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {
-            // If user tries to launch a second instance, focus the existing window
-            info!("Second instance detected, focusing existing window");
-        }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
@@ -340,7 +376,11 @@ pub fn run() {
             active_tab_id: std::sync::Mutex::new(None),
             bounds: std::sync::Mutex::new(None),
             device_webviews: std::sync::Mutex::new(Vec::new()),
-            downloads: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            // Seed with finished downloads from previous sessions so the
+            // Downloads panel isn't amnesiac across restarts.
+            downloads: std::sync::Arc::new(std::sync::Mutex::new(
+                lens_cmds::downloads::load_persisted(),
+            )),
             devtools_label: std::sync::Mutex::new(None),
         })
         .manage(services::file_watcher::FileWatcherState {
@@ -350,24 +390,30 @@ pub fn run() {
             crate::terminal::TerminalManager::new(),
         )))
         .manage(output_store)
+        // "Open with Voice Mirror": file paths from the launching command
+        // line, drained by the frontend once the workspace has restored.
+        .manage(open_with_cmds::StartupOpenPaths(std::sync::Mutex::new(
+            open_with_cmds::extract_open_paths(
+                &std::env::args().collect::<Vec<_>>(),
+                &std::env::current_dir().unwrap_or_default(),
+            ),
+        )))
         .invoke_handler(tauri::generate_handler![
             // Config
             config_cmds::get_config,
             config_cmds::set_config,
             config_cmds::reset_config,
-            config_cmds::get_platform_info,
             config_cmds::get_api_key,
+            // Open-with (shell file associations)
+            open_with_cmds::take_startup_open_paths,
             // Window
             window_cmds::get_window_position,
             window_cmds::set_window_position,
-            window_cmds::save_window_bounds,
             window_cmds::minimize_window,
-            window_cmds::maximize_window,
             window_cmds::set_window_size,
             window_cmds::set_always_on_top,
             window_cmds::set_resizable,
             window_cmds::show_window,
-            window_cmds::quit_app,
             // Screenshot / screen capture
             sandbox_cmds::sandbox_snapshot,
             sandbox_cmds::sandbox_click,
@@ -379,7 +425,9 @@ pub fn run() {
             sandbox_cmds::sandbox_stream_stop,
             sandbox_cmds::sandbox_list_windows,
             sandbox_cmds::sandbox_active_hwnd,
-            screenshot_cmds::take_screenshot,
+            sandbox_cmds::sandbox_start_ack,
+            sandbox_cmds::find_free_cdp_port,
+            sandbox_cmds::ensure_corepack_shims,
             screenshot_cmds::save_image_to_temp,
             screenshot_cmds::list_monitors,
             screenshot_cmds::list_windows,
@@ -418,12 +466,10 @@ pub fn run() {
             ai_cmds::ai_pty_input,
             ai_cmds::ai_raw_input,
             ai_cmds::ai_pty_resize,
-            ai_cmds::interrupt_ai,
             ai_cmds::send_voice_loop,
             ai_cmds::scan_providers,
             ai_cmds::list_models,
             ai_cmds::set_provider,
-            ai_cmds::get_provider,
             ai_cmds::write_user_message,
             // Chat persistence
             chat_cmds::chat_list,
@@ -439,7 +485,6 @@ pub fn run() {
             // Global shortcuts
             shortcut_cmds::register_shortcut,
             shortcut_cmds::unregister_shortcut,
-            shortcut_cmds::list_shortcuts,
             shortcut_cmds::unregister_all_shortcuts,
             // Performance stats
             window_cmds::get_process_stats,
@@ -459,6 +504,7 @@ pub fn run() {
             lens_cmds::navigation::lens_set_visible,
             lens_cmds::navigation::lens_hard_refresh,
             lens_cmds::navigation::lens_clear_cache,
+            lens_cmds::navigation::lens_print,
             // Lens — device preview
             lens_cmds::device_preview::lens_create_device_webview,
             lens_cmds::device_preview::lens_close_device_webview,
@@ -469,6 +515,20 @@ pub fn run() {
             // Lens — zoom
             lens_cmds::zoom::lens_set_zoom,
             lens_cmds::zoom::lens_get_zoom,
+
+            lens_cmds::audio::lens_toggle_tab_mute,
+
+            lens_cmds::extensions::lens_extensions_list,
+            lens_cmds::extensions::lens_extension_add,
+            lens_cmds::extensions::lens_extension_install_crx,
+            lens_cmds::extensions::lens_extension_set_enabled,
+            lens_cmds::extensions::lens_extension_remove,
+
+            lens_cmds::privacy::lens_apply_privacy,
+
+            lens_cmds::permissions::lens_permission_response,
+            lens_cmds::permissions::lens_get_permissions,
+            lens_cmds::permissions::lens_clear_permission,
             // Lens — DevTools (embedded side-panel)
             lens_cmds::devtools::lens_find_devtools_url,
             lens_cmds::devtools::lens_open_devtools,
@@ -486,6 +546,10 @@ pub fn run() {
             lens_cmds::history::lens_get_history,
             lens_cmds::history::lens_clear_history,
             lens_cmds::history::lens_delete_history_entry,
+            // Lens — bookmarks
+            lens_cmds::bookmarks::lens_add_bookmark,
+            lens_cmds::bookmarks::lens_remove_bookmark,
+            lens_cmds::bookmarks::lens_get_bookmarks,
             // Lens — downloads
             lens_cmds::downloads::lens_get_downloads,
             lens_cmds::downloads::lens_clear_downloads,
@@ -494,7 +558,6 @@ pub fn run() {
             // File tree
             files_cmds::list_directory,
             files_cmds::get_git_changes,
-            files_cmds::get_project_root,
             files_cmds::read_file,
             files_cmds::read_file_base64,
             files_cmds::read_external_file,
@@ -530,7 +593,8 @@ pub fn run() {
             terminal_cmds::terminal_input,
             terminal_cmds::terminal_resize,
             terminal_cmds::terminal_kill,
-            terminal_cmds::terminal_list,
+            terminal_cmds::find_native_window,
+            terminal_cmds::is_window_alive,
             terminal_cmds::terminal_detect_profiles,
             // File watcher
             services::file_watcher::start_file_watching,
@@ -598,9 +662,9 @@ pub fn run() {
             output_cmds::get_output_logs,
             output_cmds::export_diagnostics,
             output_cmds::log_frontend_error,
+            output_cmds::log_preview,
             output_cmds::register_project_channel,
             output_cmds::unregister_project_channel,
-            output_cmds::push_project_log,
             output_cmds::list_project_channels,
             // Project icon management
             project_cmds::save_project_icon,
@@ -777,8 +841,15 @@ pub fn run() {
                             // Emit batched stdout events (one per session)
                             let mut should_break = false;
                             for (session_id, (text, output_channel, output_store)) in &grouped {
-                                // Project channel logging (moved here from reader thread)
+                                // Project channel logging (moved here from reader thread).
+                                // Collect the whole batch's lines and push them in ONE
+                                // call → a SINGLE `project-output-log-batch` event, not
+                                // one emit per line. A noisy dev server firing hundreds
+                                // of lines/sec otherwise floods the main-thread event
+                                // loop and feeds the tao/tauri WndProc re-entrancy stall
+                                // behind the "Not Responding" hang (tauri#14750).
                                 if let (Some(channel), Some(store)) = (output_channel, output_store) {
+                                    let mut batch: Vec<(String, String)> = Vec::new();
                                     for line in text.lines() {
                                         let trimmed = line.trim();
                                         if !trimmed.is_empty() {
@@ -786,10 +857,11 @@ pub fn run() {
                                             let clean = clean.trim();
                                             if !clean.is_empty() {
                                                 let level = terminal::classify_terminal_line(clean);
-                                                store.push_project(channel, level, clean);
+                                                batch.push((level.to_string(), clean.to_string()));
                                             }
                                         }
                                     }
+                                    store.push_project_batch(channel, &batch);
                                 }
 
                                 let event_name = format!("terminal-output-{}", session_id);
@@ -922,6 +994,24 @@ pub fn run() {
                 }
                 Err(e) => {
                     warn!("Failed to start inbox watcher: {}", e);
+                }
+            }
+
+            // Clear any stale usage snapshot from a previous session so the
+            // status bar doesn't flash old data before Claude's first refresh.
+            services::claude_usage::clear_status_file();
+
+            // Start the Claude usage watcher — surfaces session/weekly/context/
+            // cost/model from Claude Code's status-line JSON as the `ai-usage`
+            // event, rendered natively in the status bar. Lives for the app's
+            // lifetime; leak the handle like the inbox watcher above.
+            match services::claude_usage::start_usage_watcher(app.handle().clone()) {
+                Ok(handle) => {
+                    info!("Claude usage watcher started successfully");
+                    std::mem::forget(handle);
+                }
+                Err(e) => {
+                    warn!("Failed to start Claude usage watcher: {}", e);
                 }
             }
 

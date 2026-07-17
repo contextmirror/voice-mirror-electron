@@ -259,3 +259,219 @@ describe('sandbox-preview: multi-window', () => {
     assert.ok(!src.includes('sandboxActiveHwnd'), 'Should NOT poll sandbox_active_hwnd per tick');
   });
 });
+
+// -- Launch-failure surfacing (Phase 2: the panel must never spin forever) --
+
+describe('sandbox-preview.svelte.js -- launchFailed', () => {
+  const wsSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'components', 'lens', 'LensWorkspace.svelte'),
+    'utf-8'
+  );
+  const dsmSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'lib', 'stores', 'dev-server-manager.svelte.js'),
+    'utf-8'
+  );
+
+  it('exposes launchFailed(reason) that resolves the Starting state', () => {
+    assert.ok(src.includes('launchFailed(reason)'), 'Store should expose launchFailed');
+    const block = src.split('launchFailed(reason)')[1]?.slice(0, 400) || '';
+    assert.ok(block.includes('if (active) return'), 'Must not clobber a live session');
+    assert.ok(block.includes('loading = false'), 'Must leave the loading state');
+    assert.ok(block.includes('error ='), 'Must surface the reason via the error state');
+  });
+
+  it('requestStart clears a previous launch failure (retry works)', () => {
+    const block = src.split('async requestStart()')[1]?.slice(0, 400) || '';
+    assert.ok(block.includes("error = ''"), 'Retry must clear the prior error');
+  });
+
+  it('LensWorkspace feeds every refusal path into launchFailed', () => {
+    const occurrences = (wsSrc.match(/sandboxPreviewStore\.launchFailed\(/g) || []).length;
+    assert.ok(
+      occurrences >= 4,
+      `no-path / refused-outcome / no-server / catch must all resolve the panel (found ${occurrences})`
+    );
+  });
+
+  it('a non-quiet demotion resolves the panel too (port never bound)', () => {
+    const block = dsmSrc.split('function demoteToStopped')[1]?.split('\n  function')[0] || '';
+    assert.ok(block.includes('sandboxPreviewStore.launchFailed('), 'Demotion must resolve the panel');
+    assert.ok(
+      block.indexOf('sandboxPreviewStore.launchFailed(') > block.indexOf('if (!opts.quiet)'),
+      'Quiet (pre-relaunch housekeeping) demotions must NOT flash an error'
+    );
+  });
+});
+
+// -- Build-output tail in the Starting state (Phase 2: the wait narrates itself) --
+
+describe('SandboxPreview.svelte -- starting-state build tail', () => {
+  const cmpSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'components', 'lens', 'preview', 'SandboxPreview.svelte'),
+    'utf-8'
+  );
+
+  it('derives the in-flight launch from the dev-server manager', () => {
+    assert.ok(cmpSrc.includes('devServerManager'), 'component should read the manager');
+    assert.ok(cmpSrc.includes("s.status === 'starting'"), 'should find the starting entry');
+  });
+
+  it('tails the launch project channel into the panel', () => {
+    assert.ok(cmpSrc.includes('outputChannel'), 'tail source is the launch output channel');
+    assert.ok(cmpSrc.includes('projectEntries'), 'reads outputStore.projectEntries');
+    assert.ok(cmpSrc.includes('build-tail'), 'renders the tail block');
+  });
+
+  it('does not depend on the Output tab having been opened', () => {
+    // The project-channel stream flows only once the output store listens;
+    // the preview must arm that itself (startListening is idempotent).
+    assert.ok(cmpSrc.includes('outputStore.startListening()'), 'preview must arm the stream');
+  });
+
+  it('shows elapsed seconds with a cold-build hint', () => {
+    assert.ok(cmpSrc.includes('startElapsed'), 'elapsed ticker');
+    assert.ok(cmpSrc.includes('native build can take minutes'), 'sets expectation on long builds');
+  });
+});
+
+// -- Determinate launch progress (Nathan's ask: a real 0→100% bar) --
+
+describe('SandboxPreview.svelte -- launch progress bar', () => {
+  const cmpSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'components', 'lens', 'preview', 'SandboxPreview.svelte'),
+    'utf-8'
+  );
+  const dsmSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'lib', 'stores', 'dev-server-manager.svelte.js'),
+    'utf-8'
+  );
+
+  it('the startingServer derivation returns a fresh snapshot, not the live ref', () => {
+    // The manager mutates Map entries in place; returning the same object
+    // reference made later field updates (outputChannel) invisible to
+    // dependents. A shallow copy per recompute keeps them tracking.
+    const block = cmpSrc.split('const startingServer = $derived.by(')[1]?.split('});')[0] || '';
+    assert.ok(block.includes('{ ...best'), 'must snapshot the entry, not return best directly');
+  });
+
+  it('estimates against the last-launch duration, default baseline on the first', () => {
+    assert.ok(cmpSrc.includes('vm:lastLaunchMs:'), 'reads the persisted baseline');
+    assert.ok(cmpSrc.includes('const progressPct'), 'has a progress derivation');
+    // Always determinate now — a default baseline keeps the FIRST launch moving.
+    assert.ok(cmpSrc.includes('DEFAULT_BASELINE_MS'), 'first launch uses a default estimate');
+    assert.ok(cmpSrc.includes('progress-fill'), 'renders a determinate fill');
+    assert.ok(cmpSrc.includes('role="progressbar"'), 'exposes an a11y progressbar');
+  });
+
+  it('flashes 100% on the first frame before hiding (visible completion)', () => {
+    assert.ok(cmpSrc.includes('justCompleted'), 'has a completion-flash flag');
+    assert.ok(cmpSrc.includes('if (justCompleted) return 100'), 'flash forces 100%');
+    // showProgress must keep the bar up during the flash even though hasFrame.
+    assert.ok(cmpSrc.includes('!hasFrame || justCompleted'), 'bar stays visible for the 100% flash');
+  });
+
+  it('the manager persists successful-launch duration on markRunning', () => {
+    const block = dsmSrc.split('function markRunning')[1]?.split('\n  function')[0] || '';
+    assert.ok(block.includes('vm:lastLaunchMs:'), 'markRunning must persist the duration');
+    assert.ok(block.includes('prev?.startedAt'), 'measured from startedAt');
+  });
+});
+
+// -- Auto-recovery when the app restarts (tauri dev relaunch → new window) --
+
+describe('sandbox-preview.svelte.js -- restart recovery', () => {
+  it('re-targets a fresh window after having given up (noWindow)', () => {
+    // A fresh `tauri dev` build restarts the app once (gen/ files) — the first
+    // mirrored window closes, CDP drops then returns with a new window. The
+    // poll must auto-recover instead of stranding "The app window was closed."
+    const block = src.split('async function refreshWindows')[1]?.split('function startPolling')[0] || '';
+    assert.ok(block.includes('if (noWindow) {'), 'recovery branch keyed on the given-up state');
+    assert.ok(block.includes('noWindow = false'), 'recovery clears the empty state');
+    assert.ok(/if \(noWindow\) \{[\s\S]*startStream\(/.test(block), 'recovery re-targets a live window');
+  });
+});
+
+// -- "Hanging or failing?" — surface build errors during the starting state --
+
+describe('SandboxPreview.svelte -- failing-launch hint', () => {
+  const cmpSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'components', 'lens', 'preview', 'SandboxPreview.svelte'),
+    'utf-8'
+  );
+  it('flags a launch stuck repeating one line (WARN-loop, no ERROR)', () => {
+    // yaak's frontend never starts and just repeats "Waiting for..." at WARN;
+    // ERROR-only detection stays silent, so a repeated-line heuristic must
+    // also flag it as stuck.
+    assert.ok(cmpSrc.includes('buildLooksStuck'), 'derives a stuck-loop signal');
+    assert.ok(cmpSrc.includes('top >= 6'), 'a dominant repeated line = stuck');
+    assert.ok(cmpSrc.includes('buildTrouble'), 'combined trouble flag drives the banner');
+    assert.ok(cmpSrc.includes('looks stuck'), 'stuck copy differs from the error copy');
+  });
+
+  it('flags a launch that logs ERRORs after a grace period', () => {
+    assert.ok(cmpSrc.includes('buildHasErrors'), 'derives whether the build is erroring');
+    assert.ok(cmpSrc.includes("e.level === 'ERROR'"), 'keys off ERROR-classified output');
+    assert.ok(/\(startElapsed \?\? 0\) > 20/.test(cmpSrc), 'only after a grace period (transient early errors)');
+    assert.ok(cmpSrc.includes('build-warn'), 'renders the honest warning');
+  });
+});
+
+describe('sandbox-preview: WEB sessions (plain web apps, no window to mirror)', () => {
+  // A plain web app (vite/next/CRA — excalidraw was the live repro) has no CDP
+  // port and no OS window: the render surface IS the page. The App Preview
+  // embeds the dev-server URL in an iframe (Bolt DIY / Onlook pattern) instead
+  // of spinning "Starting…" forever waiting for a window mirror.
+  const cmpSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'components', 'lens', 'preview', 'SandboxPreview.svelte'),
+    'utf-8'
+  );
+  const dsmSrc = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'lib', 'stores', 'dev-server-manager.svelte.js'),
+    'utf-8'
+  );
+
+  it('store exposes an openWeb(url, port) session mode', () => {
+    assert.ok(src.includes('openWeb(url, port)'), 'openWeb entry point');
+    assert.ok(src.includes('get web()'), 'exposes the web flag');
+    assert.ok(src.includes('get webUrl()'), 'exposes the embedded URL');
+  });
+
+  it('web liveness is the dev port, with a miss threshold (not one blip)', () => {
+    assert.ok(src.includes('function refreshWeb'), 'web liveness tick');
+    assert.ok(src.includes('probePort(webPort)'), 'probes the dev port');
+    assert.ok(src.includes('listFailCount >= 3'), 'requires consecutive misses before teardown');
+  });
+
+  it('a dead web session FULLY tears down so "Try again" can relaunch', () => {
+    // requestStart() no-ops while a session is active; leaving a dead web
+    // session active-with-an-error made the Try-again button do nothing
+    // (live repro: stop the server, switch project, click Try again).
+    const dead = src.slice(src.indexOf('function refreshWeb'), src.indexOf('function startPolling'));
+    assert.ok(dead.includes('active = false'), 'dead web session must clear active');
+    assert.ok(dead.includes('web = false'), 'and the web flag');
+    assert.ok(dead.includes('visible = true'), 'while keeping the panel up to show the reason');
+  });
+
+  it('syncAuto never tears down a web session (the native-session gotcha, again)', () => {
+    // syncAuto tracks the active CDP port; native AND web sessions have none,
+    // so without the guard it would close them the instant they open.
+    assert.ok(
+      src.includes('!attached && !native && !web'),
+      'web sessions must be excluded from the CDP-port auto-sync teardown'
+    );
+  });
+
+  it('markRunning opens the web embed with the RETARGETED url/port', () => {
+    assert.ok(
+      dsmSrc.includes('sandboxPreviewStore.openWeb(server.url, server.port)'),
+      'web-ready servers open an App Preview web session'
+    );
+  });
+
+  it('component renders the embed and completes the progress bar on load', () => {
+    assert.ok(cmpSrc.includes('class="sandbox-web"'), 'renders the iframe embed');
+    assert.ok(cmpSrc.includes('src={webUrl}'), 'points at the dev-server URL');
+    assert.ok(/iframe[\s\S]{0,200}onload=\{\(\) => \{ hasFrame = true; \}\}/.test(cmpSrc), 'iframe onload marks the surface live');
+    assert.ok(cmpSrc.includes('surfaceUrl'), 'readiness/progress logic is surface-agnostic (stream OR embed)');
+  });
+});

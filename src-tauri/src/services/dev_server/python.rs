@@ -577,6 +577,8 @@ pub(super) fn detect_python_servers(
         running: false,
         needs_setup,
         setup_commands,
+        cwd: None,
+        ..Default::default()
     });
 
     servers

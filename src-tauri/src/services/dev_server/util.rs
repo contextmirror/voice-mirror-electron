@@ -87,6 +87,184 @@ pub(super) fn make_start_command(pkg_manager: &str, script: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Corepack bridge — run yarn/pnpm without a global install
+// ---------------------------------------------------------------------------
+
+/// The package manager a repo INTENDS to use, even when it isn't on PATH.
+///
+/// Priority: the `packageManager` field (corepack's own source of truth,
+/// e.g. `"yarn@1.22.22"`), then lockfiles. Returns the bare tool name
+/// ("yarn" | "pnpm" | "npm" | "bun") or None when nothing indicates one.
+///
+/// Walks UP from the given dir: in a monorepo the manager is declared at the
+/// ROOT (the `packageManager` field + lockfile), but the dev server spawns in
+/// a MEMBER dir (live repro: excalidraw launches in `excalidraw-app`, which has
+/// neither) — so a root-only check found nothing and skipped the bridge. This
+/// mirrors how corepack itself resolves: nearest `packageManager` walking up.
+pub fn intended_package_manager(project_root: &str) -> Option<String> {
+    let mut dir = Some(Path::new(project_root));
+    // Bounded so a deeply-nested member can't crawl to the filesystem root and
+    // pick up an unrelated repo's lockfile; member→workspace-root is 1–2 hops.
+    for _ in 0..6 {
+        let Some(d) = dir else { break };
+        if let Ok(content) = std::fs::read_to_string(d.join("package.json")) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(pm) = json.get("packageManager").and_then(|v| v.as_str()) {
+                    let name = pm.split('@').next().unwrap_or("").trim();
+                    if !name.is_empty() {
+                        return Some(name.to_string());
+                    }
+                }
+            }
+        }
+        if d.join("bun.lockb").exists() || d.join("bun.lock").exists() {
+            return Some("bun".to_string());
+        }
+        if d.join("yarn.lock").exists() {
+            return Some("yarn".to_string());
+        }
+        if d.join("pnpm-lock.yaml").exists() {
+            return Some("pnpm".to_string());
+        }
+        dir = d.parent();
+    }
+    None
+}
+
+/// Ensure the project's intended package manager is runnable, bridging via
+/// corepack when it isn't globally installed. Returns the shim directory to
+/// PREPEND to the child PATH, or None when no bridge is needed.
+///
+/// The real-world gap (live repro: excalidraw): a repo pins
+/// `packageManager: yarn@1.22.22` and its start script is `yarn && vite`, but
+/// the user never `npm i -g yarn`'d. The npm-fallback can't save it — the
+/// SCRIPT ITSELF calls `yarn`. corepack (bundled with Node ≥16.9) ships the
+/// manager as `node_modules/corepack/dist/<mgr>.js`.
+///
+/// We write shims OURSELVES (a `<mgr>.cmd`/`.ps1`/POSIX launcher that runs
+/// `node <corepack>/dist/<mgr>.js`) into a VM-owned dir and hand it back for
+/// the launcher to prepend — so BOTH the outer command and any inner
+/// `yarn`/`pnpm` calls in the script resolve, without touching the user's Node
+/// install. We deliberately do NOT shell out to `corepack enable`: it exits
+/// non-zero in some Node/env combinations (observed live: Node 24, inside the
+/// app process, exit 1) and its relative-path shims assume the shim dir and
+/// Node share a drive. Direct absolute-path shims are deterministic.
+///
+/// Every decision logs to the `preview` channel (preview.jsonl) so a silent
+/// no-op is never again invisible.
+pub fn ensure_corepack_shims(project_root: &str) -> Option<String> {
+    let manager = match intended_package_manager(project_root) {
+        Some(m) => m,
+        None => {
+            tracing::info!(target: "preview", "[corepack] no pinned yarn/pnpm under {project_root} — no bridge needed");
+            return None;
+        }
+    };
+    // npm always ships with Node; bun is not a corepack-managed tool.
+    if manager == "npm" || manager == "bun" {
+        return None;
+    }
+    if is_command_available(&manager) {
+        tracing::info!(target: "preview", "[corepack] `{manager}` already on PATH — no bridge needed");
+        return None;
+    }
+
+    // Locate node + corepack's bundled `<mgr>.js` (we invoke it directly).
+    let Some(node) = resolve_node_exe() else {
+        tracing::warn!(target: "preview", "[corepack] `{manager}` is needed but node isn't on PATH — cannot bridge");
+        return None;
+    };
+    let Some(node_dir) = node.parent() else {
+        return None;
+    };
+    let mgr_js = node_dir
+        .join("node_modules")
+        .join("corepack")
+        .join("dist")
+        .join(format!("{manager}.js"));
+    if !mgr_js.exists() {
+        tracing::warn!(target: "preview", "[corepack] {} missing (no corepack in this Node?) — cannot bridge `{manager}`", mgr_js.display());
+        return None;
+    }
+
+    let shim_dir = dirs::data_dir()?.join("voice-mirror").join("corepack-shims");
+    if let Err(e) = std::fs::create_dir_all(&shim_dir) {
+        tracing::warn!(target: "preview", "[corepack] could not create shim dir {}: {e}", shim_dir.display());
+        return None;
+    }
+    if let Err(e) = write_manager_shims(&shim_dir, &manager, &node, &mgr_js) {
+        tracing::warn!(target: "preview", "[corepack] failed writing `{manager}` shims to {}: {e}", shim_dir.display());
+        return None;
+    }
+
+    tracing::info!(target: "preview", "[corepack] bridge ready for `{manager}`: node {} → {}; PATH += {}", node.display(), mgr_js.display(), shim_dir.display());
+    Some(shim_dir.to_string_lossy().to_string())
+}
+
+/// Resolve the absolute path to node's executable via the platform PATH search
+/// (`where`/`which` — both real .exe's, so unlike a `.cmd` they spawn from Rust
+/// fine). Prefers a genuine `node.exe` on Windows over any `node.cmd` alias.
+fn resolve_node_exe() -> Option<std::path::PathBuf> {
+    let finder = if cfg!(windows) { "where" } else { "which" };
+    let mut cmd = std::process::Command::new(finder);
+    cmd.arg("node").stderr(std::process::Stdio::null());
+    crate::util::hidden(&mut cmd);
+    let out = cmd.output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    for line in text.lines() {
+        let p = std::path::PathBuf::from(line.trim());
+        if !p.exists() {
+            continue;
+        }
+        if !cfg!(windows)
+            || p.extension().map(|e| e.eq_ignore_ascii_case("exe")).unwrap_or(false)
+        {
+            return Some(p);
+        }
+    }
+    // Fallback: first existing entry even if not a .exe.
+    text.lines()
+        .map(|l| std::path::PathBuf::from(l.trim()))
+        .find(|p| p.exists())
+}
+
+/// Write `<mgr>` launcher shims (cmd + ps1 + POSIX) that exec
+/// `node <corepack>/dist/<mgr>.js` with ABSOLUTE paths, into `shim_dir`. The
+/// `.cmd` is the one that actually matters on Windows: npm runs scripts via
+/// `cmd /c <mgr> …`, so `<mgr>.cmd` on PATH is what resolves the inner call.
+fn write_manager_shims(
+    shim_dir: &std::path::Path,
+    manager: &str,
+    node: &std::path::Path,
+    mgr_js: &std::path::Path,
+) -> std::io::Result<()> {
+    let node_s = node.display().to_string();
+    let js_s = mgr_js.display().to_string();
+
+    let cmd_shim = format!("@echo off\r\n\"{node_s}\" \"{js_s}\" %*\r\n");
+    std::fs::write(shim_dir.join(format!("{manager}.cmd")), cmd_shim)?;
+
+    let ps_shim = format!("& \"{node_s}\" \"{js_s}\" @args\r\n");
+    std::fs::write(shim_dir.join(format!("{manager}.ps1")), ps_shim)?;
+
+    // POSIX shim for git-bash — node.exe accepts a Windows-form JS path arg.
+    let sh_path = shim_dir.join(manager);
+    std::fs::write(&sh_path, format!("#!/bin/sh\nexec \"{node_s}\" \"{js_s}\" \"$@\"\n"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&sh_path)?.permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&sh_path, perms)?;
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Parsing helpers
 // ---------------------------------------------------------------------------
 
@@ -271,6 +449,38 @@ pub(super) fn own_tauri_dev_port(project_root: &Path) -> Option<u16> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn intended_pm_walks_up_to_the_workspace_root() {
+        // Live repro: excalidraw declares `packageManager` + yarn.lock at the
+        // ROOT, but the dev server spawns in the `excalidraw-app` MEMBER dir
+        // (no field, no lockfile). The bridge must still resolve `yarn`.
+        let base = std::env::temp_dir().join(format!("vm_pm_{}", std::process::id()));
+        let member = base.join("excalidraw-app");
+        std::fs::create_dir_all(&member).unwrap();
+        std::fs::write(
+            base.join("package.json"),
+            r#"{ "packageManager": "yarn@1.22.22" }"#,
+        )
+        .unwrap();
+        std::fs::write(base.join("yarn.lock"), "").unwrap();
+        // The member has its own package.json WITHOUT a packageManager field.
+        std::fs::write(member.join("package.json"), r#"{ "name": "app" }"#).unwrap();
+
+        assert_eq!(
+            intended_package_manager(member.to_str().unwrap()).as_deref(),
+            Some("yarn"),
+            "must walk up from the member to find the root's pinned manager"
+        );
+        // A plain npm repo (no field, no lockfile anywhere) needs no bridge.
+        let plain = base.join("plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        std::fs::write(plain.join("package.json"), r#"{ "name": "x" }"#).unwrap();
+        // (plain is under base, which has yarn.lock — so walk-up finds yarn; that
+        // is correct: a file inside a yarn workspace IS a yarn context.)
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn test_extract_port_from_url_http() {

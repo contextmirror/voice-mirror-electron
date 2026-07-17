@@ -23,11 +23,13 @@ const EXPECTED_SUBSYSTEMS = [
   'terminal',
   'file-watcher',
   'dev-server',
+  'preview-launch',
   'editor',
   'file-viewer',
   'updater',
   'tts',
   'provider',
+  'usage-pulse',
   'stt',
   'gpu',
 ];
@@ -53,6 +55,7 @@ let contracts = new Map();
 let results = $state({});
 
 let intervalId = null;
+let startTimeoutId = null;
 
 /** Safe logger — must never throw */
 function safeLog(level, message) {
@@ -138,9 +141,13 @@ async function runAllChecks() {
 
 /** Start periodic health monitoring. */
 function startMonitoring() {
-  if (intervalId) return;
+  // Guard on the startup timeout too: intervalId is only set once the 5s
+  // delay elapses, so a second start within that window would otherwise
+  // schedule a duplicate interval (and stopMonitoring would be a no-op).
+  if (intervalId || startTimeoutId) return;
   // Run first check after a short delay (let subsystems initialize)
-  setTimeout(() => {
+  startTimeoutId = setTimeout(() => {
+    startTimeoutId = null;
     runAllChecks();
     intervalId = setInterval(runAllChecks, CHECK_INTERVAL);
   }, 5000);
@@ -148,6 +155,10 @@ function startMonitoring() {
 
 /** Stop periodic health monitoring. */
 function stopMonitoring() {
+  if (startTimeoutId) {
+    clearTimeout(startTimeoutId);
+    startTimeoutId = null;
+  }
   if (intervalId) {
     clearInterval(intervalId);
     intervalId = null;

@@ -12,12 +12,18 @@ import lmstudioIcon from '../assets/icons/providers/lmstudio.svg';
 import janIcon from '../assets/icons/providers/jan.svg';
 import opencodeIcon from '../assets/icons/providers/opencode.svg';
 import dictationIcon from '../assets/icons/providers/dictation.svg';
+import codexIcon from '../assets/icons/providers/codex.svg';
+import geminiIcon from '../assets/icons/providers/gemini.svg';
+import kimiIcon from '../assets/icons/providers/kimi.svg';
 
 // ---- Provider display names ----
 
 export const PROVIDER_NAMES = {
   claude: 'Claude Code',
   opencode: 'OpenCode',
+  codex: 'OpenAI Codex',
+  'gemini-cli': 'Gemini CLI',
+  'kimi-cli': 'Kimi CLI',
   ollama: 'Ollama',
   lmstudio: 'LM Studio',
   jan: 'Jan',
@@ -29,6 +35,9 @@ export const PROVIDER_NAMES = {
 export const PROVIDER_ICONS = {
   claude: { type: 'cover', src: claudeIcon },
   opencode: { type: 'inner', src: opencodeIcon, bg: 'linear-gradient(135deg, #1a1717, #131010)' },
+  codex: { type: 'inner', src: codexIcon, bg: 'linear-gradient(135deg, #1a1717, #131010)' },
+  'gemini-cli': { type: 'inner', src: geminiIcon, bg: 'linear-gradient(135deg, #1c2033, #12141f)' },
+  'kimi-cli': { type: 'inner', src: kimiIcon, bg: 'linear-gradient(135deg, #14161f, #0e1016)' },
   ollama: { type: 'inner', src: ollamaIcon, bg: 'linear-gradient(135deg, #f0f0f0, #d0d0d0)' },
   lmstudio: { type: 'inner', src: lmstudioIcon, bg: 'linear-gradient(135deg, #3b82f6, #1d4ed8)' },
   jan: { type: 'inner', src: janIcon, bg: 'linear-gradient(135deg, #a855f7, #7c3aed)' },
@@ -37,7 +46,8 @@ export const PROVIDER_ICONS = {
 
 // ---- Provider classification ----
 
-export const CLI_PROVIDERS = ['claude', 'opencode'];
+// Keep in sync with src-tauri/src/providers/mod.rs CLI_PROVIDERS.
+export const CLI_PROVIDERS = ['claude', 'opencode', 'codex', 'gemini-cli', 'kimi-cli'];
 export const LOCAL_PROVIDERS = ['ollama', 'lmstudio', 'jan'];
 export const MCP_PROVIDERS = ['claude', 'opencode'];
 const DICTATION_PROVIDERS = ['dictation'];
@@ -59,6 +69,9 @@ export const PROVIDER_GROUPS = [
     providers: [
       { value: 'claude', label: 'Claude Code' },
       { value: 'opencode', label: 'OpenCode' },
+      { value: 'codex', label: 'OpenAI Codex' },
+      { value: 'gemini-cli', label: 'Gemini CLI' },
+      { value: 'kimi-cli', label: 'Kimi CLI' },
     ],
   },
   {

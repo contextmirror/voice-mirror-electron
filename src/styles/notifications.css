@@ -1,132 +1,12 @@
 /**
- * notifications.css -- Toast notifications, alerts,
- * loading spinners, What's New modal.
+ * notifications.css -- What's New modal.
+ *
+ * NOTE: Toast styling lives ENTIRELY in Toast.svelte / ToastContainer.svelte
+ * (scoped). A legacy global .toast/.toast-container block used to live here
+ * with the SAME class names — any property the component stopped setting
+ * leaked through and broke layout (a global `left: 50%` fought the
+ * component's `right` anchor). Don't reintroduce global .toast* rules.
  */
-
-/* ========== Toast Container ========== */
-
-.toast-container {
-  position: absolute;
-  bottom: 80px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 50;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-  pointer-events: none;
-}
-
-/* ========== Toast ========== */
-
-.toast {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px var(--space-md);
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
-  color: var(--text);
-  font-size: 13px;
-  animation: slide-up var(--duration-normal) var(--ease-out);
-  pointer-events: auto;
-}
-
-/* ========== Toast Variants ========== */
-
-.toast.info    { border-left: 3px solid var(--accent); }
-.toast.success { border-left: 3px solid var(--ok); }
-.toast.warning { border-left: 3px solid var(--warn); }
-.toast.error   { border-left: 3px solid var(--danger); }
-
-/* ========== Toast Icon ========== */
-
-.toast-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.toast-icon svg {
-  width: 16px;
-  height: 16px;
-}
-
-.toast.info .toast-icon    { color: var(--accent); }
-.toast.success .toast-icon { color: var(--ok); }
-.toast.warning .toast-icon { color: var(--warn); }
-.toast.error .toast-icon   { color: var(--danger); }
-
-/* ========== Toast Content ========== */
-
-.toast-message {
-  flex: 1;
-}
-
-/* ========== Toast Action Button ========== */
-
-.toast-action {
-  background: var(--accent);
-  color: white;
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: var(--space-xs) 12px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background var(--duration-fast) var(--ease-out);
-}
-
-.toast-action:hover {
-  background: var(--accent-hover);
-}
-
-.toast-action:active {
-  transform: scale(0.97);
-}
-
-/* Hide action button in loading state */
-.toast.loading .toast-action {
-  display: none;
-}
-
-/* ========== Toast Close ========== */
-
-.toast-close {
-  background: none;
-  border: none;
-  color: var(--muted);
-  cursor: pointer;
-  padding: var(--space-xs);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color var(--duration-fast);
-}
-
-.toast-close:hover {
-  color: var(--text-strong);
-}
-
-/* ========== Toast Exit Animation ========== */
-
-.toast.exiting {
-  animation: toast-exit var(--duration-fast) var(--ease-out) forwards;
-}
-
-/* ========== Loading Spinner ========== */
-
-.toast-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
 
 /* ========== What's New Modal ========== */
 
@@ -259,19 +139,3 @@
   margin: 1rem 0;
 }
 
-/* ========== Reduced Motion ========== */
-
-@media (prefers-reduced-motion: reduce) {
-  .toast {
-    animation: none;
-  }
-
-  .toast.exiting {
-    animation: none;
-    opacity: 0;
-  }
-
-  .toast-spinner {
-    animation: none;
-  }
-}

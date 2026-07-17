@@ -17,6 +17,7 @@
   import AISettings from './AISettings.svelte';
   import ToolSettings from './ToolSettings.svelte';
   import AppearanceSettings from './AppearanceSettings.svelte';
+  import ExtensionsSettings from './ExtensionsSettings.svelte';
   import DependencySettings from './DependencySettings.svelte';
   import McpServerSettings from './McpServerSettings.svelte';
   import DiagnosticsSettings from './DiagnosticsSettings.svelte';
@@ -27,6 +28,7 @@
     { id: 'mcp', label: 'MCP Servers' },
     { id: 'voice', label: 'Voice & Audio' },
     { id: 'appearance', label: 'Appearance' },
+    { id: 'extensions', label: 'Extensions' },
     { id: 'dependencies', label: 'Dependencies', flag: 'showDependencies' },
   ];
 
@@ -104,6 +106,14 @@
         role="tabpanel"
       >
         <AppearanceSettings />
+      </div>
+    {:else if activeTab === 'extensions'}
+      <div
+        id="settings-tab-extensions"
+        class="settings-tab-content"
+        role="tabpanel"
+      >
+        <ExtensionsSettings />
       </div>
     {:else if activeTab === 'dependencies' && showDependencies}
       <div

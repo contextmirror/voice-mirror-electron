@@ -154,6 +154,72 @@ pub(crate) fn pid_of_hwnd(_hwnd: i64) -> Option<u32> {
     None
 }
 
+/// The PID set of a process and ALL its descendants — the launch's process
+/// tree. A native app is run through a shell/cargo (`bash → cargo run → cargo
+/// → app.exe`); the window belongs to a DESCENDANT, not the PID we spawned, so
+/// we can't key off the spawned PID directly (as the CDP path keys off the
+/// debug-port PID). Walk the full tree so window ownership matches any of them.
+#[cfg(windows)]
+pub(crate) fn descendant_pids(root_pid: u32) -> std::collections::HashSet<u32> {
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
+    let mut sys = System::new();
+    sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
+
+    // child map: parent_pid -> [child_pids]
+    let mut children: std::collections::HashMap<u32, Vec<u32>> = std::collections::HashMap::new();
+    for (pid, proc_) in sys.processes() {
+        if let Some(parent) = proc_.parent() {
+            children.entry(parent.as_u32()).or_default().push(pid.as_u32());
+        }
+    }
+
+    let mut out = std::collections::HashSet::new();
+    let mut stack = vec![root_pid];
+    while let Some(pid) = stack.pop() {
+        if out.insert(pid) {
+            if let Some(kids) = children.get(&pid) {
+                stack.extend(kids.iter().copied());
+            }
+        }
+    }
+    out
+}
+
+#[cfg(not(windows))]
+pub(crate) fn descendant_pids(_root_pid: u32) -> std::collections::HashSet<u32> {
+    std::collections::HashSet::new()
+}
+
+/// Find the main OS window owned by any process in `root_pid`'s tree — the
+/// native-app counterpart to the CDP path's window matching. Returns the
+/// largest presentable, non-host, titled top-level window (the app's main
+/// window over splashes/tooltips), or `None` while the window hasn't appeared
+/// yet (a `cargo run` compiles first — poll this).
+#[cfg(windows)]
+pub(crate) fn find_window_in_process_tree(root_pid: u32) -> Option<i64> {
+    let pids = descendant_pids(root_pid);
+    if pids.is_empty() {
+        return None;
+    }
+    let windows = crate::commands::screenshot::list_visible_windows_metadata().ok()?;
+    let mut matches: Vec<&_> = windows
+        .iter()
+        .filter(|w| !w.title.trim().is_empty())
+        .filter(|w| !is_host_window(w.hwnd, &w.title))
+        .filter(|w| pid_of_hwnd(w.hwnd).map(|p| pids.contains(&p)).unwrap_or(false))
+        .collect();
+    if matches.is_empty() {
+        return None;
+    }
+    matches.sort_by_key(|w| -((w.width as i64) * (w.height as i64)));
+    Some(matches[0].hwnd)
+}
+
+#[cfg(not(windows))]
+pub(crate) fn find_window_in_process_tree(_root_pid: u32) -> Option<i64> {
+    None
+}
+
 /// An OS window's logical (DIP) size `(width, height)` — used by the UIA backend
 /// to fill the `activeWidth`/`activeHeight` echo for a native window.
 #[cfg(windows)]

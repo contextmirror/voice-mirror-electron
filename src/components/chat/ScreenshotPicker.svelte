@@ -317,7 +317,7 @@
                 />
               </div>
               <div class="thumbnail-label">
-                <span class="thumbnail-name">Lens Browser</span>
+                <span class="thumbnail-name">Browser</span>
               </div>
             </button>
           </div>

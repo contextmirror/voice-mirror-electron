@@ -1,10 +1,12 @@
 pub mod auth_vault;
 pub mod browser_bridge;
 pub mod cdp;
+pub mod claude_usage;
 pub mod dev_server;
 pub mod file_watcher;
 pub mod inbox_watcher;
 pub mod input_hook;
+pub mod launch;
 pub mod crash_handler;
 pub mod hang_watchdog;
 pub mod logger;

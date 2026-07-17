@@ -26,6 +26,12 @@ use super::{state_to_u8, VoiceMode};
 /// indefinitely in Speaking.
 const SYNTH_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// Max time a new speak() waits for the previous request to release the TTS
+/// engine. Must exceed SYNTH_TIMEOUT (60s): a wedged phrase holds the engine
+/// until that timeout fires and restores it, so a shorter wait (the old 2s)
+/// would give up, orphan state, and drop the new utterance.
+const ENGINE_WAIT: Duration = Duration::from_secs(65);
+
 /// Compute a generous playback cap from the known audio length:
 /// `max(30s, expected * 3 + 10s)`. Used to bound the rodio drain loops so a
 /// stalled audio device can't hang the Speaking state forever.
@@ -94,10 +100,29 @@ pub(super) async fn speak(shared: &Arc<PipelineShared>, text: &str) -> Result<()
                 prev_cancel.store(true, Ordering::SeqCst);
             }
         }
-        // Wait up to 2 seconds for the engine to be returned AND the previous
-        // playback handle to finish.
-        for _ in 0..40 {
+    }
+
+    // Reset the shared cancellation flag for the new request BEFORE waiting,
+    // so a FRESH stop/cancel arriving during the (potentially long) wait below
+    // is observable. The previous request stays cancelled via its per-request
+    // token, which both its playback thread and its synthesis loop check.
+    shared.tts_cancel.store(false, Ordering::SeqCst);
+
+    if current == VoiceState::Speaking {
+        // Wait for the engine to be returned AND the previous playback handle
+        // to finish. Long enough (ENGINE_WAIT > SYNTH_TIMEOUT) that a wedged
+        // phrase releases the engine before we give up.
+        let wait_start = Instant::now();
+        while wait_start.elapsed() < ENGINE_WAIT {
             tokio::time::sleep(Duration::from_millis(50)).await;
+            // A new stop/cancel (or pipeline shutdown) arrived while this
+            // utterance was queued — drop it instead of speaking over the stop.
+            if shared.tts_cancel.load(Ordering::SeqCst)
+                || !shared.running.load(Ordering::SeqCst)
+            {
+                tracing::info!("TTS cancelled while waiting for engine, dropping queued utterance");
+                return Ok(());
+            }
             let engine_available = shared.tts_engine.lock().map(|g| g.is_some()).unwrap_or(false);
             let no_longer_speaking = super::state_from_u8(shared.state.load(Ordering::Acquire)) != VoiceState::Speaking;
             if engine_available && no_longer_speaking {
@@ -110,18 +135,10 @@ pub(super) async fn speak(shared: &Arc<PipelineShared>, text: &str) -> Result<()
         }
     }
 
-    // Reset cancellation flag for the new request
-    shared.tts_cancel.store(false, Ordering::SeqCst);
-
     // Create a per-request cancel token. This ensures the playback thread for
     // THIS request stays cancelled even if a subsequent speak() call resets
     // the shared tts_cancel flag.
     let request_cancel = Arc::new(AtomicBool::new(false));
-
-    // Register this token so external callers (barge-in, stop_speaking) can cancel it
-    if let Ok(mut guard) = shared.active_playback_cancel.lock() {
-        *guard = Some(Arc::clone(&request_cancel));
-    }
 
     // Set state to Speaking + emit events
     set_speaking_state(shared, text);
@@ -137,10 +154,20 @@ pub(super) async fn speak(shared: &Arc<PipelineShared>, text: &str) -> Result<()
                     message: "No TTS engine available".into(),
                 },
             );
+            // NOTE: active_playback_cancel is deliberately NOT overwritten yet
+            // on this path — if a previous request still holds the engine, its
+            // cancel token must stay reachable for barge-in/stop_speaking.
             finish_speaking(shared);
             return Err("No TTS engine available".into());
         }
     };
+
+    // Register this token so external callers (barge-in, stop_speaking) can
+    // cancel it. Done only AFTER the engine was successfully taken: a failed
+    // take must not orphan the previous request's still-active cancel token.
+    if let Ok(mut guard) = shared.active_playback_cancel.lock() {
+        *guard = Some(Arc::clone(&request_cancel));
+    }
 
     // Check cancellation before synthesis
     if shared.tts_cancel.load(Ordering::SeqCst) {
@@ -193,9 +220,12 @@ pub(super) async fn speak(shared: &Arc<PipelineShared>, text: &str) -> Result<()
         )
     });
 
-    // Synthesize phrases and send to playback
+    // Synthesize phrases and send to playback.
+    // Check BOTH the shared flag and this request's own token: a newer speak()
+    // cancels us via the token and then resets the shared flag, so the token
+    // is what keeps this loop from synthesizing dead phrases.
     for (i, phrase) in phrases.iter().enumerate() {
-        if shared.tts_cancel.load(Ordering::SeqCst) {
+        if shared.tts_cancel.load(Ordering::SeqCst) || request_cancel.load(Ordering::SeqCst) {
             tracing::info!("TTS cancelled during streaming synthesis");
             // Propagate to per-request token so playback thread also stops
             request_cancel.store(true, Ordering::SeqCst);
@@ -302,7 +332,9 @@ async fn speak_oneshot(
                 "TTS synthesis complete, starting playback"
             );
 
-            if shared.tts_cancel.load(Ordering::SeqCst) {
+            // Shared flag OR this request's own token (a newer speak() cancels
+            // via the token, then resets the shared flag).
+            if shared.tts_cancel.load(Ordering::SeqCst) || request_cancel.load(Ordering::SeqCst) {
                 tracing::info!("TTS cancelled after synthesis");
                 request_cancel.store(true, Ordering::SeqCst);
                 restore_tts_engine(shared, engine);

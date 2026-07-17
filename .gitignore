@@ -7,12 +7,15 @@ stats.html
 
 # Rust
 src-tauri/target/
+# Secondary cargo target dir used while the dev app holds file locks in target/
+# (see docs/design/app-preview-reliability.md "Working on this")
+src-tauri/target-audit/
+
+# Staged nightly release assets (rebuilt by scripts/release-nightly.cjs each cut)
+release-nightly/
 
 # Staged MCP sidecar for externalBin bundling (built artifact, copied at build time)
 src-tauri/binaries/
-
-# Ghostty WASM (downloaded at build time)
-ghostty-vt.wasm
 
 # Windows reserved device names (created by tools writing to "nul" literally)
 nul
@@ -61,7 +64,12 @@ tools/espeak-ng/
 
 # Local-only
 CLAUDE.md
-scripts/
 docs/internal/
+
+# Machine-specific launchers/tools (the release + CDP scripts ARE committed)
+scripts/launch-dev.vbs
+scripts/gen-icons.py
+scripts/demo-take.ps1
+scripts/record-demo.ps1
 .problems.txt
 .firecrawl/

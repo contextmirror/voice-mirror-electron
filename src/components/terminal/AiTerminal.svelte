@@ -7,24 +7,16 @@
    * to the PTY via the `aiRawInput()` API wrapper. Uses xterm.js's FitAddon
    * to auto-resize the terminal to fill its container.
    *
-   * NOTE (xterm experiment): this is the AI/voice-provider terminal swapped from
-   * ghostty-web to xterm.js. The user-shell terminal (Terminal.svelte) still uses
-   * ghostty-web, so the two can be compared side by side. ghostty-web mirrored the
-   * xterm.js API, so most calls are identical; the meaningful differences handled
-   * below are: (1) xterm has no `cursorStyle: 'none'` — we hide the cursor for
-   * Claude by setting the cursor color to the background; (2) ghostty-only methods
-   * (freeze/unfreeze/forceDirty) don't exist on xterm and are guarded so they
-   * no-op; (3) attachCustomKeyEventHandler return semantics are inverted in
-   * xterm.js (return false = prevent terminal processing).
    */
   import { untrack } from 'svelte';
   import { Terminal } from '@xterm/xterm';
   import { FitAddon } from '@xterm/addon-fit';
   import { WebglAddon } from '@xterm/addon-webgl';
+  import { Unicode11Addon } from '@xterm/addon-unicode11';
   import '@xterm/xterm/css/xterm.css';
   import { listen } from '@tauri-apps/api/event';
   import { aiRawInput, aiPtyResize, saveImageToTemp } from '../../lib/api.js';
-  import { unwrapResult } from '../../lib/utils.js';
+  import { unwrapResult, blendHex } from '../../lib/utils.js';
   import { currentThemeName } from '../../lib/stores/theme.svelte.js';
   import { aiStatusStore } from '../../lib/stores/ai-status.svelte.js';
 
@@ -45,11 +37,10 @@
   let providerSwitchHandler = null;
 
   // Cover the terminal with the app background while no provider is running.
-  // An empty ghostty terminal paints its cells with the WASM's built-in default
-  // background (#0c0d10) — Ghostty treats a pure-black #000000 theme bg as
-  // "unset" and falls back to it — which reads as a grey box against the
-  // #000000 UI on cold start. The cover guarantees the empty/stopped state
-  // matches the surrounding background; it's hidden the moment a provider runs.
+  // On a cold start the terminal can paint before the theme's CSS variables
+  // resolve, leaving its cells fractionally lighter than the #000000 UI (reads
+  // as a grey box). The cover guarantees the empty/stopped state matches the
+  // surrounding background; it's hidden the moment a provider runs.
   let showEmptyCover = $derived(!aiStatusStore.running);
 
   // Provider switch: hide the canvas via direct DOM style during the transition
@@ -60,7 +51,7 @@
   let switchRevealTimer = null;
   let isSwitching = false;
 
-  // ---- CSS token -> ghostty-web theme mapping ----
+  // ---- CSS token -> xterm.js theme mapping ----
 
   /**
    * Read a CSS custom property value from :root.
@@ -72,8 +63,8 @@
   }
 
   /**
-   * Build a ghostty-web ITheme object from current CSS custom properties.
-   * Maps design tokens to ghostty-web's ITheme keys.
+   * Build an xterm.js ITheme object from current CSS custom properties.
+   * Maps design tokens to xterm.js's ITheme keys.
    */
   function buildTermTheme() {
     // Fallback is pure black to match the app's --bg (#000000). On a cold boot
@@ -93,12 +84,14 @@
     return {
       background: bg,
       foreground: text,
-      // xterm.js has no cursorStyle: 'none'. Claude Code draws its own cursor,
-      // so hide the terminal cursor for it by painting the cursor in the
-      // background color; other providers get the visible accent cursor.
-      cursor: aiStatusStore.providerType === 'claude' ? bg : accent,
+      // Visible for ALL providers: Claude Code positions the real terminal
+      // cursor at its input caret (it does NOT draw its own), so hiding it
+      // left users with no cursor at all.
+      cursor: accent,
       cursorAccent: bg,
-      selectionBackground: accent + '4d', // ~30% opacity
+      // Pre-blended opaque selection — an alpha color over a black background
+      // is nearly invisible, and renderer alpha handling is unreliable.
+      selectionBackground: blendHex(bg, accent, 0.35),
       selectionForeground: textStrong,
       // Standard ANSI colors mapped to theme tokens
       black: bg,
@@ -128,8 +121,7 @@
    * :root, so buildTermTheme() falls back to #0c0d10 — fractionally lighter than
    * the #000000 UI, which shows as a grey box that only a remount clears.
    * getCssVar('--bg') returns '' until the vars exist, so we keep re-applying
-   * (ghostty-web now honors post-open theme changes) until --bg resolves, then
-   * the final apply paints the real background.
+   * until --bg resolves, then the final apply paints the real background.
    */
   function applyThemeWhenReady(tries = 0) {
     if (!term) return;
@@ -159,7 +151,16 @@
   function fitTerminal() {
     if (!fitAddon || !term) return;
     try {
-      fitAddon.fit();
+      // Deliberately NOT the addon's fit(): that method calls
+      // _renderService.clear() before resizing, blanking the canvas for a
+      // frame — the visible flicker while resizing the window. Sizing via
+      // proposeDimensions() + term.resize() repaints without the wipe
+      // (what VS Code does).
+      const dims = fitAddon.proposeDimensions();
+      if (!dims || isNaN(dims.cols) || isNaN(dims.rows)) return;
+      if (dims.cols !== term.cols || dims.rows !== term.rows) {
+        term.resize(dims.cols, dims.rows);
+      }
     } catch {
       // Not mounted yet or container has zero size
     }
@@ -212,9 +213,10 @@
     try {
       const text = await navigator.clipboard.readText();
       if (text) {
-        aiRawInput(text).catch((err) => {
-          console.warn('[Terminal] Paste/input failed:', err);
-        });
+        // Route through xterm's paste pipeline (not aiRawInput directly) so
+        // bracketed-paste mode is honored — Claude Code relies on it to treat
+        // multi-line pastes as one block instead of submitting each line.
+        term.paste(text);
       }
     } catch (err) {
       console.warn('[Terminal] Paste failed:', err);
@@ -367,16 +369,13 @@
           if (term.freeze) term.freeze();
         }
         isSwitching = false;
-        // Update cursor for the new provider — Claude Code renders its own
-        // cursor (hidden here via the theme cursor color), others (OpenCode)
-        // rely on the terminal cursor. xterm.js has no 'none' style, so we
-        // keep a 'bar' and toggle visibility through the theme + blink.
+        // Re-assert cursor settings on provider start. TUIs can clobber the
+        // cursorBlink option via DECSET/DECRST 12 and xterm 6.0.0 never
+        // restores it (xtermjs/xterm.js#5314, fixed only in 6.1.0-beta), so
+        // re-applying here keeps the cursor consistent across providers.
         if (term && term.options) {
-          const isClaude = aiStatusStore.providerType === 'claude';
           term.options.cursorStyle = 'bar';
-          term.options.cursorBlink = !isClaude;
-          // Re-apply theme so the cursor color (visible vs. background) tracks
-          // the new provider.
+          term.options.cursorBlink = true;
           term.options.theme = buildTermTheme();
         }
         if (switchRevealTimer) clearTimeout(switchRevealTimer);
@@ -429,8 +428,12 @@
         term.write(
           '\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l' + // Disable mouse tracking
           '\x1b[?1049l' +  // Exit alternate screen
+          '\x1b[?25h' +    // Show cursor (TUIs often exit with it hidden)
           '\x1b[0m'        // Reset attributes
         );
+        // Restore cursor blink the TUI may have clobbered via DECSET/DECRST 12
+        // (xtermjs/xterm.js#5314 — option never restored on 6.0.0).
+        term.options.cursorBlink = true;
         term.writeln('');
         term.writeln(`\x1b[33m[Process exited with code ${data.code ?? '?'}]\x1b[0m`);
         if (switchRevealTimer) {
@@ -455,23 +458,39 @@
     async function setup() {
       if (cancelled) return;
 
-      // Create xterm.js Terminal instance. Claude Code renders its own cursor —
-      // we hide the terminal cursor for it via the theme cursor color (xterm has
-      // no 'none' style). Other TUIs (OpenCode) rely on the terminal cursor for
-      // their input field.
+      // Create xterm.js Terminal instance. The cursor stays visible for every
+      // provider — Claude Code positions the real terminal cursor at its input
+      // caret (it does not draw its own), and TUIs that hide it do so
+      // themselves via DECTCEM (\x1b[?25l).
       const xterm = new Terminal({
-        cursorBlink: aiStatusStore.providerType !== 'claude',
+        cursorBlink: true,
         cursorStyle: 'bar',
         fontSize: 13,
         fontFamily: getCssVar('--font-mono') || "'Cascadia Code', 'Fira Code', monospace",
         theme: buildTermTheme(),
         scrollback: 5000,
         convertEol: false,
+        // Required by the Unicode 11 addon — `terminal.unicode` is a proposed
+        // API in xterm 6 and loadAddon THROWS without this flag.
+        allowProposedApi: true,
       });
 
       // Create FitAddon for auto-resize
       const fit = new FitAddon();
       xterm.loadAddon(fit);
+
+      // Unicode 11 width tables — Claude Code's TUI is emoji/symbol heavy, and
+      // the default Unicode 6 widths mismeasure them, leaving stale glyphs when
+      // the input line redraws (classic ghost-text artifacting).
+      // try/catch: a failure here must degrade to default widths, never kill
+      // the whole terminal (an uncaught throw in setup() = blank panel).
+      try {
+        const unicode11 = new Unicode11Addon();
+        xterm.loadAddon(unicode11);
+        xterm.unicode.activeVersion = '11';
+      } catch (err) {
+        console.warn('[Terminal] Unicode 11 addon unavailable, using default widths:', err);
+      }
 
       // Mount into DOM
       xterm.open(containerEl);
@@ -524,9 +543,8 @@
       });
 
       // Custom keyboard handler for Ctrl+C (copy selection) and Ctrl+V (paste)
-      // xterm.js convention (INVERTED vs ghostty-web): return true = "let the
-      //   terminal process the key normally"; return false = "stop, terminal
-      //   should NOT process this key".
+      // xterm.js convention: return true = "let the terminal process the key
+      //   normally"; return false = "stop, terminal should NOT process this key".
       xterm.attachCustomKeyEventHandler((event) => {
         // Only intercept keydown to avoid double-firing
         if (event.type !== 'keydown') return true;
@@ -534,14 +552,20 @@
         // Ctrl+C: copy selected text if there is a selection
         if (event.ctrlKey && event.key === 'c' && !event.shiftKey && !event.altKey) {
           if (xterm.hasSelection()) {
+            event.preventDefault(); // Stop the native copy event (xterm also listens for it)
             handleCopy();
             return false; // Prevent terminal from sending \x03
           }
           return true; // Let terminal send interrupt (\x03)
         }
 
-        // Ctrl+V: paste from clipboard
+        // Ctrl+V: paste from clipboard.
+        // preventDefault is load-bearing: returning false only skips xterm's
+        // keydown processing — the browser's default paste still fires a native
+        // `paste` event that xterm forwards to the PTY, so without it every
+        // Ctrl+V pasted TWICE (handlePaste + native paste).
         if (event.ctrlKey && event.key === 'v' && !event.shiftKey && !event.altKey) {
+          event.preventDefault();
           handlePaste();
           return false; // Prevent terminal default
         }
@@ -614,7 +638,12 @@
       };
       window.addEventListener('ai-provider-switching', providerSwitchHandler);
 
-      // Observe container resize for auto-fitting
+      // Observe container resize for auto-fitting.
+      // Fit ONLY after the drag settles (debounced) — deliberately not live.
+      // A live per-frame fit re-wraps the buffer to the new grid while the
+      // running TUI still paints for the OLD size (SIGWINCH is debounced),
+      // showing garbled overlapping lines for the whole drag. Mid-drag the
+      // canvas just crops/extends over the theme-colored container instead.
       const observer = new ResizeObserver(() => {
         if (resizeTimeout) clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(() => {
@@ -630,7 +659,7 @@
         requestAnimationFrame(async () => {
           // Wait for the monospace web font before the first fit. On a cold
           // start (now hit because the app boots straight into the Lens IDE),
-          // the font may not be loaded yet, so fitAddon.fit() miscomputes the
+          // the font may not be loaded yet, so the fit miscomputes the
           // cell size and the canvas leaves a grey band that only a later
           // resize/remount fixes. fonts.ready resolves instantly once cached.
           try {
@@ -656,7 +685,7 @@
           // #000000 UI around it, which reads as a grey box that only a remount
           // (after vars load) clears. getCssVar('--bg') is empty until the vars
           // are applied, so retry briefly until it resolves, then paint the real
-          // background. (ghostty-web now honors post-open theme changes.)
+          // background.
           applyThemeWhenReady();
         });
       });
@@ -825,6 +854,16 @@
     width: 100%;
     height: 100%;
     overflow: hidden !important;
+  }
+
+  /* Stock xterm.css hard-codes background #000 on .xterm and .xterm-viewport.
+     Anything the canvas doesn't cover (scrollbar column, the sub-cell gap left
+     by fit(), the exposed area mid-resize) paints PURE BLACK on non-black
+     themes — seen as a black box while resizing + a thin black line after.
+     Follow the app theme instead. */
+  .terminal-container :global(.xterm),
+  .terminal-container :global(.xterm-viewport) {
+    background-color: var(--bg) !important;
   }
 
   /* xterm.js (DOM renderer) renders rows as divs; if a canvas/webgl addon is
