@@ -108,11 +108,10 @@ describe('browser tier1: bookmarks', () => {
 });
 
 describe('browser tier1: downloads', () => {
-  it('honors downloadAskLocation/downloadPath from config', () => {
-    assert.ok(WEBVIEW_SETUP.includes('download_ask_location'), 'Should read ask-location config');
-    assert.ok(WEBVIEW_SETUP.includes('SetResultFilePath'), 'Should direct downloads to the configured folder');
-    assert.ok(WEBVIEW_SETUP.includes('args.SetHandled(!ask_location)'), 'Ask=false must mean silent download');
-    assert.ok(WEBVIEW_SETUP.includes('unique_download_path'), 'Collisions should get "(n)" suffixes');
+  it('lets WebView2 handle downloads natively (observe-only)', () => {
+    assert.ok(WEBVIEW_SETUP.includes('args.SetHandled(false)'), 'Handler must not intercept — native download UI');
+    assert.ok(!WEBVIEW_SETUP.includes('SetResultFilePath'), 'Must not redirect the download target');
+    assert.ok(!WEBVIEW_SETUP.includes('download_ask_location'), 'Config-driven interception was reverted');
   });
 
   it('persists finished downloads across restarts', () => {

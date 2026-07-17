@@ -24,8 +24,6 @@
   let markdownPreview = $state(true);
   let debugMode = $state(false);
   let showDependencies = $state(false);
-  let downloadAskLocation = $state(false);
-  let downloadPath = $state('');
 
   // ---- Updates ----
   let autoCheckUpdates = $state(true);
@@ -70,8 +68,6 @@
     markdownPreview = cfg.editor?.markdownPreview !== false;
     debugMode = cfg.advanced?.debugMode === true;
     showDependencies = cfg.advanced?.showDependencies === true;
-    downloadAskLocation = cfg.browser?.downloadAskLocation === true;
-    downloadPath = cfg.browser?.downloadPath || '';
     autoCheckUpdates = cfg.updates?.autoCheck !== false;
   });
 
@@ -80,20 +76,6 @@
   function checkForUpdatesNow() {
     // Explicit check — surfaces errors (unlike silent background checks).
     updaterStore.checkForUpdates(true);
-  }
-
-  // ---- Folder picker ----
-
-  async function pickDownloadFolder() {
-    try {
-      const { open } = await import('@tauri-apps/plugin-dialog');
-      const selected = await open({ directory: true, title: 'Choose download location' });
-      if (selected) {
-        downloadPath = selected;
-      }
-    } catch (err) {
-      console.error('[BehaviorSettings] Folder picker failed:', err);
-    }
   }
 
   // ---- Save handler ----
@@ -120,10 +102,6 @@
         advanced: {
           debugMode,
           showDependencies,
-        },
-        browser: {
-          downloadAskLocation,
-          downloadPath: downloadPath || '',
         },
         updates: {
           autoCheck: autoCheckUpdates,
@@ -208,28 +186,6 @@
         checked={markdownPreview}
         onChange={(v) => (markdownPreview = v)}
       />
-    </div>
-  </section>
-
-  <!-- Browser -->
-  <section class="settings-section">
-    <h3>Browser</h3>
-    <div class="settings-group">
-      <Toggle
-        label="Always Ask Where to Save"
-        description="Show a Save As dialog for every download instead of auto-saving"
-        checked={downloadAskLocation}
-        onChange={(v) => (downloadAskLocation = v)}
-      />
-      <div class="path-setting">
-        <label class="path-label" for="download-location-btn">Download Location</label>
-        <div class="path-row">
-          <span class="path-display" title={downloadPath || 'System Downloads folder'}>
-            {downloadPath || 'System Downloads folder'}
-          </span>
-          <button id="download-location-btn" class="path-btn" onclick={pickDownloadFolder}>Change</button>
-        </div>
-      </div>
     </div>
   </section>
 
@@ -348,58 +304,6 @@
     background: var(--card-highlight);
     border-radius: var(--radius-md);
     padding: 4px;
-  }
-
-  .path-setting {
-    padding: 8px 12px;
-  }
-
-  .path-label {
-    display: block;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text);
-    margin-bottom: 6px;
-  }
-
-  .path-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .path-display {
-    flex: 1;
-    min-width: 0;
-    height: 28px;
-    line-height: 28px;
-    padding: 0 8px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg);
-    color: var(--muted);
-    font-size: 12px;
-    font-family: var(--font-mono);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .path-btn {
-    flex-shrink: 0;
-    height: 28px;
-    padding: 0 12px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg);
-    color: var(--text);
-    font-size: 12px;
-    cursor: pointer;
-    transition: background var(--duration-fast) var(--ease-out);
-  }
-
-  .path-btn:hover {
-    background: var(--bg-elevated);
   }
 
   .settings-actions {

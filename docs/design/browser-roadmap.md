@@ -30,11 +30,13 @@ carry what extensions need (`browser_extensions_enabled` env flag,
       still carries tabs over (deliberate, revisit in Tier 2).
 - [x] **Bookmarks** — `browser-bookmarks.json` (`bookmarks.rs`), star in the
       address bar, `BookmarksPanel`, Bookmarks entry in the browser menu.
-- [x] **Download config + persistence** — `downloadAskLocation`/`downloadPath`
-      now honored in `DownloadStarting` (ask → Save-As dialog; otherwise
-      silent to configured folder with "(n)" collision suffixes, Chrome-like);
-      finished downloads persist to `browser-downloads.json` and seed the
-      panel on startup.
+- [x] **Download persistence** — finished downloads persist to
+      `browser-downloads.json` and seed the panel on startup. Downloads
+      themselves are handled by WebView2's native download UI
+      (`SetHandled(false)`, observe-only) — the config-driven interception
+      (`downloadAskLocation`/`downloadPath`, silent save + Save-As routing)
+      was reverted 2026-07-17: the browser handles it better than we did,
+      and the Settings toggle it powered has been removed.
 
 ## Tier 2 — the "feels like Chrome" layer
 

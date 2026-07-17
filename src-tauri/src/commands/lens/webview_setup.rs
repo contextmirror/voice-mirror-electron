@@ -1038,25 +1038,6 @@ fn set_desktop_user_agent(webview: &tauri::Webview) {
     });
 }
 
-/// Pick a collision-free path for `filename` inside `dir` — "file (2).zip"
-/// style, like every browser.
-fn unique_download_path(dir: &std::path::Path, filename: &str) -> String {
-    let candidate = dir.join(filename);
-    if !candidate.exists() {
-        return candidate.to_string_lossy().into_owned();
-    }
-    let p = std::path::Path::new(filename);
-    let stem = p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "download".into());
-    let ext = p.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
-    for n in 1..1000u32 {
-        let c = dir.join(format!("{} ({}){}", stem, n, ext));
-        if !c.exists() {
-            return c.to_string_lossy().into_owned();
-        }
-    }
-    candidate.to_string_lossy().into_owned()
-}
-
 /// Hook the WebView2 `DownloadStarting` event so file downloads are tracked
 /// and progress is emitted to the frontend.  Called once per newly-created
 /// child webview.
@@ -1115,38 +1096,13 @@ fn register_download_handler(
                         // Get result file path from args (where WebView2 will save)
                         let mut result_path_pwstr = windows_core::PWSTR::null();
                         args.ResultFilePath(&mut result_path_pwstr)?;
-                        let mut result_path = take_pwstr(result_path_pwstr);
+                        let result_path = take_pwstr(result_path_pwstr);
 
                         // Extract filename from the path
                         let filename = std::path::Path::new(&result_path)
                             .file_name()
                             .map(|n| n.to_string_lossy().to_string())
                             .unwrap_or_else(|| "download".to_string());
-
-                        // Honor browser download settings (previously declared
-                        // in config but wired to nothing):
-                        //  - ask_location → native Save-As dialog (SetHandled(false))
-                        //  - otherwise    → silent download, to the configured
-                        //    folder if set+valid, else WebView2's default
-                        //    Downloads path. Chrome-like default.
-                        let browser_cfg = crate::commands::config::get_config_snapshot().browser;
-                        let ask_location = browser_cfg.download_ask_location;
-                        if !ask_location {
-                            if let Some(dir) = browser_cfg
-                                .download_path
-                                .as_deref()
-                                .filter(|d| !d.is_empty())
-                            {
-                                let dir_path = std::path::Path::new(dir);
-                                if dir_path.is_dir() {
-                                    let target = unique_download_path(dir_path, &filename);
-                                    let hpath = windows_core::HSTRING::from(target.as_str());
-                                    if args.SetResultFilePath(windows_core::PCWSTR(hpath.as_ptr())).is_ok() {
-                                        result_path = target;
-                                    }
-                                }
-                            }
-                        }
 
                         // Get URI from download operation
                         let mut uri_pwstr = windows_core::PWSTR::null();
@@ -1198,9 +1154,9 @@ fn register_download_handler(
 
                         info!("[lens] Download started: {} -> {}", filename, result_path);
 
-                        // ask_location → WebView2's Save-As dialog; otherwise
-                        // handled == silent download straight to result_path.
-                        args.SetHandled(!ask_location)?;
+                        // Let WebView2's built-in download UI handle the
+                        // download; we only observe for the downloads panel.
+                        args.SetHandled(false)?;
 
                         // Register BytesReceivedChanged handler for progress updates
                         {
